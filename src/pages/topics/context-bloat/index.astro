@@ -1081,19 +1081,18 @@ class ContextMitigationPipeline:
     language: 'csharp',
     label: 'C#',
     code: `using Microsoft.Extensions.AI;
-using Microsoft.SemanticKernel.Embeddings;
 
 public class ContextMitigationPipeline
 {
     private readonly IChatClient _client;
-    private readonly ITextEmbeddingGenerationService _embedder;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
     private readonly int _hardLimit;
     private readonly int _windowSize;
     private readonly int _overlap;
 
     public ContextMitigationPipeline(
         IChatClient client,
-        ITextEmbeddingGenerationService embedder,
+        IEmbeddingGenerator<string, Embedding<float>> embedder,
         int hardLimit = 16000,
         int windowSize = 10,
         int overlap = 2)
@@ -1129,15 +1128,15 @@ public class ContextMitigationPipeline
         List<ChatMessage> messages,
         string query)
     {
-        var queryEmb = await _embedder.GenerateEmbeddingAsync(query);
+        var queryResult = await _embedder.GenerateAsync(query);
+        var queryEmb = queryResult.Vector;
 
         var scored = new List<(ChatMessage Msg, float Score)>();
 
         foreach (var msg in messages)
         {
-            var msgEmb = await _embedder
-                .GenerateEmbeddingAsync(msg.Text ?? "");
-            var score = CosineSimilarity(queryEmb, msgEmb);
+            var msgResult = await _embedder.GenerateAsync(msg.Text ?? "");
+            var score = CosineSimilarity(queryEmb, msgResult.Vector);
             scored.Add((msg, score));
         }
 
@@ -1199,8 +1198,8 @@ public class ContextMitigationPipeline
                 continue;
             }
 
-            var msgEmb = await _embedder
-                .GenerateEmbeddingAsync(msg.Text);
+            var msgResult = await _embedder.GenerateAsync(msg.Text);
+            var msgEmb = msgResult.Vector;
 
             var isDuplicate = embeddings.Any(e =>
                 CosineSimilarity(msgEmb, e) > threshold);

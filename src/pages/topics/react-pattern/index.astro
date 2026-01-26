@@ -196,202 +196,125 @@ function reactLoop(task):
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `import re
-from openai import OpenAI
+    label: 'Python (LangChain)',
+    code: `from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.tools import tool
+from langchain import hub
 
-client = OpenAI()
+# Define tools
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return search_api.search(query)
 
-REACT_PROMPT = """You are a ReAct agent. Always respond in this format:
+@tool
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    return str(eval(expression))
+
+@tool
+def lookup(term: str) -> str:
+    """Look up a definition or fact."""
+    return knowledge_base.lookup(term)
+
+# Use LangChain's ReAct prompt (or customize your own)
+prompt = hub.pull("hwchase17/react")
+
+# Or create a custom ReAct prompt
+custom_prompt = ChatPromptTemplate.from_messages([
+    ("system", """You are a ReAct agent. Respond in this format:
 
 Thought: [Your reasoning about what to do next]
-Action: tool_name(arg1="value1", arg2="value2")
+Action: tool_name[input]
+Observation: [Result from tool]
+... (repeat until done)
+Thought: I have the answer
+Final Answer: [Your response]
 
-OR if you have the final answer:
+Tools available: {tool_names}
+{tools}"""),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}")
+])
 
-Thought: [Your reasoning]
-Answer: [Your final response to the user]
+# Create the ReAct agent
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+tools = [search, calculator, lookup]
 
-Available tools:
-- search(query: str) - Search the web
-- calculator(expression: str) - Evaluate math
-- lookup(term: str) - Look up a definition
-"""
+agent = create_react_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,  # Shows Thought/Action/Observation trace
+    max_iterations=10,
+    handle_parsing_errors=True
+)
 
-def parse_react_response(response: str) -> dict:
-    """Parse the structured ReAct response."""
-    thought_match = re.search(
-        r"Thought:\s*(.+?)(?=Action:|Answer:|$)",
-        response,
-        re.DOTALL
-    )
-    thought = thought_match.group(1).strip() if thought_match else ""
-
-    if "Answer:" in response:
-        answer_match = re.search(r"Answer:\s*(.+)", response, re.DOTALL)
-        return {
-            "type": "complete",
-            "thought": thought,
-            "answer": answer_match.group(1).strip()
-        }
-
-    action_match = re.search(
-        r"Action:\s*(\w+)\((.+)\)",
-        response
-    )
-    if action_match:
-        tool_name = action_match.group(1)
-        args_str = action_match.group(2)
-        # Parse args (simplified - use ast.literal_eval in production)
-        args = parse_tool_args(args_str)
-        return {
-            "type": "action",
-            "thought": thought,
-            "tool": tool_name,
-            "args": args
-        }
-
-    return {"type": "error", "thought": thought}
-
-def react_agent(task: str, max_steps: int = 10) -> str:
-    messages = [
-        {"role": "system", "content": REACT_PROMPT},
-        {"role": "user", "content": task}
-    ]
-
-    for step in range(max_steps):
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
-
-        content = response.choices[0].message.content
-        parsed = parse_react_response(content)
-
-        print(f"Step {step + 1}:")
-        print(f"  Thought: {parsed.get('thought', 'N/A')}")
-
-        if parsed["type"] == "complete":
-            print(f"  Answer: {parsed['answer']}")
-            return parsed["answer"]
-
-        if parsed["type"] == "action":
-            print(f"  Action: {parsed['tool']}({parsed['args']})")
-
-            # Execute the tool
-            result = execute_tool(parsed["tool"], parsed["args"])
-            print(f"  Observation: {result}")
-
-            # Add to conversation
-            messages.append({"role": "assistant", "content": content})
-            messages.append({
-                "role": "user",
-                "content": f"Observation: {result}"
-            })
-
-    return "Max steps reached"`,
+# Run with visible reasoning trace
+result = agent_executor.invoke({
+    "input": "What's the population of Tokyo multiplied by 3?"
+})
+print(result["output"])`,
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using System.Text.RegularExpressions;
+    label: 'C# (Semantic Kernel)',
+    code: `using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Planning;
 
-public class ExplicitReActAgent
+public class ReActAgent
 {
-    private const string SystemPrompt = """
-        You are a ReAct agent. Always respond in this format:
+    private readonly Kernel _kernel;
 
-        Thought: [Your reasoning about what to do next]
-        Action: tool_name(arg1="value1")
-
-        OR if you have the final answer:
-
-        Thought: [Your reasoning]
-        Answer: [Your final response]
-        """;
-
-    private readonly IChatClient _client;
-    private readonly Dictionary<string, Func<string, Task<string>>> _tools;
+    public ReActAgent(Kernel kernel)
+    {
+        _kernel = kernel;
+    }
 
     public async Task<string> RunAsync(string task, int maxSteps = 10)
     {
-        var messages = new List<ChatMessage>
-        {
-            new(ChatRole.System, SystemPrompt),
-            new(ChatRole.User, task)
-        };
-
-        for (int step = 0; step < maxSteps; step++)
-        {
-            var response = await _client.GetResponseAsync(messages);
-            var content = response.Message.Text ?? "";
-
-            var parsed = ParseReActResponse(content);
-
-            Console.WriteLine($"Step {step + 1}:");
-            Console.WriteLine($"  Thought: {parsed.Thought}");
-
-            if (parsed.IsComplete)
+        // Use Semantic Kernel's built-in planner for ReAct-style execution
+        var planner = new FunctionCallingStepwisePlanner(
+            new FunctionCallingStepwisePlannerOptions
             {
-                Console.WriteLine($"  Answer: {parsed.Answer}");
-                return parsed.Answer;
+                MaxIterations = maxSteps,
+                // Get reasoning traces in the result
+                GetObservations = true
             }
-
-            Console.WriteLine($"  Action: {parsed.ToolName}({parsed.Args})");
-
-            // Execute tool
-            var result = await _tools[parsed.ToolName](parsed.Args);
-            Console.WriteLine($"  Observation: {result}");
-
-            // Add to conversation
-            messages.Add(new(ChatRole.Assistant, content));
-            messages.Add(new(ChatRole.User, $"Observation: {result}"));
-        }
-
-        return "Max steps reached";
-    }
-
-    private ReActParsedResponse ParseReActResponse(string response)
-    {
-        var thoughtMatch = Regex.Match(
-            response,
-            @"Thought:\s*(.+?)(?=Action:|Answer:|$)",
-            RegexOptions.Singleline
         );
 
-        var thought = thoughtMatch.Success
-            ? thoughtMatch.Groups[1].Value.Trim()
-            : "";
+        var result = await planner.ExecuteAsync(_kernel, task);
 
-        if (response.Contains("Answer:"))
+        // Access the reasoning trace
+        foreach (var step in result.ChatHistory)
         {
-            var answerMatch = Regex.Match(
-                response,
-                @"Answer:\s*(.+)",
-                RegexOptions.Singleline
-            );
-            return new ReActParsedResponse
-            {
-                IsComplete = true,
-                Thought = thought,
-                Answer = answerMatch.Groups[1].Value.Trim()
-            };
+            Console.WriteLine($"Step: {step.Role}");
+            Console.WriteLine($"Content: {step.Content}");
         }
 
-        var actionMatch = Regex.Match(
-            response,
-            @"Action:\s*(\w+)\((.+)\)"
-        );
-
-        return new ReActParsedResponse
-        {
-            IsComplete = false,
-            Thought = thought,
-            ToolName = actionMatch.Groups[1].Value,
-            Args = actionMatch.Groups[2].Value
-        };
+        return result.FinalAnswer;
     }
-}`,
+}
+
+// Setup kernel with plugins
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
+
+// Add tool plugins
+builder.Plugins.AddFromType<SearchPlugin>();
+builder.Plugins.AddFromType<CalculatorPlugin>();
+builder.Plugins.AddFromType<LookupPlugin>();
+
+var kernel = builder.Build();
+
+// Run ReAct agent
+var agent = new ReActAgent(kernel);
+var answer = await agent.RunAsync(
+    "What's the population of Tokyo multiplied by 3?"
+);`,
   },
 ];
 
@@ -427,99 +350,104 @@ function modernAgentLoop(task, tools):
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from anthropic import Anthropic
+    label: 'Python (LangChain)',
+    code: `from langgraph.prebuilt import create_react_agent
+from langchain_anthropic import ChatAnthropic
+from langchain_core.tools import tool
 
-client = Anthropic()
+# Define tools
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return search_api.search(query)
 
-def modern_agent(task: str, tools: list) -> str:
+@tool
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    return str(eval(expression))
+
+# Modern LLMs have internalized reasoning
+# LangGraph's create_react_agent handles the loop
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+tools = [search, calculator]
+
+# Create agent - framework handles ReAct internally
+agent = create_react_agent(llm, tools)
+
+def modern_agent(task: str) -> str:
     """
-    Modern approach using Claude's extended thinking.
-    The model reasons internally without explicit prompting.
+    Modern approach: LangGraph handles the ReAct loop.
+    The model reasons internally - no explicit prompting needed.
     """
-    messages = [{"role": "user", "content": task}]
+    result = agent.invoke({
+        "messages": [("user", task)]
+    })
 
-    while True:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8096,
-            tools=tools,
-            messages=messages,
-            # Enable extended thinking for complex reasoning
-            thinking={
-                "type": "enabled",
-                "budget_tokens": 5000
-            }
-        )
+    # Get the final response
+    return result["messages"][-1].content
 
-        # Check for tool use
-        tool_uses = [
-            block for block in response.content
-            if block.type == "tool_use"
-        ]
-
-        if not tool_uses:
-            # Extract final text response
-            text_blocks = [
-                block.text for block in response.content
-                if hasattr(block, 'text')
-            ]
-            return "\\n".join(text_blocks)
-
-        # Execute tools and continue
-        messages.append({"role": "assistant", "content": response.content})
-
-        tool_results = []
-        for tool_use in tool_uses:
-            result = execute_tool(tool_use.name, tool_use.input)
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_use.id,
-                "content": str(result)
-            })
-
-        messages.append({"role": "user", "content": tool_results})
-
-# The model's internal reasoning is more effective than
-# our explicit "Thought:" prompting`,
+# For streaming with visible intermediate steps
+async def modern_agent_stream(task: str):
+    async for event in agent.astream_events(
+        {"messages": [("user", task)]},
+        version="v2"
+    ):
+        if event["event"] == "on_chat_model_stream":
+            print(event["data"]["chunk"].content, end="")
+        elif event["event"] == "on_tool_end":
+            print(f"\\nTool result: {event['data']['output']}")`,
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `// Modern approach: Trust the model's internal reasoning
-// Use structured outputs instead of text parsing
+    label: 'C# (Semantic Kernel)',
+    code: `using Microsoft.SemanticKernel;
 
 public class ModernReActAgent
 {
-    private readonly IChatClient _client;
+    private readonly Kernel _kernel;
 
-    public async Task<string> RunAsync(
-        string task,
-        IEnumerable<AITool> tools)
+    public ModernReActAgent(Kernel kernel)
     {
-        // Use auto function invocation - the framework handles
-        // the ReAct loop internally with proper reasoning
-        var client = new ChatClientBuilder(_client)
-            .UseFunctionInvocation(options =>
-            {
-                // Let the model decide when to stop
-                options.MaximumIterations = 15;
-                options.RetryOnError = true;
-            })
-            .Build();
+        _kernel = kernel;
+    }
 
-        var response = await client.GetResponseAsync(
+    public async Task<string> RunAsync(string task)
+    {
+        // Semantic Kernel handles the ReAct loop internally
+        // with automatic function calling
+        var settings = new OpenAIPromptExecutionSettings
+        {
+            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+        };
+
+        // The kernel automatically:
+        // 1. Sends the prompt to the model
+        // 2. Detects tool calls and executes them
+        // 3. Feeds results back to the model
+        // 4. Repeats until model gives final answer
+        var result = await _kernel.InvokePromptAsync(
             task,
-            new ChatOptions { Tools = tools.ToList() }
+            new KernelArguments(settings)
         );
 
-        return response.Message.Text ?? "";
+        return result.ToString();
     }
 }
 
+// Setup with plugins
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
+builder.Plugins.AddFromType<SearchPlugin>();
+builder.Plugins.AddFromType<CalculatorPlugin>();
+var kernel = builder.Build();
+
+var agent = new ModernReActAgent(kernel);
+var answer = await agent.RunAsync(
+    "What's the population of Tokyo multiplied by 3?"
+);
+
 // Key insight: Modern frameworks abstract the ReAct loop
-// The pattern is built into the infrastructure
-// Focus on tool quality, not loop mechanics`,
+// The pattern is built into the infrastructure`,
   },
 ];
 ---

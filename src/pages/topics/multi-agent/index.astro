@@ -162,64 +162,56 @@ result = app.invoke({
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Agents;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using OpenAI;
 
 public class SupervisorOrchestrator
 {
-    private readonly ChatCompletionAgent _supervisor;
-    private readonly Dictionary<string, ChatCompletionAgent> _workers;
-    private readonly Kernel _kernel;
+    private readonly AIAgent _supervisor;
+    private readonly Dictionary<string, AIAgent> _workers;
+    private readonly IChatClient _chatClient;
 
-    public SupervisorOrchestrator(Kernel kernel)
+    public SupervisorOrchestrator(string apiKey)
     {
-        _kernel = kernel;
+        _chatClient = new OpenAIClient(apiKey)
+            .GetChatClient("gpt-4o")
+            .AsIChatClient();
 
-        _supervisor = new ChatCompletionAgent
-        {
-            Name = "Supervisor",
-            Instructions = SUPERVISOR_PROMPT,
-            Kernel = kernel
-        };
+        _supervisor = _chatClient.CreateAIAgent(
+            name: "Supervisor",
+            instructions: SUPERVISOR_PROMPT
+        );
 
-        _workers = new Dictionary<string, ChatCompletionAgent>
+        _workers = new Dictionary<string, AIAgent>
         {
-            ["researcher"] = new ChatCompletionAgent
-            {
-                Name = "Researcher",
-                Instructions = "You are a research specialist...",
-                Kernel = kernel
-            },
-            ["analyst"] = new ChatCompletionAgent
-            {
-                Name = "Analyst",
-                Instructions = "You are a data analyst...",
-                Kernel = kernel
-            },
-            ["writer"] = new ChatCompletionAgent
-            {
-                Name = "Writer",
-                Instructions = "You are a technical writer...",
-                Kernel = kernel
-            }
+            ["researcher"] = _chatClient.CreateAIAgent(
+                name: "Researcher",
+                instructions: "You are a research specialist..."
+            ),
+            ["analyst"] = _chatClient.CreateAIAgent(
+                name: "Analyst",
+                instructions: "You are a data analyst..."
+            ),
+            ["writer"] = _chatClient.CreateAIAgent(
+                name: "Writer",
+                instructions: "You are a technical writer..."
+            )
         };
     }
 
-    public async Task<string> ProcessAsync(
-        string task,
-        CancellationToken ct = default)
+    public async Task<string> ProcessAsync(string task)
     {
-        var chat = new AgentGroupChat(_supervisor);
-        var messages = new List<ChatMessageContent>
-        {
-            new(AuthorRole.User, task)
-        };
+        var supervisorThread = _supervisor.GetNewThread();
+        var context = new List<string> { task };
 
         while (true)
         {
             // Get supervisor decision
-            var decision = await GetSupervisorDecisionAsync(messages, ct);
+            var decisionPrompt = $"Task: {task}\\nContext: {string.Join("\\n", context)}";
+            var response = await _supervisor.RunAsync(decisionPrompt, supervisorThread);
+            var decision = JsonSerializer.Deserialize<SupervisorDecision>(response)!;
 
             if (decision.Action == "RESPOND")
             {
@@ -229,33 +221,17 @@ public class SupervisorOrchestrator
             if (decision.Action == "DELEGATE")
             {
                 var worker = _workers[decision.TargetWorker!];
+                var workerThread = worker.GetNewThread();
 
                 // Execute worker task
-                var workerResult = await worker.InvokeAsync(
-                    new ChatHistory(messages.Append(
-                        new ChatMessageContent(AuthorRole.User, decision.SubTask)
-                    )),
-                    ct
+                var workerResult = await worker.RunAsync(
+                    decision.SubTask!,
+                    workerThread
                 );
 
-                messages.AddRange(workerResult);
+                context.Add($"[{decision.TargetWorker}]: {workerResult}");
             }
         }
-    }
-
-    private async Task<SupervisorDecision> GetSupervisorDecisionAsync(
-        List<ChatMessageContent> messages,
-        CancellationToken ct)
-    {
-        var result = await _supervisor.InvokeAsync(
-            new ChatHistory(messages),
-            ct
-        );
-
-        var lastMessage = result.Last();
-        return JsonSerializer.Deserialize<SupervisorDecision>(
-            lastMessage.Content ?? "{}"
-        )!;
     }
 }
 
@@ -264,6 +240,12 @@ public record SupervisorDecision(
     string? TargetWorker = null,
     string? SubTask = null,
     string? Response = null
+);
+
+// Usage
+var orchestrator = new SupervisorOrchestrator("your-api-key");
+var result = await orchestrator.ProcessAsync(
+    "Research AI trends and write a summary"
 );`,
   },
 ];
@@ -335,10 +317,11 @@ class PeerAgent:
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `import asyncio
 from dataclasses import dataclass, field
-from typing import Callable
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 
 @dataclass
 class Message:
@@ -351,20 +334,19 @@ class Message:
 class PeerAgent:
     name: str
     capabilities: list[str]
-    handler: Callable
+    system_prompt: str
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
     inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
 
     async def receive(self, message: Message) -> dict:
         """Handle incoming message."""
         if message.message_type == "REQUEST":
             if self._can_handle(message.content):
-                result = await self.handler(message.content)
+                result = await self._process(message.content)
                 return {"status": "completed", "result": result}
-            else:
-                return {"status": "cannot_handle"}
+            return {"status": "cannot_handle"}
 
         elif message.message_type == "HELP_REQUEST":
-            # Check if we can help
             if self._can_help(message.content.get("required_capabilities", [])):
                 return {
                     "status": "can_help",
@@ -374,6 +356,16 @@ class PeerAgent:
             return {"status": "cannot_help"}
 
         return {"status": "unknown_message_type"}
+
+    async def _process(self, content: dict) -> str:
+        """Process task using LangChain."""
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt),
+            ("user", "{task}")
+        ])
+        chain = prompt | self.llm
+        response = await chain.ainvoke({"task": content.get("task", str(content))})
+        return response.content
 
     def _can_handle(self, content: dict) -> bool:
         required = content.get("required_capabilities", [])
@@ -391,50 +383,33 @@ class PeerNetwork:
         self.agents[agent.name] = agent
 
     async def send(self, message: Message) -> dict:
-        """Send message to specific agent."""
         recipient = self.agents.get(message.recipient)
         if not recipient:
             return {"status": "agent_not_found"}
         return await recipient.receive(message)
 
     async def broadcast(
-        self,
-        sender: str,
-        content: dict,
-        message_type: str = "REQUEST"
+        self, sender: str, content: dict, message_type: str = "REQUEST"
     ) -> list[dict]:
-        """Broadcast message to all agents except sender."""
-        tasks = []
-        for name, agent in self.agents.items():
-            if name != sender:
-                msg = Message(sender, name, content, message_type)
-                tasks.append(agent.receive(msg))
-
+        tasks = [
+            agent.receive(Message(sender, name, content, message_type))
+            for name, agent in self.agents.items() if name != sender
+        ]
         return await asyncio.gather(*tasks)
 
     async def request_help(
-        self,
-        requester: str,
-        task: dict,
-        required_capabilities: list[str]
+        self, requester: str, task: dict, required_capabilities: list[str]
     ) -> str | None:
-        """Find an agent who can help with a task."""
         responses = await self.broadcast(
             requester,
             {"task": task, "required_capabilities": required_capabilities},
             "HELP_REQUEST"
         )
-
-        # Find agents who can help
         helpers = [r for r in responses if r.get("status") == "can_help"]
-
         if helpers:
-            # Pick the best helper (most matching capabilities)
-            best = max(helpers, key=lambda h: len(
+            return max(helpers, key=lambda h: len(
                 set(h["capabilities"]) & set(required_capabilities)
-            ))
-            return best["agent"]
-
+            ))["agent"]
         return None
 
 
@@ -442,29 +417,33 @@ class PeerNetwork:
 async def main():
     network = PeerNetwork()
 
-    # Create specialized agents
     researcher = PeerAgent(
         name="researcher",
         capabilities=["search", "browse", "summarize"],
-        handler=research_handler
+        system_prompt="You are a research specialist. Search and summarize information."
     )
 
     coder = PeerAgent(
         name="coder",
         capabilities=["code", "debug", "test"],
-        handler=coding_handler
+        system_prompt="You are an expert programmer. Write clean, efficient code."
     )
 
     network.register(researcher)
     network.register(coder)
 
-    # Agent requests help
+    # Find helper and execute task
     helper = await network.request_help(
         requester="user",
         task={"description": "Write a Python script"},
         required_capabilities=["code"]
     )
-    print(f"Best helper: {helper}")  # "coder"
+
+    if helper:
+        result = await network.send(Message(
+            "user", helper, {"task": "Write a hello world script"}, "REQUEST"
+        ))
+        print(result)
 
 asyncio.run(main())`,
   },
@@ -545,9 +524,11 @@ class MultiPerspectiveDebate:
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `from dataclasses import dataclass
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 
 @dataclass
 class DebateRound:
@@ -557,15 +538,13 @@ class DebateRound:
     round_number: int
 
 class DebateOrchestrator:
-    def __init__(self, client: OpenAI, model: str = "gpt-4"):
-        self.client = client
-        self.model = model
+    def __init__(self, model: str = "gpt-4"):
+        self.llm = ChatOpenAI(model=model)
+        self.json_llm = ChatOpenAI(model=model).bind(
+            response_format={"type": "json_object"}
+        )
 
-    def debate(
-        self,
-        topic: str,
-        max_rounds: int = 3
-    ) -> dict:
+    def debate(self, topic: str, max_rounds: int = 3) -> dict:
         """Run a debate between proposer and critic."""
         rounds: list[DebateRound] = []
 
@@ -582,7 +561,7 @@ class DebateOrchestrator:
 
             # Proposer responds
             response, revised = self._generate_response(
-                topic, proposal, critique, rounds
+                topic, proposal, critique
             )
 
             rounds.append(DebateRound(
@@ -605,113 +584,81 @@ class DebateOrchestrator:
         }
 
     def _generate_proposal(self, topic: str) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a thoughtful proposer. Present a well-reasoned position."},
-                {"role": "user", "content": f"Topic: {topic}\\n\\nPresent your proposal with supporting arguments."}
-            ]
-        )
-        return response.choices[0].message.content
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a thoughtful proposer. Present a well-reasoned position."),
+            ("user", "Topic: {topic}\\n\\nPresent your proposal with supporting arguments.")
+        ])
+        chain = prompt | self.llm
+        return chain.invoke({"topic": topic}).content
 
     def _generate_critique(
-        self,
-        topic: str,
-        proposal: str,
-        history: list[DebateRound]
+        self, topic: str, proposal: str, history: list[DebateRound]
     ) -> str:
-        history_text = self._format_history(history)
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": """You are a rigorous critic. Find flaws, gaps, and weaknesses.
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a rigorous critic. Find flaws, gaps, and weaknesses.
 Be specific about what's wrong and suggest alternatives.
-If the proposal is solid, acknowledge it."""},
-                {"role": "user", "content": f"""Topic: {topic}
+If the proposal is solid, acknowledge it."""),
+            ("user", """Topic: {topic}
 
 Current proposal:
 {proposal}
 
 Previous debate:
-{history_text}
+{history}
 
-Provide your critique. Be thorough but fair."""}
-            ]
-        )
-        return response.choices[0].message.content
+Provide your critique. Be thorough but fair.""")
+        ])
+        chain = prompt | self.llm
+        return chain.invoke({
+            "topic": topic,
+            "proposal": proposal,
+            "history": self._format_history(history)
+        }).content
 
     def _generate_response(
-        self,
-        topic: str,
-        proposal: str,
-        critique: str,
-        history: list[DebateRound]
+        self, topic: str, proposal: str, critique: str
     ) -> tuple[str, str | None]:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": """You are the proposer defending your position.
-Address valid criticisms and revise your proposal if needed.
-Return your response and optionally a revised proposal."""},
-                {"role": "user", "content": f"""Topic: {topic}
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are the proposer defending your position.
+Address valid criticisms and revise your proposal if needed."""),
+            ("user", """Topic: {topic}
 
 Your proposal:
 {proposal}
 
-Critique received:
-{critique}
+Critique: {critique}
 
-Respond to the critique. If you revise your proposal, clearly mark it as:
-REVISED PROPOSAL:
-[your revised proposal]"""}
-            ]
-        )
+Respond. If revising, mark as REVISED PROPOSAL:""")
+        ])
+        chain = prompt | self.llm
+        content = chain.invoke({
+            "topic": topic, "proposal": proposal, "critique": critique
+        }).content
 
-        content = response.choices[0].message.content
-
-        # Extract revised proposal if present
         if "REVISED PROPOSAL:" in content:
             parts = content.split("REVISED PROPOSAL:")
             return parts[0].strip(), parts[1].strip()
-
         return content, None
 
     def _judge_debate(
-        self,
-        topic: str,
-        final_proposal: str,
-        rounds: list[DebateRound]
+        self, topic: str, final_proposal: str, rounds: list[DebateRound]
     ) -> dict:
-        history_text = self._format_history(rounds)
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": """You are an impartial judge.
-Evaluate the final proposal considering the debate.
-Provide a confidence score (0-100) and reasoning."""},
-                {"role": "user", "content": f"""Topic: {topic}
-
-Final proposal:
-{final_proposal}
-
-Debate history:
-{history_text}
-
-Evaluate this proposal. Return JSON:
-{{"confidence": 0-100, "reasoning": "..."}}"""}
-            ],
-            response_format={"type": "json_object"}
-        )
-
-        return json.loads(response.choices[0].message.content)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are an impartial judge.
+Return JSON: {{"confidence": 0-100, "reasoning": "..."}}"""),
+            ("user", "Topic: {topic}\\nProposal: {proposal}\\nHistory: {history}")
+        ])
+        chain = prompt | self.json_llm | JsonOutputParser()
+        return chain.invoke({
+            "topic": topic,
+            "proposal": final_proposal,
+            "history": self._format_history(rounds)
+        })
 
 # Usage
-orchestrator = DebateOrchestrator(OpenAI())
+orchestrator = DebateOrchestrator()
 result = orchestrator.debate("Should AI systems be given autonomy in hiring decisions?")
-print(f"Conclusion (confidence: {result['confidence']}%):")
-print(result["conclusion"])`,
+print(f"Conclusion (confidence: {result['confidence']}%): {result['conclusion']}")`,
   },
 ];
 
@@ -774,9 +721,12 @@ Return as JSON:
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `from dataclasses import dataclass
 from typing import Literal
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 
 @dataclass
 class RoutingDecision:
@@ -791,9 +741,11 @@ class ExpertOutput:
     weight: float
 
 class MixtureOfExperts:
-    def __init__(self, client, model: str = "gpt-4"):
-        self.client = client
-        self.model = model
+    def __init__(self, model: str = "gpt-4"):
+        self.llm = ChatOpenAI(model=model)
+        self.json_llm = ChatOpenAI(model=model).bind(
+            response_format={"type": "json_object"}
+        )
         self.experts: dict[str, str] = {}  # name -> system prompt
 
     def register_expert(self, name: str, system_prompt: str):
@@ -822,72 +774,56 @@ class MixtureOfExperts:
             for name, prompt in self.experts.items()
         ])
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": f"""You are a routing agent.
-Select the best expert(s) for each task.
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", f"""You are a routing agent. Select the best expert(s).
 
 Available experts:
 {expert_list}
 
-Return JSON with selected_experts, weights, and combination_strategy."""},
-                {"role": "user", "content": f"Task: {task}"}
-            ],
-            response_format={"type": "json_object"}
-        )
+Return JSON: {{"selected_experts": [...], "weights": {{}}, "combination_strategy": "..."}}"""),
+            ("user", "Task: {task}")
+        ])
 
-        data = json.loads(response.choices[0].message.content)
+        chain = prompt | self.json_llm | JsonOutputParser()
+        data = chain.invoke({"task": task})
         return RoutingDecision(**data)
 
     def _query_expert(self, expert_name: str, task: str) -> str:
         system_prompt = self.experts.get(expert_name, "You are a helpful assistant.")
-
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": task}
-            ]
-        )
-        return response.choices[0].message.content
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", "{task}")
+        ])
+        chain = prompt | self.llm
+        return chain.invoke({"task": task}).content
 
     def _combine(
-        self,
-        task: str,
-        outputs: list[ExpertOutput],
-        strategy: str
+        self, task: str, outputs: list[ExpertOutput], strategy: str
     ) -> str:
         if strategy == "BEST_OF":
-            # Return highest weighted output
-            best = max(outputs, key=lambda o: o.weight)
-            return best.output
+            return max(outputs, key=lambda o: o.weight).output
 
         elif strategy == "WEIGHTED_MERGE":
-            # Simple concatenation with weights noted
-            parts = []
-            for output in sorted(outputs, key=lambda o: -o.weight):
-                parts.append(f"[{output.expert_name} ({output.weight:.0%})]: {output.output}")
+            parts = [
+                f"[{o.expert_name} ({o.weight:.0%})]: {o.output}"
+                for o in sorted(outputs, key=lambda o: -o.weight)
+            ]
             return "\\n\\n".join(parts)
 
         else:  # SYNTHESIZE
-            # Use LLM to synthesize
             outputs_text = "\\n\\n".join([
                 f"Expert: {o.expert_name} (weight: {o.weight})\\n{o.output}"
                 for o in outputs
             ])
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "Synthesize these expert opinions into a coherent response."},
-                    {"role": "user", "content": f"Task: {task}\\n\\nExpert outputs:\\n{outputs_text}"}
-                ]
-            )
-            return response.choices[0].message.content
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "Synthesize these expert opinions into a coherent response."),
+                ("user", "Task: {task}\\n\\nExpert outputs:\\n{outputs}")
+            ])
+            chain = prompt | self.llm
+            return chain.invoke({"task": task, "outputs": outputs_text}).content
 
 # Usage
-moe = MixtureOfExperts(OpenAI())
+moe = MixtureOfExperts()
 
 moe.register_expert("code_expert", "You are an expert programmer...")
 moe.register_expert("data_expert", "You are a data scientist...")
@@ -1057,67 +993,66 @@ def create_autogen_workflow():
   },
   {
     language: 'csharp',
-    label: 'Semantic Kernel',
-    code: `// Semantic Kernel: Microsoft's agent framework
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Agents;
-using Microsoft.SemanticKernel.Agents.Chat;
+    label: 'Agent Framework',
+    code: `// Microsoft Agent Framework: Multi-agent workflows
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using OpenAI;
 
-async Task CreateSemanticKernelWorkflow()
+async Task CreateAgentFrameworkWorkflow()
 {
-    var kernel = Kernel.CreateBuilder()
-        .AddOpenAIChatCompletion("gpt-4", apiKey)
-        .Build();
+    var chatClient = new OpenAIClient(apiKey)
+        .GetChatClient("gpt-4o")
+        .AsIChatClient();
 
-    // Create agents
-    var researcher = new ChatCompletionAgent
-    {
-        Name = "Researcher",
-        Instructions = "You research topics thoroughly...",
-        Kernel = kernel
-    };
+    // Create specialized agents
+    var researcher = chatClient.CreateAIAgent(
+        name: "Researcher",
+        instructions: "You research topics thoroughly..."
+    );
 
-    var writer = new ChatCompletionAgent
-    {
-        Name = "Writer",
-        Instructions = "You write clear articles...",
-        Kernel = kernel
-    };
+    var writer = chatClient.CreateAIAgent(
+        name: "Writer",
+        instructions: "You write clear articles..."
+    );
 
-    var critic = new ChatCompletionAgent
-    {
-        Name = "Critic",
-        Instructions = "You provide constructive feedback...",
-        Kernel = kernel
-    };
+    var critic = chatClient.CreateAIAgent(
+        name: "Critic",
+        instructions: "You provide constructive feedback..."
+    );
 
-    // Create group chat with selection strategy
-    var chat = new AgentGroupChat(researcher, writer, critic)
-    {
-        ExecutionSettings = new()
-        {
-            SelectionStrategy = new SequentialSelectionStrategy(),
-            TerminationStrategy = new MaximumIterationTerminationStrategy(10)
-        }
-    };
+    // Sequential workflow with thread-based memory
+    var researchThread = researcher.GetNewThread();
+    var researchResult = await researcher.RunAsync(
+        "Research AI agents and their applications",
+        researchThread
+    );
 
-    // Add initial message
-    chat.AddChatMessage(new ChatMessageContent(
-        AuthorRole.User,
-        "Write an article about AI agents"
-    ));
+    var writerThread = writer.GetNewThread();
+    var article = await writer.RunAsync(
+        $"Write an article based on: {researchResult}",
+        writerThread
+    );
 
-    // Run conversation
-    await foreach (var message in chat.InvokeAsync())
-    {
-        Console.WriteLine($"{message.AuthorName}: {message.Content}");
-    }
+    var criticThread = critic.GetNewThread();
+    var feedback = await critic.RunAsync(
+        $"Review this article: {article}",
+        criticThread
+    );
+
+    // Revision loop
+    var finalArticle = await writer.RunAsync(
+        $"Revise based on feedback: {feedback}",
+        writerThread
+    );
+
+    Console.WriteLine(finalArticle);
 }
 
 // Key characteristics:
-// - .NET native
-// - Plugin system for tools
-// - Built-in memory and planning
+// - .NET native with Python parity
+// - Thread-based conversation memory
+// - Simple, intuitive API
 // - Enterprise-ready (Azure integration)`,
   },
 ];
@@ -1395,9 +1330,9 @@ MIXTURE OF EXPERTS         HIERARCHICAL              SEQUENTIAL
             <td>Open-ended collaboration</td>
           </tr>
           <tr>
-            <td><strong>Semantic Kernel</strong></td>
+            <td><strong>Agent Framework</strong></td>
             <td>C#/.NET</td>
-            <td>Plugin-based</td>
+            <td>Thread-based</td>
             <td>Enterprise applications</td>
           </tr>
         </tbody>

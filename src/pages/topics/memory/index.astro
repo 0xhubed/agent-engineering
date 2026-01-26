@@ -54,101 +54,78 @@ const memoryTypesExample = [
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from dataclasses import dataclass, field
-from typing import Optional
-import chromadb
+    label: 'Python (LangChain)',
+    code: `from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_chroma import Chroma
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain_core.messages import HumanMessage, AIMessage
 from datetime import datetime
 
-@dataclass
-class Memory:
-    content: str
-    memory_type: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    metadata: dict = field(default_factory=dict)
-
 class AgentMemorySystem:
-    def __init__(self, collection_name: str = "agent_memory"):
-        # Working memory: In context window
-        self.working_memory: list[dict] = []
-
-        # Short-term: In-memory for current session
-        self.short_term: list[Memory] = []
-
-        # Long-term: Persistent vector store
-        self.chroma = chromadb.Client()
-        self.long_term = self.chroma.get_or_create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": "cosine"}
+    def __init__(self, persist_directory: str = "./memory_store"):
+        # Working memory: LangChain's conversation buffer with summarization
+        self.llm = ChatOpenAI(model="gpt-4")
+        self.working_memory = ConversationSummaryBufferMemory(
+            llm=self.llm,
+            max_token_limit=2000,
+            return_messages=True
         )
 
-    def add_to_working_memory(self, message: dict):
-        """Add message to current conversation context."""
-        self.working_memory.append(message)
+        # Short-term: In-memory for current session
+        self.short_term: list[dict] = []
 
-        # Summarize if context gets too long
-        if self._count_tokens(self.working_memory) > 6000:
-            self._compress_working_memory()
+        # Long-term: Chroma with LangChain integration
+        self.embeddings = OpenAIEmbeddings()
+        self.long_term = Chroma(
+            collection_name="agent_memory",
+            embedding_function=self.embeddings,
+            persist_directory=persist_directory
+        )
+
+    def add_to_working_memory(self, human_msg: str, ai_msg: str):
+        """Add exchange to working memory with auto-summarization."""
+        self.working_memory.save_context(
+            {"input": human_msg},
+            {"output": ai_msg}
+        )
 
     def store_short_term(self, content: str, metadata: dict = None):
         """Store fact for current session."""
-        self.short_term.append(Memory(
-            content=content,
-            memory_type="short_term",
-            metadata=metadata or {}
-        ))
+        self.short_term.append({
+            "content": content,
+            "metadata": metadata or {},
+            "timestamp": datetime.now()
+        })
 
-    def store_long_term(
-        self,
-        content: str,
-        metadata: dict = None
-    ):
+    def store_long_term(self, content: str, metadata: dict = None):
         """Store in persistent vector database."""
-        self.long_term.add(
-            documents=[content],
+        self.long_term.add_texts(
+            texts=[content],
             metadatas=[metadata or {}],
             ids=[f"mem_{datetime.now().timestamp()}"]
         )
 
-    def recall(
-        self,
-        query: str,
-        n_results: int = 5,
-        include_working: bool = True
-    ) -> list[str]:
-        """Retrieve relevant memories."""
+    def recall(self, query: str, n_results: int = 5) -> list[str]:
+        """Retrieve relevant memories from all sources."""
         results = []
 
-        # Search long-term memory
-        long_term_results = self.long_term.query(
-            query_texts=[query],
-            n_results=n_results
+        # Search long-term memory with similarity search
+        long_term_docs = self.long_term.similarity_search(
+            query, k=n_results
         )
-        results.extend(long_term_results["documents"][0])
+        results.extend([doc.page_content for doc in long_term_docs])
 
-        # Search short-term memory
+        # Include relevant short-term memories
         for mem in self.short_term:
-            if self._is_relevant(query, mem.content):
-                results.append(mem.content)
+            if self._is_relevant(query, mem["content"]):
+                results.append(mem["content"])
 
-        # Include recent working memory if requested
-        if include_working:
-            recent = self.working_memory[-5:]
-            for msg in recent:
-                if msg.get("role") == "assistant":
-                    results.append(msg.get("content", ""))
+        # Get summarized working memory
+        working = self.working_memory.load_memory_variables({})
+        if working.get("history"):
+            results.append(f"Recent context: {working['history']}")
 
-        return results[:n_results]
-
-    def _compress_working_memory(self):
-        """Summarize old messages to save tokens."""
-        old_messages = self.working_memory[:-10]
-        recent_messages = self.working_memory[-10:]
-
-        summary = self._summarize(old_messages)
-        self.working_memory = [
-            {"role": "system", "content": f"Previous context: {summary}"}
-        ] + recent_messages`,
+        return results[:n_results]`,
   },
   {
     language: 'csharp',
@@ -298,78 +275,69 @@ const summarizationExample = [
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from openai import OpenAI
-import tiktoken
-
-client = OpenAI()
-encoder = tiktoken.encoding_for_model("gpt-4")
+    label: 'Python (LangChain)',
+    code: `from langchain_openai import ChatOpenAI
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain_core.messages import get_buffer_string
 
 class ConversationSummarizer:
-    def __init__(
-        self,
-        threshold: int = 4000,
-        model: str = "gpt-4"
-    ):
-        self.threshold = threshold
-        self.model = model
-
-    def count_tokens(self, messages: list[dict]) -> int:
-        text = "\\n".join(m.get("content", "") for m in messages)
-        return len(encoder.encode(text))
-
-    def summarize(self, messages: list[dict]) -> str:
-        """Generate a summary of conversation messages."""
-        content = "\\n".join(
-            f"{m['role']}: {m['content']}" for m in messages
+    def __init__(self, max_token_limit: int = 4000):
+        self.llm = ChatOpenAI(model="gpt-4")
+        # Built-in summarization when buffer exceeds limit
+        self.memory = ConversationSummaryBufferMemory(
+            llm=self.llm,
+            max_token_limit=max_token_limit,
+            return_messages=True
         )
 
-        response = client.chat.completions.create(
-            model=self.model,
-            messages=[{
-                "role": "system",
-                "content": "Summarize this conversation concisely. "
-                          "Preserve key facts, decisions, and context."
-            }, {
-                "role": "user",
-                "content": content
-            }],
-            max_tokens=500
+    def add_exchange(self, human_input: str, ai_output: str):
+        """Add conversation exchange with auto-summarization."""
+        # LangChain automatically summarizes when limit exceeded
+        self.memory.save_context(
+            {"input": human_input},
+            {"output": ai_output}
         )
 
-        return response.choices[0].message.content
+    def get_context(self) -> str:
+        """Get current memory context (summarized + recent)."""
+        return self.memory.load_memory_variables({})
 
-    def compress_if_needed(
-        self,
-        messages: list[dict],
-        keep_recent: int = 5
-    ) -> list[dict]:
-        """Compress messages if over threshold."""
-        if self.count_tokens(messages) < self.threshold:
-            return messages
+    def clear(self):
+        """Clear all memory."""
+        self.memory.clear()
 
-        # Keep system message and recent messages
-        system_msgs = [m for m in messages if m["role"] == "system"]
-        other_msgs = [m for m in messages if m["role"] != "system"]
+# For more control, use ConversationSummaryMemory directly
+from langchain.memory import ConversationSummaryMemory
+from langchain.chains import LLMChain
+from langchain_core.prompts import PromptTemplate
 
-        to_summarize = other_msgs[:-keep_recent]
-        recent = other_msgs[-keep_recent:]
+class CustomSummarizer:
+    def __init__(self):
+        self.llm = ChatOpenAI(model="gpt-4")
 
-        if not to_summarize:
-            return messages
+        # Custom summarization prompt
+        self.summary_prompt = PromptTemplate(
+            input_variables=["summary", "new_lines"],
+            template="""Progressively summarize the conversation, adding to the summary.
+Current summary: {summary}
+New lines: {new_lines}
+New summary:"""
+        )
 
-        summary = self.summarize(to_summarize)
+        self.memory = ConversationSummaryMemory(
+            llm=self.llm,
+            prompt=self.summary_prompt
+        )
 
-        return system_msgs + [{
-            "role": "system",
-            "content": f"Summary of earlier conversation: {summary}"
-        }] + recent
+# Usage with agent
+from langgraph.prebuilt import create_react_agent
 
-# Usage
-summarizer = ConversationSummarizer(threshold=4000)
-
-# In agent loop
-messages = summarizer.compress_if_needed(messages)`,
+agent = create_react_agent(
+    llm,
+    tools,
+    # Checkpointer provides built-in memory persistence
+    checkpointer=MemorySaver()
+)`,
   },
   {
     language: 'csharp',
@@ -500,10 +468,11 @@ const episodicMemoryExample = [
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `from dataclasses import dataclass, field
-from typing import Literal
-import chromadb
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
 from datetime import datetime
 import json
 
@@ -513,14 +482,14 @@ class Episode:
     trajectory: list[dict]  # List of {thought, action, observation}
     outcome: dict           # {success: bool, result: str, error: str?}
     timestamp: datetime = field(default_factory=datetime.now)
-    lessons_learned: str = ""
 
 class EpisodicMemory:
     def __init__(self, persist_path: str = "./episodic_memory"):
-        self.client = chromadb.PersistentClient(path=persist_path)
-        self.collection = self.client.get_or_create_collection(
-            name="episodes",
-            metadata={"hnsw:space": "cosine"}
+        self.embeddings = OpenAIEmbeddings()
+        self.vectorstore = Chroma(
+            collection_name="episodes",
+            embedding_function=self.embeddings,
+            persist_directory=persist_path
         )
 
     def record_episode(
@@ -535,19 +504,19 @@ class EpisodicMemory:
         # Create searchable content
         search_content = f"{task}\\n{outcome.get('result', '')}"
 
-        # Store with full metadata
-        self.collection.add(
-            ids=[episode_id],
-            documents=[search_content],
-            metadatas=[{
+        # Store as LangChain Document with metadata
+        doc = Document(
+            page_content=search_content,
+            metadata={
                 "task": task,
                 "trajectory": json.dumps(trajectory),
                 "outcome": json.dumps(outcome),
                 "success": outcome.get("success", False),
                 "timestamp": datetime.now().isoformat()
-            }]
+            }
         )
 
+        self.vectorstore.add_documents([doc], ids=[episode_id])
         return episode_id
 
     def retrieve_similar(
@@ -556,54 +525,44 @@ class EpisodicMemory:
         k: int = 3,
         success_only: bool = False
     ) -> list[Episode]:
-        """Find similar past episodes."""
-        where_filter = {"success": True} if success_only else None
+        """Find similar past episodes using semantic search."""
+        filter_dict = {"success": True} if success_only else None
 
-        results = self.collection.query(
-            query_texts=[current_task],
-            n_results=k * 2,  # Get more, then filter
-            where=where_filter
+        # LangChain similarity search with metadata filtering
+        results = self.vectorstore.similarity_search(
+            current_task,
+            k=k * 2,
+            filter=filter_dict
         )
 
-        episodes = []
-        for i, metadata in enumerate(results["metadatas"][0]):
-            episodes.append(Episode(
-                task=metadata["task"],
-                trajectory=json.loads(metadata["trajectory"]),
-                outcome=json.loads(metadata["outcome"]),
-                timestamp=datetime.fromisoformat(metadata["timestamp"])
-            ))
+        episodes = [
+            Episode(
+                task=doc.metadata["task"],
+                trajectory=json.loads(doc.metadata["trajectory"]),
+                outcome=json.loads(doc.metadata["outcome"]),
+                timestamp=datetime.fromisoformat(doc.metadata["timestamp"])
+            )
+            for doc in results
+        ]
 
         # Sort by success first, then recency
         episodes.sort(
-            key=lambda e: (
-                not e.outcome.get("success"),
-                -e.timestamp.timestamp()
-            )
+            key=lambda e: (not e.outcome.get("success"), -e.timestamp.timestamp())
         )
-
         return episodes[:k]
 
-    def generate_few_shot_examples(
-        self,
-        current_task: str,
-        n_examples: int = 2
-    ) -> str:
+    def generate_few_shot_examples(self, current_task: str, n: int = 2) -> str:
         """Generate few-shot examples from past successes."""
-        episodes = self.retrieve_similar(
-            current_task,
-            k=n_examples,
-            success_only=True
-        )
+        episodes = self.retrieve_similar(current_task, k=n, success_only=True)
 
         examples = []
         for ep in episodes:
-            example = f"Task: {ep.task}\\n"
-            for step in ep.trajectory[-3:]:  # Last 3 steps
-                example += f"Thought: {step.get('thought', '')}\\n"
-                example += f"Action: {step.get('action', '')}\\n"
-            example += f"Result: {ep.outcome.get('result', '')}\\n"
-            examples.append(example)
+            lines = [f"Task: {ep.task}"]
+            for step in ep.trajectory[-3:]:
+                lines.append(f"Thought: {step.get('thought', '')}")
+                lines.append(f"Action: {step.get('action', '')}")
+            lines.append(f"Result: {ep.outcome.get('result', '')}")
+            examples.append("\\n".join(lines))
 
         return "\\n---\\n".join(examples)`,
   },

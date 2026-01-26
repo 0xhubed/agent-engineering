@@ -767,6 +767,180 @@ server = SecureMcpServer(
   },
 ];
 
+const mcpAppsExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# MCP Apps: Interactive UI Components
+
+# Tool returns UI metadata instead of plain text
+function searchAnalytics(query, dateRange):
+    results = database.query(query, dateRange)
+
+    # Instead of returning text, return UI reference
+    return {
+        content: "Found {results.count} matching records",
+        _meta: {
+            ui: {
+                resourceUri: "ui://analytics-dashboard",
+                data: {
+                    results: results,
+                    chartType: "bar",
+                    interactive: true
+                }
+            }
+        }
+    }
+
+# UI Resource served via ui:// scheme
+# Contains sandboxed HTML/JavaScript bundle
+resource "ui://analytics-dashboard":
+    type: "text/html"
+    content: bundledDashboardApp
+    permissions: ["display", "user-input"]
+
+# Client renders UI in sandboxed iframe
+# Bidirectional JSON-RPC for communication
+client.onToolResult = (result) => {
+    if result._meta?.ui:
+        iframe = createSandboxedIframe(result._meta.ui.resourceUri)
+        iframe.postMessage(result._meta.ui.data)
+}`,
+  },
+  {
+    language: 'javascript',
+    label: 'JavaScript',
+    code: `import { App } from "@modelcontextprotocol/ext-apps";
+
+// Initialize MCP App client
+const app = new App();
+await app.connect();
+
+// Handle tool results with UI components
+app.ontoolresult = (result) => {
+  if (result._meta?.ui) {
+    // Render interactive visualization
+    renderChart(result.data);
+  }
+};
+
+// Call server tool that returns UI
+const response = await app.callServerTool({
+  name: "fetch_analytics",
+  arguments: {
+    metric: "revenue",
+    period: "Q4"
+  },
+});
+
+// Update model context based on user interaction
+// (e.g., user clicks a data point in the chart)
+await app.updateModelContext({
+  content: [{
+    type: "text",
+    text: "User selected Q4 revenue breakdown by region"
+  }],
+});
+
+// Server-side: Tool that returns UI metadata
+server.tool("fetch_analytics", async (args) => {
+  const data = await analyticsDB.query(args);
+
+  return {
+    content: [{
+      type: "text",
+      text: \`Found \${data.length} records for \${args.metric}\`
+    }],
+    _meta: {
+      ui: {
+        resourceUri: "ui://analytics-chart",
+        data: {
+          records: data,
+          chartConfig: {
+            type: "bar",
+            interactive: true,
+            drilldown: true
+          }
+        }
+      }
+    }
+  };
+});
+
+// Register UI resource
+server.resource("ui://analytics-chart", {
+  mimeType: "text/html",
+  read: async () => {
+    return {
+      contents: analyticsChartBundle, // Bundled HTML/JS
+    };
+  }
+});`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from mcp.server import Server
+from mcp.types import Tool, TextContent, Resource
+
+server = Server("analytics-server")
+
+# Tool that returns interactive UI
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "analyze_data":
+        results = await db.query(arguments["query"])
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Analysis complete: {len(results)} records"
+                )
+            ],
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://data-explorer",
+                    "data": {
+                        "results": results,
+                        "visualization": "interactive-table",
+                        "allowExport": True
+                    }
+                }
+            }
+        }
+
+# UI Resource definition
+@server.read_resource()
+async def read_resource(uri: str):
+    if uri == "ui://data-explorer":
+        # Return bundled HTML/JS application
+        return {
+            "uri": uri,
+            "mimeType": "text/html",
+            "text": load_ui_bundle("data-explorer.html")
+        }
+
+# List available UI resources
+@server.list_resources()
+async def list_resources():
+    return [
+        Resource(
+            uri="ui://data-explorer",
+            name="Interactive Data Explorer",
+            description="Explore and visualize query results",
+            mimeType="text/html"
+        ),
+        Resource(
+            uri="ui://config-wizard",
+            name="Configuration Wizard",
+            description="Step-by-step configuration interface",
+            mimeType="text/html"
+        )
+    ]`,
+  },
+];
+
 const resourcesExample = [
   {
     language: 'python',
@@ -1254,6 +1428,140 @@ async def subscribe_resource(uri: str):
           </li>
         </ol>
       </div>
+    </section>
+
+    <!-- MCP Apps -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        MCP Apps: Interactive UI Components
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP Apps is an official extension that enables tools to return <strong>interactive UI components</strong> (dashboards, forms, visualizations, workflows) that render directly in conversations rather than plain text.
+      </p>
+
+      <Diagram title="MCP Apps Architecture">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                      MCP CLIENT (Claude, VS Code)                │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    Conversation View                        │ │
+│  │                                                             │ │
+│  │  User: "Show me Q4 revenue breakdown"                       │ │
+│  │                                                             │ │
+│  │  Assistant: [Calls analyze_revenue tool]                    │ │
+│  │                                                             │ │
+│  │  ┌─────────────────────────────────────────────────────┐   │ │
+│  │  │           SANDBOXED IFRAME (ui://)                   │   │ │
+│  │  │  ┌─────────────────────────────────────────────┐    │   │ │
+│  │  │  │  Revenue by Region - Q4 2025               │    │   │ │
+│  │  │  │  ┌────┐ ┌────┐ ┌────┐ ┌────┐              │    │   │ │
+│  │  │  │  │ NA │ │ EU │ │APAC│ │LATAM│  [Export]   │    │   │ │
+│  │  │  │  │████│ │██  │ │███ │ │█   │              │    │   │ │
+│  │  │  │  └────┘ └────┘ └────┘ └────┘              │    │   │ │
+│  │  │  │  Click any bar to drill down...            │    │   │ │
+│  │  │  └─────────────────────────────────────────────┘    │   │ │
+│  │  │           ▲                    │                     │   │ │
+│  │  │           │ JSON-RPC           │                     │   │ │
+│  │  │           └────────────────────┘                     │   │ │
+│  │  └─────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+
+Tool Response Structure:
+{
+  "content": [{ "type": "text", "text": "Q4 analysis ready" }],
+  "_meta": {
+    "ui": {
+      "resourceUri": "ui://revenue-dashboard",
+      "data": { "results": [...], "interactive": true }
+    }
+  }
+}`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={mcpAppsExample} title="MCP Apps Implementation" />
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-8">
+        Key Benefits
+      </h3>
+      <div class="grid sm:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Close the Context Gap</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Users see exactly what the tool returns, not just a text summary. Complex data becomes explorable.</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Direct Manipulation</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Users interact with data directly (click, filter, export) without additional prompts.</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Live Updates</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">UI components can update in real-time as data changes or operations progress.</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Persistent State</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">UI state persists across conversation turns, maintaining context.</p>
+        </div>
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+        Security Model
+      </h3>
+      <Table caption="MCP Apps security layers">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Protection</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Iframe Sandboxing</strong></td>
+            <td>Restricted permissions, isolated execution context</td>
+          </tr>
+          <tr>
+            <td><strong>Template Review</strong></td>
+            <td>Pre-declared HTML templates auditable before use</td>
+          </tr>
+          <tr>
+            <td><strong>JSON-RPC Messaging</strong></td>
+            <td>All communication auditable, no direct DOM access</td>
+          </tr>
+          <tr>
+            <td><strong>User Consent</strong></td>
+            <td>Explicit approval required for tool invocation</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Client Support
+      </h3>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP Apps is supported in:
+      </p>
+      <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-1 mb-4">
+        <li>Claude (web and desktop)</li>
+        <li>Goose</li>
+        <li>Visual Studio Code Insiders</li>
+        <li>ChatGPT (rolling out)</li>
+      </ul>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+        Use Cases
+      </h3>
+      <div class="flex flex-wrap gap-2">
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Data Exploration Dashboards</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Configuration Wizards</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Document Review Tools</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Real-time Monitoring</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Form Builders</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Workflow Editors</span>
+      </div>
+
+      <Callout type="info" title="Learn More">
+        See the official announcement: <a href="https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/" class="text-primary-600 dark:text-primary-400 hover:underline">MCP Apps - Interactive UI Components</a>
+      </Callout>
     </section>
 
     <!-- Comparison with Other Approaches -->

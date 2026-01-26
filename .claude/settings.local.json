@@ -9,7 +9,10 @@
       "Bash(curl:*)",
       "Bash(pkill:*)",
       "Bash(killall node:*)",
-      "Bash(npx astro build)"
+      "Bash(npx astro build)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:blog.modelcontextprotocol.io)"
     ]
   }
 }

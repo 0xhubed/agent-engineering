@@ -36,103 +36,90 @@ const basicToolExample = [
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from openai import OpenAI
+    label: 'Python (LangChain)',
+    code: `from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
 
-client = OpenAI()
+# Define tools using the @tool decorator
+@tool
+def get_weather(location: str, unit: str = "celsius") -> str:
+    """Get current weather for a location.
 
-# Define tools with JSON schema
-tools = [{
-    "type": "function",
-    "function": {
-        "name": "get_weather",
-        "description": "Get current weather for a location",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "location": {
-                    "type": "string",
-                    "description": "City name, e.g. 'San Francisco'"
-                },
-                "unit": {
-                    "type": "string",
-                    "enum": ["celsius", "fahrenheit"],
-                    "default": "celsius"
-                }
-            },
-            "required": ["location"]
-        }
-    }
-}]
+    Args:
+        location: City name, e.g. 'San Francisco'
+        unit: Temperature unit (celsius or fahrenheit)
+    """
+    # Implementation specific
+    return weather_api.get_current(location, unit)
+
+# Create LLM with tools bound
+llm = ChatOpenAI(model="gpt-4")
+llm_with_tools = llm.bind_tools([get_weather])
 
 def execute_with_tools(user_message: str) -> str:
-    messages = [{"role": "user", "content": user_message}]
+    messages = [HumanMessage(content=user_message)]
 
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=tools
-    )
+    # Get response (may include tool calls)
+    response = llm_with_tools.invoke(messages)
 
-    if response.choices[0].message.tool_calls:
-        tool_call = response.choices[0].message.tool_calls[0]
+    if response.tool_calls:
+        # Execute each tool call
+        messages.append(response)
 
-        # Execute the tool (implementation specific)
-        result = call_weather_api(
-            **json.loads(tool_call.function.arguments)
-        )
+        for tool_call in response.tool_calls:
+            # LangChain routes to correct tool automatically
+            result = get_weather.invoke(tool_call["args"])
+            messages.append(
+                ToolMessage(content=result, tool_call_id=tool_call["id"])
+            )
 
-        # Add tool result and get final response
-        messages.append(response.choices[0].message)
-        messages.append({
-            "role": "tool",
-            "tool_call_id": tool_call.id,
-            "content": json.dumps(result)
-        })
+        # Get final response with tool results
+        return llm_with_tools.invoke(messages).content
 
-        final = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
-        return final.choices[0].message.content
-
-    return response.choices[0].message.content`,
+    return response.content`,
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.Extensions.AI;
+    label: 'C# (Semantic Kernel)',
+    code: `using Microsoft.SemanticKernel;
 using System.ComponentModel;
 
-// Define tool as a method with attributes
-[Description("Get current weather for a location")]
-static WeatherResult GetWeather(
-    [Description("City name")] string location,
-    [Description("Temperature unit")] string unit = "celsius")
+// Define tool as a Kernel Function
+public class WeatherPlugin
 {
-    // Implementation specific
-    return weatherService.GetCurrent(location, unit);
+    [KernelFunction, Description("Get current weather for a location")]
+    public string GetWeather(
+        [Description("City name")] string location,
+        [Description("Temperature unit")] string unit = "celsius")
+    {
+        return weatherService.GetCurrent(location, unit);
+    }
 }
 
-// Create chat client with tools
-var client = new ChatClientBuilder(
-    new AzureOpenAIChatClient(endpoint, credential, "gpt-4"))
-    .UseFunctionInvocation()
-    .Build();
+// Create kernel with plugins
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion(
+    deploymentName: "gpt-4",
+    endpoint: endpoint,
+    apiKey: apiKey);
+builder.Plugins.AddFromType<WeatherPlugin>();
 
-// Register tools
-var options = new ChatOptions
+var kernel = builder.Build();
+
+// Enable automatic function calling
+var settings = new OpenAIPromptExecutionSettings
 {
-    Tools = [AIFunctionFactory.Create(GetWeather)]
+    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
 };
 
 // Execute with automatic tool invocation
-var response = await client.GetResponseAsync(
+var result = await kernel.InvokePromptAsync(
     "What's the weather in Tokyo?",
-    options
+    new KernelArguments(settings)
 );
 
-Console.WriteLine(response.Text);`,
+Console.WriteLine(result);`,
   },
 ];
 
@@ -164,99 +151,94 @@ const parallelToolExample = [
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `import asyncio
-from openai import AsyncOpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
 
-client = AsyncOpenAI()
+@tool
+async def get_weather(location: str) -> str:
+    """Get current weather for a location."""
+    return await weather_api.get_async(location)
 
-async def execute_tools_parallel(tool_calls: list) -> list:
-    """Execute multiple tool calls concurrently."""
-    async def execute_one(tool_call):
-        func_name = tool_call.function.name
-        args = json.loads(tool_call.function.arguments)
+@tool
+async def search_web(query: str) -> str:
+    """Search the web for information."""
+    return await search_api.search_async(query)
 
-        # Route to appropriate tool
-        if func_name == "get_weather":
-            return await get_weather_async(**args)
-        elif func_name == "search_web":
-            return await search_web_async(**args)
-        # ... more tools
+@tool
+async def get_stock_price(symbol: str) -> str:
+    """Get current stock price."""
+    return await stock_api.get_price_async(symbol)
 
-    # Execute all tools concurrently
-    results = await asyncio.gather(
-        *[execute_one(tc) for tc in tool_calls]
-    )
-    return results
+# Bind multiple tools
+llm = ChatOpenAI(model="gpt-4")
+tools = [get_weather, search_web, get_stock_price]
+llm_with_tools = llm.bind_tools(tools)
 
 async def agent_with_parallel_tools(query: str) -> str:
-    messages = [{"role": "user", "content": query}]
+    messages = [HumanMessage(content=query)]
 
-    response = await client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=tools,
-        parallel_tool_calls=True  # Enable parallel calls
-    )
+    response = await llm_with_tools.ainvoke(messages)
 
-    assistant_msg = response.choices[0].message
+    if response.tool_calls:
+        messages.append(response)
 
-    if assistant_msg.tool_calls:
         # Execute all tools in parallel
-        results = await execute_tools_parallel(
-            assistant_msg.tool_calls
-        )
+        tool_tasks = []
+        for tool_call in response.tool_calls:
+            tool_fn = next(t for t in tools if t.name == tool_call["name"])
+            tool_tasks.append(tool_fn.ainvoke(tool_call["args"]))
 
-        # Add results to conversation
-        messages.append(assistant_msg)
-        for tool_call, result in zip(
-            assistant_msg.tool_calls, results
-        ):
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": json.dumps(result)
-            })
+        results = await asyncio.gather(*tool_tasks)
 
-        # Get final response
-        final = await client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-        )
-        return final.choices[0].message.content
+        # Add all results
+        for tool_call, result in zip(response.tool_calls, results):
+            messages.append(
+                ToolMessage(content=result, tool_call_id=tool_call["id"])
+            )
 
-    return assistant_msg.content`,
+        return (await llm_with_tools.ainvoke(messages)).content
+
+    return response.content`,
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.Extensions.AI;
+    label: 'C# (Semantic Kernel)',
+    code: `using Microsoft.SemanticKernel;
 
-// Multiple tools registered
-var tools = new List<AITool>
+// Define plugins with multiple functions
+public class ToolsPlugin
 {
-    AIFunctionFactory.Create(GetWeather),
-    AIFunctionFactory.Create(SearchWeb),
-    AIFunctionFactory.Create(GetStockPrice)
+    [KernelFunction, Description("Get weather for a location")]
+    public async Task<string> GetWeather(string location)
+        => await weatherService.GetAsync(location);
+
+    [KernelFunction, Description("Search the web")]
+    public async Task<string> SearchWeb(string query)
+        => await searchService.SearchAsync(query);
+
+    [KernelFunction, Description("Get stock price")]
+    public async Task<string> GetStockPrice(string symbol)
+        => await stockService.GetPriceAsync(symbol);
+}
+
+// Create kernel
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
+builder.Plugins.AddFromType<ToolsPlugin>();
+var kernel = builder.Build();
+
+// Auto function calling handles parallel execution
+var settings = new OpenAIPromptExecutionSettings
+{
+    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
 };
 
-// Client with automatic parallel execution
-var client = new ChatClientBuilder(baseClient)
-    .UseFunctionInvocation(config =>
-    {
-        // Enable concurrent tool execution
-        config.MaximumConcurrentInvocations = 5;
-        config.RetryOnError = true;
-    })
-    .Build();
-
-var options = new ChatOptions { Tools = tools };
-
-// The framework handles parallel execution automatically
-var response = await client.GetResponseAsync(
-    "What's the weather in NYC and Tokyo, " +
-    "and what's Apple's stock price?",
-    options
+// Kernel executes multiple tool calls concurrently
+var result = await kernel.InvokePromptAsync(
+    "What's the weather in NYC and Tokyo, and Apple's stock price?",
+    new KernelArguments(settings)
 );`,
   },
 ];
@@ -298,78 +280,69 @@ function agentLoop(userRequest):
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from tenacity import retry, stop_after_attempt, wait_exponential
+    label: 'Python (LangChain)',
+    code: `from langchain_core.tools import tool, ToolException
+from langchain_core.runnables import RunnableConfig
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-class ToolExecutor:
-    def __init__(self, tools: dict):
-        self.tools = tools
+# Tools can handle their own errors gracefully
+@tool(handle_tool_error=True)
+def search_database(query: str) -> str:
+    """Search the database with automatic error handling."""
+    try:
+        return db.search(query)
+    except DatabaseError as e:
+        # Return error message instead of raising
+        raise ToolException(f"Database error: {e}")
+
+# Custom retry wrapper for tools
+class RetryableTool:
+    def __init__(self, tool_fn, max_retries=3):
+        self.tool = tool_fn
+        self.max_retries = max_retries
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=1, max=10)
     )
-    def execute_with_retry(self, name: str, args: dict):
-        """Execute tool with automatic retry on failure."""
-        tool = self.tools.get(name)
-        if not tool:
-            raise ToolNotFoundError(f"Unknown tool: {name}")
-        return tool(**args)
+    def invoke(self, args: dict) -> str:
+        return self.tool.invoke(args)
 
-    def safe_execute(self, tool_call) -> dict:
-        """Execute tool and return structured result."""
+    def safe_invoke(self, args: dict) -> dict:
         try:
-            result = self.execute_with_retry(
-                tool_call.function.name,
-                json.loads(tool_call.function.arguments)
-            )
-            return {
-                "tool_call_id": tool_call.id,
-                "role": "tool",
-                "content": json.dumps({
-                    "success": True,
-                    "data": result
-                })
-            }
+            result = self.invoke(args)
+            return {"success": True, "data": result}
         except Exception as e:
             return {
-                "tool_call_id": tool_call.id,
-                "role": "tool",
-                "content": json.dumps({
-                    "success": False,
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                })
+                "success": False,
+                "error": str(e),
+                "error_type": type(e).__name__
             }
 
-# Usage in agent loop
-executor = ToolExecutor(available_tools)
+# Using LangGraph for agent with error recovery
+from langgraph.prebuilt import create_react_agent
 
-while not task_complete:
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=tool_definitions
-    )
+agent = create_react_agent(
+    llm,
+    tools,
+    # Agent can see tool errors and try alternatives
+    handle_tool_errors=True
+)
 
-    if response.choices[0].message.tool_calls:
-        for tool_call in response.choices[0].message.tool_calls:
-            result = executor.safe_execute(tool_call)
-            messages.append(result)
-    else:
-        break`,
+# The agent will receive error messages and can adapt
+result = agent.invoke({"messages": [("user", query)]})`,
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Polly;
-using Microsoft.Extensions.AI;
+    label: 'C# (Semantic Kernel)',
+    code: `using Microsoft.SemanticKernel;
+using Polly;
 
-public class ResilientToolExecutor
+public class ResilientPlugin
 {
     private readonly IAsyncPolicy _retryPolicy;
 
-    public ResilientToolExecutor()
+    public ResilientPlugin()
     {
         _retryPolicy = Policy
             .Handle<HttpRequestException>()
@@ -377,52 +350,43 @@ public class ResilientToolExecutor
             .WaitAndRetryAsync(
                 3,
                 attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                onRetry: (exception, timeSpan, attempt, context) =>
-                {
-                    Console.WriteLine(
-                        $"Retry {attempt} after {timeSpan}: {exception.Message}"
-                    );
-                }
+                onRetry: (ex, time, attempt, ctx) =>
+                    Console.WriteLine($"Retry {attempt}: {ex.Message}")
             );
     }
 
-    public async Task<ToolResult> ExecuteAsync(
-        string toolName,
-        JsonElement arguments)
+    [KernelFunction, Description("Search with automatic retry")]
+    public async Task<string> SearchWithRetry(string query)
     {
         try
         {
-            var result = await _retryPolicy.ExecuteAsync(async () =>
+            return await _retryPolicy.ExecuteAsync(async () =>
             {
-                return await InvokeToolAsync(toolName, arguments);
+                return await searchService.SearchAsync(query);
             });
-
-            return new ToolResult
-            {
-                Success = true,
-                Data = result
-            };
         }
         catch (Exception ex)
         {
-            return new ToolResult
-            {
-                Success = false,
-                Error = ex.Message,
-                ErrorType = ex.GetType().Name
-            };
+            // Return error info so agent can adapt
+            return $"Error: {ex.Message}. Try a different approach.";
         }
     }
 }
 
-// Configure chat client with resilient execution
-var client = new ChatClientBuilder(baseClient)
-    .UseFunctionInvocation(config =>
-    {
-        config.RetryOnError = true;
-        config.MaximumIterations = 10;
-    })
-    .Build();`,
+// Kernel with retry-enabled plugins
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
+builder.Plugins.AddFromObject(new ResilientPlugin());
+var kernel = builder.Build();
+
+// Configure execution settings with retries
+var settings = new OpenAIPromptExecutionSettings
+{
+    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+};
+
+// Kernel handles tool errors gracefully
+var result = await kernel.InvokePromptAsync(prompt, new(settings));`,
   },
 ];
 ---

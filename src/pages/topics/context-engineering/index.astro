@@ -329,21 +329,23 @@ relevant = selector.select(
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.SemanticKernel.Embeddings;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
 using Microsoft.ML.Tokenizers;
+using OpenAI;
 
 public class ContextSelector
 {
-    private readonly ITextEmbeddingGenerationService _embedder;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
     private readonly Tokenizer _tokenizer;
     private readonly int _maxTokens;
 
-    public ContextSelector(
-        ITextEmbeddingGenerationService embedder,
-        int maxTokens = 4000)
+    public ContextSelector(string apiKey, int maxTokens = 4000)
     {
-        _embedder = embedder;
+        _embedder = new OpenAIClient(apiKey)
+            .GetEmbeddingClient("text-embedding-3-small")
+            .AsIEmbeddingGenerator<string, Embedding<float>>();
+
         _maxTokens = maxTokens;
         _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
     }
@@ -353,22 +355,18 @@ public class ContextSelector
         List<ContextItem> items)
     {
         // Get query embedding
-        var queryEmbedding = await _embedder
-            .GenerateEmbeddingAsync(query);
+        var queryResult = await _embedder.GenerateAsync(query);
+        var queryEmbedding = queryResult.Single().Vector;
 
         // Score all items
         var scored = new List<(ContextItem Item, float Score)>();
 
         foreach (var item in items)
         {
-            var itemEmbedding = await _embedder
-                .GenerateEmbeddingAsync(item.Content);
+            var itemResult = await _embedder.GenerateAsync(item.Content);
+            var itemEmbedding = itemResult.Single().Vector;
 
-            var score = ScoreItem(
-                queryEmbedding,
-                itemEmbedding,
-                item
-            );
+            var score = ScoreItem(queryEmbedding, itemEmbedding, item);
             scored.Add((item, score));
         }
 
@@ -385,10 +383,7 @@ public class ContextSelector
         ContextItem item)
     {
         // Cosine similarity
-        var similarity = CosineSimilarity(
-            queryEmb.Span,
-            itemEmb.Span
-        );
+        var similarity = CosineSimilarity(queryEmb.Span, itemEmb.Span);
 
         // Recency score
         var age = DateTime.UtcNow - item.Timestamp;
