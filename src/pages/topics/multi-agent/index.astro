@@ -1,0 +1,1521 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const supervisorExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Supervisor Pattern: One agent coordinates others
+
+class SupervisorOrchestrator:
+    supervisor: Agent  # Makes routing decisions
+    workers: Map<string, Agent>  # Specialized workers
+
+    function process(task):
+        conversation = [task]
+
+        while not isComplete(conversation):
+            # Supervisor decides next step
+            decision = supervisor.decide(
+                task: task,
+                conversation: conversation,
+                availableWorkers: workers.keys()
+            )
+
+            if decision.action == "DELEGATE":
+                # Route to worker agent
+                worker = workers.get(decision.targetWorker)
+                result = worker.execute(decision.subTask)
+                conversation.append(result)
+
+            elif decision.action == "RESPOND":
+                # Supervisor provides final answer
+                return decision.response
+
+            elif decision.action == "CLARIFY":
+                # Need more information
+                return requestInput(decision.question)
+
+        return synthesize(conversation)
+
+# Supervisor prompt
+SUPERVISOR_PROMPT = """
+You are a supervisor coordinating specialized workers.
+
+Available workers:
+- researcher: Searches and gathers information
+- analyst: Analyzes data and creates reports
+- writer: Drafts documents and communications
+- coder: Writes and reviews code
+
+For each user request, decide:
+1. Which worker(s) should handle it
+2. What specific task to assign them
+3. When you have enough information to respond
+
+Output your decision as:
+{
+    "action": "DELEGATE" | "RESPOND" | "CLARIFY",
+    "targetWorker": "worker_name",  // if DELEGATE
+    "subTask": "specific instructions",  // if DELEGATE
+    "response": "final answer"  // if RESPOND
+}
+"""`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangGraph)',
+    code: `from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+from typing import TypedDict, Literal
+
+# Define state
+class OrchestratorState(TypedDict):
+    messages: list
+    next_worker: str | None
+
+# Create specialized agents
+llm = ChatOpenAI(model="gpt-4")
+
+researcher = create_react_agent(
+    llm,
+    tools=[search_tool, browse_tool],
+    state_modifier="You are a research specialist."
+)
+
+analyst = create_react_agent(
+    llm,
+    tools=[analyze_tool, chart_tool],
+    state_modifier="You are a data analyst."
+)
+
+writer = create_react_agent(
+    llm,
+    tools=[write_tool, format_tool],
+    state_modifier="You are a technical writer."
+)
+
+# Supervisor decides routing
+def supervisor_node(state: OrchestratorState):
+    """Supervisor decides which worker to invoke next."""
+    messages = state["messages"]
+
+    response = llm.invoke([
+        {"role": "system", "content": SUPERVISOR_PROMPT},
+        *messages,
+        {"role": "user", "content": "What should happen next?"}
+    ])
+
+    # Parse decision
+    decision = parse_supervisor_response(response.content)
+
+    if decision["action"] == "RESPOND":
+        return {"messages": messages + [response], "next_worker": None}
+
+    return {"messages": messages, "next_worker": decision["target_worker"]}
+
+def route_to_worker(state: OrchestratorState) -> Literal["researcher", "analyst", "writer", "end"]:
+    """Route to appropriate worker or end."""
+    if state["next_worker"] is None:
+        return "end"
+    return state["next_worker"]
+
+# Build the graph
+workflow = StateGraph(OrchestratorState)
+
+# Add nodes
+workflow.add_node("supervisor", supervisor_node)
+workflow.add_node("researcher", researcher)
+workflow.add_node("analyst", analyst)
+workflow.add_node("writer", writer)
+
+# Add edges
+workflow.set_entry_point("supervisor")
+workflow.add_conditional_edges(
+    "supervisor",
+    route_to_worker,
+    {
+        "researcher": "researcher",
+        "analyst": "analyst",
+        "writer": "writer",
+        "end": END
+    }
+)
+
+# Workers return to supervisor
+for worker in ["researcher", "analyst", "writer"]:
+    workflow.add_edge(worker, "supervisor")
+
+# Compile
+app = workflow.compile()
+
+# Run
+result = app.invoke({
+    "messages": [{"role": "user", "content": "Research AI trends and write a summary"}],
+    "next_worker": None
+})`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+
+public class SupervisorOrchestrator
+{
+    private readonly ChatCompletionAgent _supervisor;
+    private readonly Dictionary<string, ChatCompletionAgent> _workers;
+    private readonly Kernel _kernel;
+
+    public SupervisorOrchestrator(Kernel kernel)
+    {
+        _kernel = kernel;
+
+        _supervisor = new ChatCompletionAgent
+        {
+            Name = "Supervisor",
+            Instructions = SUPERVISOR_PROMPT,
+            Kernel = kernel
+        };
+
+        _workers = new Dictionary<string, ChatCompletionAgent>
+        {
+            ["researcher"] = new ChatCompletionAgent
+            {
+                Name = "Researcher",
+                Instructions = "You are a research specialist...",
+                Kernel = kernel
+            },
+            ["analyst"] = new ChatCompletionAgent
+            {
+                Name = "Analyst",
+                Instructions = "You are a data analyst...",
+                Kernel = kernel
+            },
+            ["writer"] = new ChatCompletionAgent
+            {
+                Name = "Writer",
+                Instructions = "You are a technical writer...",
+                Kernel = kernel
+            }
+        };
+    }
+
+    public async Task<string> ProcessAsync(
+        string task,
+        CancellationToken ct = default)
+    {
+        var chat = new AgentGroupChat(_supervisor);
+        var messages = new List<ChatMessageContent>
+        {
+            new(AuthorRole.User, task)
+        };
+
+        while (true)
+        {
+            // Get supervisor decision
+            var decision = await GetSupervisorDecisionAsync(messages, ct);
+
+            if (decision.Action == "RESPOND")
+            {
+                return decision.Response!;
+            }
+
+            if (decision.Action == "DELEGATE")
+            {
+                var worker = _workers[decision.TargetWorker!];
+
+                // Execute worker task
+                var workerResult = await worker.InvokeAsync(
+                    new ChatHistory(messages.Append(
+                        new ChatMessageContent(AuthorRole.User, decision.SubTask)
+                    )),
+                    ct
+                );
+
+                messages.AddRange(workerResult);
+            }
+        }
+    }
+
+    private async Task<SupervisorDecision> GetSupervisorDecisionAsync(
+        List<ChatMessageContent> messages,
+        CancellationToken ct)
+    {
+        var result = await _supervisor.InvokeAsync(
+            new ChatHistory(messages),
+            ct
+        );
+
+        var lastMessage = result.Last();
+        return JsonSerializer.Deserialize<SupervisorDecision>(
+            lastMessage.Content ?? "{}"
+        )!;
+    }
+}
+
+public record SupervisorDecision(
+    string Action,
+    string? TargetWorker = null,
+    string? SubTask = null,
+    string? Response = null
+);`,
+  },
+];
+
+const peerToPeerExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Peer-to-Peer Pattern: Agents communicate directly
+
+class PeerNetwork:
+    agents: Map<string, Agent>
+    messageQueue: Queue
+
+    function broadcast(sender, message):
+        for agent in agents.values():
+            if agent.name != sender:
+                messageQueue.enqueue({
+                    from: sender,
+                    to: agent.name,
+                    content: message
+                })
+
+    function sendTo(sender, recipient, message):
+        messageQueue.enqueue({
+            from: sender,
+            to: recipient,
+            content: message
+        })
+
+    function processMessages():
+        while not messageQueue.isEmpty():
+            msg = messageQueue.dequeue()
+            recipient = agents.get(msg.to)
+            response = recipient.receive(msg.from, msg.content)
+
+            if response.hasReply:
+                sendTo(msg.to, msg.from, response.reply)
+
+# Agent with peer communication
+class PeerAgent:
+    name: string
+    capabilities: []
+    peers: Map<string, PeerInfo>
+
+    function receive(sender, message):
+        # Decide how to handle incoming message
+        if canHandle(message):
+            result = process(message)
+            return { reply: result }
+        else:
+            # Find a peer who can help
+            bestPeer = findBestPeer(message)
+            if bestPeer:
+                return { forward: bestPeer, message: message }
+            else:
+                return { reply: "Cannot handle this request" }
+
+    function requestHelp(task):
+        # Broadcast request to peers
+        responses = broadcast(self.name, {
+            type: "HELP_REQUEST",
+            task: task,
+            requiredCapabilities: inferCapabilities(task)
+        })
+
+        # Collect and synthesize responses
+        return synthesize(responses)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `import asyncio
+from dataclasses import dataclass, field
+from typing import Callable
+
+@dataclass
+class Message:
+    sender: str
+    recipient: str
+    content: dict
+    message_type: str = "REQUEST"
+
+@dataclass
+class PeerAgent:
+    name: str
+    capabilities: list[str]
+    handler: Callable
+    inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
+
+    async def receive(self, message: Message) -> dict:
+        """Handle incoming message."""
+        if message.message_type == "REQUEST":
+            if self._can_handle(message.content):
+                result = await self.handler(message.content)
+                return {"status": "completed", "result": result}
+            else:
+                return {"status": "cannot_handle"}
+
+        elif message.message_type == "HELP_REQUEST":
+            # Check if we can help
+            if self._can_help(message.content.get("required_capabilities", [])):
+                return {
+                    "status": "can_help",
+                    "agent": self.name,
+                    "capabilities": self.capabilities
+                }
+            return {"status": "cannot_help"}
+
+        return {"status": "unknown_message_type"}
+
+    def _can_handle(self, content: dict) -> bool:
+        required = content.get("required_capabilities", [])
+        return all(cap in self.capabilities for cap in required)
+
+    def _can_help(self, required: list[str]) -> bool:
+        return any(cap in self.capabilities for cap in required)
+
+
+class PeerNetwork:
+    def __init__(self):
+        self.agents: dict[str, PeerAgent] = {}
+
+    def register(self, agent: PeerAgent):
+        self.agents[agent.name] = agent
+
+    async def send(self, message: Message) -> dict:
+        """Send message to specific agent."""
+        recipient = self.agents.get(message.recipient)
+        if not recipient:
+            return {"status": "agent_not_found"}
+        return await recipient.receive(message)
+
+    async def broadcast(
+        self,
+        sender: str,
+        content: dict,
+        message_type: str = "REQUEST"
+    ) -> list[dict]:
+        """Broadcast message to all agents except sender."""
+        tasks = []
+        for name, agent in self.agents.items():
+            if name != sender:
+                msg = Message(sender, name, content, message_type)
+                tasks.append(agent.receive(msg))
+
+        return await asyncio.gather(*tasks)
+
+    async def request_help(
+        self,
+        requester: str,
+        task: dict,
+        required_capabilities: list[str]
+    ) -> str | None:
+        """Find an agent who can help with a task."""
+        responses = await self.broadcast(
+            requester,
+            {"task": task, "required_capabilities": required_capabilities},
+            "HELP_REQUEST"
+        )
+
+        # Find agents who can help
+        helpers = [r for r in responses if r.get("status") == "can_help"]
+
+        if helpers:
+            # Pick the best helper (most matching capabilities)
+            best = max(helpers, key=lambda h: len(
+                set(h["capabilities"]) & set(required_capabilities)
+            ))
+            return best["agent"]
+
+        return None
+
+
+# Usage
+async def main():
+    network = PeerNetwork()
+
+    # Create specialized agents
+    researcher = PeerAgent(
+        name="researcher",
+        capabilities=["search", "browse", "summarize"],
+        handler=research_handler
+    )
+
+    coder = PeerAgent(
+        name="coder",
+        capabilities=["code", "debug", "test"],
+        handler=coding_handler
+    )
+
+    network.register(researcher)
+    network.register(coder)
+
+    # Agent requests help
+    helper = await network.request_help(
+        requester="user",
+        task={"description": "Write a Python script"},
+        required_capabilities=["code"]
+    )
+    print(f"Best helper: {helper}")  # "coder"
+
+asyncio.run(main())`,
+  },
+];
+
+const debateExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Debate Pattern: Agents argue to reach better conclusions
+
+class DebateOrchestrator:
+    proposer: Agent    # Makes initial proposal
+    critic: Agent      # Challenges and finds flaws
+    judge: Agent       # Evaluates arguments
+
+    function debate(topic, maxRounds = 3):
+        # Initial proposal
+        proposal = proposer.generate(topic)
+
+        for round in range(maxRounds):
+            # Critic challenges the proposal
+            critique = critic.challenge(
+                topic: topic,
+                proposal: proposal,
+                findFlaws: true,
+                suggestAlternatives: true
+            )
+
+            if critique.noSignificantFlaws:
+                break
+
+            # Proposer defends or revises
+            response = proposer.respond(
+                originalProposal: proposal,
+                critique: critique,
+                canRevise: true
+            )
+
+            proposal = response.revisedProposal or proposal
+
+        # Judge evaluates final proposal
+        verdict = judge.evaluate(
+            topic: topic,
+            finalProposal: proposal,
+            debateHistory: getAllExchanges()
+        )
+
+        return {
+            conclusion: proposal,
+            confidence: verdict.confidence,
+            reasoning: verdict.reasoning
+        }
+
+# Multi-perspective variant
+class MultiPerspectiveDebate:
+    perspectives: [
+        { name: "optimist", bias: "focus on benefits and opportunities" },
+        { name: "pessimist", bias: "focus on risks and downsides" },
+        { name: "pragmatist", bias: "focus on feasibility and implementation" },
+        { name: "ethicist", bias: "focus on moral implications" }
+    ]
+
+    function analyze(topic):
+        analyses = []
+        for perspective in perspectives:
+            analysis = llm.generate(
+                prompt: analyzeFromPerspective(topic, perspective)
+            )
+            analyses.append(analysis)
+
+        # Synthesize all perspectives
+        synthesis = llm.generate(
+            prompt: synthesizeAnalyses(topic, analyses)
+        )
+
+        return synthesis`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from openai import OpenAI
+
+@dataclass
+class DebateRound:
+    proposal: str
+    critique: str
+    response: str
+    round_number: int
+
+class DebateOrchestrator:
+    def __init__(self, client: OpenAI, model: str = "gpt-4"):
+        self.client = client
+        self.model = model
+
+    def debate(
+        self,
+        topic: str,
+        max_rounds: int = 3
+    ) -> dict:
+        """Run a debate between proposer and critic."""
+        rounds: list[DebateRound] = []
+
+        # Initial proposal
+        proposal = self._generate_proposal(topic)
+
+        for round_num in range(max_rounds):
+            # Critic challenges
+            critique = self._generate_critique(topic, proposal, rounds)
+
+            # Check if critique found significant issues
+            if self._no_significant_flaws(critique):
+                break
+
+            # Proposer responds
+            response, revised = self._generate_response(
+                topic, proposal, critique, rounds
+            )
+
+            rounds.append(DebateRound(
+                proposal=proposal,
+                critique=critique,
+                response=response,
+                round_number=round_num
+            ))
+
+            proposal = revised if revised else proposal
+
+        # Judge evaluates
+        verdict = self._judge_debate(topic, proposal, rounds)
+
+        return {
+            "conclusion": proposal,
+            "confidence": verdict["confidence"],
+            "reasoning": verdict["reasoning"],
+            "rounds": len(rounds)
+        }
+
+    def _generate_proposal(self, topic: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a thoughtful proposer. Present a well-reasoned position."},
+                {"role": "user", "content": f"Topic: {topic}\\n\\nPresent your proposal with supporting arguments."}
+            ]
+        )
+        return response.choices[0].message.content
+
+    def _generate_critique(
+        self,
+        topic: str,
+        proposal: str,
+        history: list[DebateRound]
+    ) -> str:
+        history_text = self._format_history(history)
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": """You are a rigorous critic. Find flaws, gaps, and weaknesses.
+Be specific about what's wrong and suggest alternatives.
+If the proposal is solid, acknowledge it."""},
+                {"role": "user", "content": f"""Topic: {topic}
+
+Current proposal:
+{proposal}
+
+Previous debate:
+{history_text}
+
+Provide your critique. Be thorough but fair."""}
+            ]
+        )
+        return response.choices[0].message.content
+
+    def _generate_response(
+        self,
+        topic: str,
+        proposal: str,
+        critique: str,
+        history: list[DebateRound]
+    ) -> tuple[str, str | None]:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": """You are the proposer defending your position.
+Address valid criticisms and revise your proposal if needed.
+Return your response and optionally a revised proposal."""},
+                {"role": "user", "content": f"""Topic: {topic}
+
+Your proposal:
+{proposal}
+
+Critique received:
+{critique}
+
+Respond to the critique. If you revise your proposal, clearly mark it as:
+REVISED PROPOSAL:
+[your revised proposal]"""}
+            ]
+        )
+
+        content = response.choices[0].message.content
+
+        # Extract revised proposal if present
+        if "REVISED PROPOSAL:" in content:
+            parts = content.split("REVISED PROPOSAL:")
+            return parts[0].strip(), parts[1].strip()
+
+        return content, None
+
+    def _judge_debate(
+        self,
+        topic: str,
+        final_proposal: str,
+        rounds: list[DebateRound]
+    ) -> dict:
+        history_text = self._format_history(rounds)
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": """You are an impartial judge.
+Evaluate the final proposal considering the debate.
+Provide a confidence score (0-100) and reasoning."""},
+                {"role": "user", "content": f"""Topic: {topic}
+
+Final proposal:
+{final_proposal}
+
+Debate history:
+{history_text}
+
+Evaluate this proposal. Return JSON:
+{{"confidence": 0-100, "reasoning": "..."}}"""}
+            ],
+            response_format={"type": "json_object"}
+        )
+
+        return json.loads(response.choices[0].message.content)
+
+# Usage
+orchestrator = DebateOrchestrator(OpenAI())
+result = orchestrator.debate("Should AI systems be given autonomy in hiring decisions?")
+print(f"Conclusion (confidence: {result['confidence']}%):")
+print(result["conclusion"])`,
+  },
+];
+
+const moeExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Mixture of Experts: Route to specialized agents
+
+class MixtureOfExperts:
+    router: Agent  # Decides which expert(s) to use
+    experts: Map<string, Agent>
+    combiner: Agent  # Synthesizes expert outputs
+
+    function process(task):
+        # Router analyzes task and selects experts
+        routing = router.analyze(task)
+
+        # Get outputs from selected experts
+        expertOutputs = []
+        for expert in routing.selectedExperts:
+            weight = routing.weights[expert.name]
+            output = experts.get(expert.name).process(task)
+            expertOutputs.append({
+                expert: expert.name,
+                output: output,
+                weight: weight
+            })
+
+        # Combine expert outputs
+        if routing.combinationStrategy == "WEIGHTED_MERGE":
+            return weightedMerge(expertOutputs)
+        elif routing.combinationStrategy == "BEST_OF":
+            return selectBest(expertOutputs)
+        else:
+            return combiner.synthesize(task, expertOutputs)
+
+# Router prompt
+ROUTER_PROMPT = """
+Analyze this task and select the best expert(s).
+
+Available experts:
+- code_expert: Programming, debugging, code review
+- data_expert: Data analysis, statistics, visualization
+- writing_expert: Documentation, communication, editing
+- research_expert: Information gathering, summarization
+
+For the given task:
+1. Which expert(s) should handle it? (1-3 experts)
+2. What weight should each have? (0.0-1.0, sum to 1.0)
+3. How should outputs be combined?
+
+Return as JSON:
+{
+    "selected_experts": ["expert1", "expert2"],
+    "weights": {"expert1": 0.7, "expert2": 0.3},
+    "combination_strategy": "WEIGHTED_MERGE" | "BEST_OF" | "SYNTHESIZE"
+}
+"""`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from typing import Literal
+
+@dataclass
+class RoutingDecision:
+    selected_experts: list[str]
+    weights: dict[str, float]
+    combination_strategy: Literal["WEIGHTED_MERGE", "BEST_OF", "SYNTHESIZE"]
+
+@dataclass
+class ExpertOutput:
+    expert_name: str
+    output: str
+    weight: float
+
+class MixtureOfExperts:
+    def __init__(self, client, model: str = "gpt-4"):
+        self.client = client
+        self.model = model
+        self.experts: dict[str, str] = {}  # name -> system prompt
+
+    def register_expert(self, name: str, system_prompt: str):
+        self.experts[name] = system_prompt
+
+    def process(self, task: str) -> str:
+        # Route to experts
+        routing = self._route(task)
+
+        # Get expert outputs
+        outputs = []
+        for expert_name in routing.selected_experts:
+            output = self._query_expert(expert_name, task)
+            outputs.append(ExpertOutput(
+                expert_name=expert_name,
+                output=output,
+                weight=routing.weights.get(expert_name, 1.0)
+            ))
+
+        # Combine outputs
+        return self._combine(task, outputs, routing.combination_strategy)
+
+    def _route(self, task: str) -> RoutingDecision:
+        expert_list = "\\n".join([
+            f"- {name}: {prompt[:100]}..."
+            for name, prompt in self.experts.items()
+        ])
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": f"""You are a routing agent.
+Select the best expert(s) for each task.
+
+Available experts:
+{expert_list}
+
+Return JSON with selected_experts, weights, and combination_strategy."""},
+                {"role": "user", "content": f"Task: {task}"}
+            ],
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+        return RoutingDecision(**data)
+
+    def _query_expert(self, expert_name: str, task: str) -> str:
+        system_prompt = self.experts.get(expert_name, "You are a helpful assistant.")
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": task}
+            ]
+        )
+        return response.choices[0].message.content
+
+    def _combine(
+        self,
+        task: str,
+        outputs: list[ExpertOutput],
+        strategy: str
+    ) -> str:
+        if strategy == "BEST_OF":
+            # Return highest weighted output
+            best = max(outputs, key=lambda o: o.weight)
+            return best.output
+
+        elif strategy == "WEIGHTED_MERGE":
+            # Simple concatenation with weights noted
+            parts = []
+            for output in sorted(outputs, key=lambda o: -o.weight):
+                parts.append(f"[{output.expert_name} ({output.weight:.0%})]: {output.output}")
+            return "\\n\\n".join(parts)
+
+        else:  # SYNTHESIZE
+            # Use LLM to synthesize
+            outputs_text = "\\n\\n".join([
+                f"Expert: {o.expert_name} (weight: {o.weight})\\n{o.output}"
+                for o in outputs
+            ])
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "Synthesize these expert opinions into a coherent response."},
+                    {"role": "user", "content": f"Task: {task}\\n\\nExpert outputs:\\n{outputs_text}"}
+                ]
+            )
+            return response.choices[0].message.content
+
+# Usage
+moe = MixtureOfExperts(OpenAI())
+
+moe.register_expert("code_expert", "You are an expert programmer...")
+moe.register_expert("data_expert", "You are a data scientist...")
+moe.register_expert("writing_expert", "You are a technical writer...")
+
+result = moe.process("Create a Python script that analyzes sales data and generates a report")
+print(result)`,
+  },
+];
+
+const frameworkComparisonExample = [
+  {
+    language: 'python',
+    label: 'LangGraph',
+    code: `# LangGraph: Graph-based orchestration
+from langgraph.graph import StateGraph, END
+from typing import TypedDict
+
+class State(TypedDict):
+    messages: list
+    current_agent: str
+
+def create_langgraph_workflow():
+    workflow = StateGraph(State)
+
+    # Add nodes for each agent
+    workflow.add_node("researcher", researcher_node)
+    workflow.add_node("writer", writer_node)
+    workflow.add_node("reviewer", reviewer_node)
+
+    # Add routing logic
+    workflow.add_conditional_edges(
+        "researcher",
+        lambda s: "writer" if s["research_complete"] else "researcher"
+    )
+    workflow.add_edge("writer", "reviewer")
+    workflow.add_conditional_edges(
+        "reviewer",
+        lambda s: END if s["approved"] else "writer"
+    )
+
+    workflow.set_entry_point("researcher")
+    return workflow.compile()
+
+# Key characteristics:
+# - Explicit state management
+# - Visual graph representation
+# - Built-in persistence and streaming
+# - Good for complex, stateful workflows`,
+  },
+  {
+    language: 'python',
+    label: 'CrewAI',
+    code: `# CrewAI: Role-based agent teams
+from crewai import Agent, Task, Crew, Process
+
+def create_crewai_workflow():
+    # Define agents with roles
+    researcher = Agent(
+        role="Research Analyst",
+        goal="Find comprehensive information on the topic",
+        backstory="You are an expert researcher...",
+        tools=[search_tool, browse_tool]
+    )
+
+    writer = Agent(
+        role="Technical Writer",
+        goal="Create clear, engaging content",
+        backstory="You are a skilled writer...",
+        tools=[write_tool]
+    )
+
+    reviewer = Agent(
+        role="Editor",
+        goal="Ensure quality and accuracy",
+        backstory="You are a meticulous editor..."
+    )
+
+    # Define tasks
+    research_task = Task(
+        description="Research {topic}",
+        agent=researcher,
+        expected_output="Research summary"
+    )
+
+    write_task = Task(
+        description="Write article based on research",
+        agent=writer,
+        context=[research_task]
+    )
+
+    review_task = Task(
+        description="Review and improve the article",
+        agent=reviewer,
+        context=[write_task]
+    )
+
+    # Create crew
+    crew = Crew(
+        agents=[researcher, writer, reviewer],
+        tasks=[research_task, write_task, review_task],
+        process=Process.sequential
+    )
+
+    return crew
+
+# Key characteristics:
+# - Role-based design (intuitive)
+# - Built-in task dependencies
+# - Sequential or hierarchical processes
+# - Good for team-like workflows`,
+  },
+  {
+    language: 'python',
+    label: 'AutoGen',
+    code: `# AutoGen: Conversational multi-agent
+from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+
+def create_autogen_workflow():
+    # Configuration for all agents
+    config_list = [{"model": "gpt-4", "api_key": "..."}]
+
+    # Create agents
+    researcher = AssistantAgent(
+        name="Researcher",
+        system_message="You research topics thoroughly...",
+        llm_config={"config_list": config_list}
+    )
+
+    writer = AssistantAgent(
+        name="Writer",
+        system_message="You write clear articles...",
+        llm_config={"config_list": config_list}
+    )
+
+    critic = AssistantAgent(
+        name="Critic",
+        system_message="You provide constructive feedback...",
+        llm_config={"config_list": config_list}
+    )
+
+    user_proxy = UserProxyAgent(
+        name="User",
+        human_input_mode="NEVER",
+        code_execution_config={"work_dir": "workspace"}
+    )
+
+    # Create group chat
+    group_chat = GroupChat(
+        agents=[user_proxy, researcher, writer, critic],
+        messages=[],
+        max_round=10
+    )
+
+    manager = GroupChatManager(
+        groupchat=group_chat,
+        llm_config={"config_list": config_list}
+    )
+
+    return user_proxy, manager
+
+# Key characteristics:
+# - Conversation-based coordination
+# - Automatic speaker selection
+# - Code execution built-in
+# - Good for open-ended collaboration`,
+  },
+  {
+    language: 'csharp',
+    label: 'Semantic Kernel',
+    code: `// Semantic Kernel: Microsoft's agent framework
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Agents;
+using Microsoft.SemanticKernel.Agents.Chat;
+
+async Task CreateSemanticKernelWorkflow()
+{
+    var kernel = Kernel.CreateBuilder()
+        .AddOpenAIChatCompletion("gpt-4", apiKey)
+        .Build();
+
+    // Create agents
+    var researcher = new ChatCompletionAgent
+    {
+        Name = "Researcher",
+        Instructions = "You research topics thoroughly...",
+        Kernel = kernel
+    };
+
+    var writer = new ChatCompletionAgent
+    {
+        Name = "Writer",
+        Instructions = "You write clear articles...",
+        Kernel = kernel
+    };
+
+    var critic = new ChatCompletionAgent
+    {
+        Name = "Critic",
+        Instructions = "You provide constructive feedback...",
+        Kernel = kernel
+    };
+
+    // Create group chat with selection strategy
+    var chat = new AgentGroupChat(researcher, writer, critic)
+    {
+        ExecutionSettings = new()
+        {
+            SelectionStrategy = new SequentialSelectionStrategy(),
+            TerminationStrategy = new MaximumIterationTerminationStrategy(10)
+        }
+    };
+
+    // Add initial message
+    chat.AddChatMessage(new ChatMessageContent(
+        AuthorRole.User,
+        "Write an article about AI agents"
+    ));
+
+    // Run conversation
+    await foreach (var message in chat.InvokeAsync())
+    {
+        Console.WriteLine($"{message.AuthorName}: {message.Content}");
+    }
+}
+
+// Key characteristics:
+// - .NET native
+// - Plugin system for tools
+// - Built-in memory and planning
+// - Enterprise-ready (Azure integration)`,
+  },
+];
+---
+
+<BaseLayout
+  title="Multi-Agent Orchestration"
+  description="Patterns for coordinating multiple AI agents: supervisor, peer-to-peer, debate, and mixture of experts"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Multi-Agent Orchestration
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        Patterns and frameworks for coordinating multiple specialized AI agents to solve complex tasks.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Why Multi-Agent Systems?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Single agents hit limitations on complex tasks. Multi-agent systems address this by:
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Specialization</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Different agents excel at different tasks (coding, research, writing)</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Parallelization</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Multiple agents can work on subtasks simultaneously</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Verification</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Agents can check each other's work (critic patterns)</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Robustness</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Multiple perspectives reduce single points of failure</p>
+        </div>
+      </div>
+
+      <Callout type="warning" title="Complexity Trade-off">
+        Multi-agent systems add coordination overhead, debugging complexity, and cost. Use them when a single agent genuinely can't handle the task.
+      </Callout>
+    </section>
+
+    <!-- Orchestration Patterns -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Orchestration Patterns
+      </h2>
+
+      <Diagram title="Multi-Agent Orchestration Patterns">
+{`SUPERVISOR                 PEER-TO-PEER              DEBATE
+────────────────────       ────────────────────      ────────────────────
+
+    ┌──────────┐               ┌───┐                   ┌──────────┐
+    │SUPERVISOR│           ┌───┤ A ├───┐               │ PROPOSER │
+    └────┬─────┘           │   └───┘   │               └────┬─────┘
+         │                 │     │     │                    │
+    ┌────┼────┐           ┌▼─┐  │   ┌─▼┐              ┌────▼─────┐
+    │    │    │           │B │◄─┼──►│ C│              │  CRITIC  │
+    ▼    ▼    ▼           └──┘  │   └──┘              └────┬─────┘
+  ┌──┐ ┌──┐ ┌──┐               ┌▼─┐                        │
+  │W1│ │W2│ │W3│               │ D│                   ┌────▼─────┐
+  └──┘ └──┘ └──┘               └──┘                   │  JUDGE   │
+                                                      └──────────┘
+
+
+MIXTURE OF EXPERTS         HIERARCHICAL              SEQUENTIAL
+────────────────────       ────────────────────      ────────────────────
+
+      ┌────────┐                ┌────┐               ┌──┐   ┌──┐   ┌──┐
+      │ ROUTER │                │LEAD│               │A1├──►│A2├──►│A3│
+      └───┬────┘                └─┬──┘               └──┘   └──┘   └──┘
+          │                   ┌──┼──┐
+     ┌────┼────┐              ▼  ▼  ▼
+     │    │    │            ┌──┐┌──┐┌──┐
+     ▼    ▼    ▼            │M1││M2││M3│
+   ┌──┐ ┌──┐ ┌──┐           └┬─┘└┬─┘└┬─┘
+   │E1│ │E2│ │E3│            │   │   │
+   └──┘ └──┘ └──┘          ┌─┼───┼───┼─┐
+     │    │    │           ▼ ▼   ▼   ▼ ▼
+     └────┼────┘          ┌──┐ ┌──┐ ┌──┐
+          ▼               │W1│ │W2│ │W3│
+     ┌────────┐           └──┘ └──┘ └──┘
+     │COMBINER│
+     └────────┘`}
+      </Diagram>
+    </section>
+
+    <!-- Pattern 1: Supervisor -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        1. Supervisor Pattern
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        A central supervisor agent coordinates specialized worker agents, deciding who handles each subtask:
+      </p>
+
+      <CodeBlock tabs={supervisorExample} title="Supervisor Pattern Implementation" />
+
+      <div class="mt-6 grid sm:grid-cols-2 gap-4">
+        <div class="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg">
+          <h4 class="font-semibold text-green-800 dark:text-green-200 mb-2">Pros</h4>
+          <ul class="text-sm text-green-700 dark:text-green-300 space-y-1">
+            <li>Clear control flow</li>
+            <li>Easy to debug and trace</li>
+            <li>Central point for monitoring</li>
+          </ul>
+        </div>
+        <div class="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg">
+          <h4 class="font-semibold text-red-800 dark:text-red-200 mb-2">Cons</h4>
+          <ul class="text-sm text-red-700 dark:text-red-300 space-y-1">
+            <li>Single point of failure</li>
+            <li>Supervisor can become bottleneck</li>
+            <li>Requires good supervisor prompting</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pattern 2: Peer-to-Peer -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        2. Peer-to-Peer Pattern
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Agents communicate directly with each other without a central coordinator:
+      </p>
+
+      <CodeBlock tabs={peerToPeerExample} title="Peer-to-Peer Pattern Implementation" />
+
+      <Callout type="tip" title="When to Use">
+        Best for loosely-coupled tasks where agents have distinct capabilities and can self-organize. Avoid for tasks requiring tight coordination.
+      </Callout>
+    </section>
+
+    <!-- Pattern 3: Debate -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        3. Debate Pattern
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Agents argue and critique each other to reach better conclusions:
+      </p>
+
+      <CodeBlock tabs={debateExample} title="Debate Pattern Implementation" />
+
+      <Callout type="info" title="Research Backing">
+        Debate patterns have been shown to improve factual accuracy and reduce hallucinations by forcing agents to defend their claims against criticism.
+      </Callout>
+    </section>
+
+    <!-- Pattern 4: Mixture of Experts -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        4. Mixture of Experts (MoE)
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        A router selects which specialized experts should handle each task:
+      </p>
+
+      <CodeBlock tabs={moeExample} title="Mixture of Experts Implementation" />
+    </section>
+
+    <!-- Pattern Comparison -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Pattern Comparison
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Best For</th>
+            <th>Coordination</th>
+            <th>Complexity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Supervisor</strong></td>
+            <td>Clear task decomposition</td>
+            <td>Centralized</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>Peer-to-Peer</strong></td>
+            <td>Loosely-coupled tasks</td>
+            <td>Decentralized</td>
+            <td>High</td>
+          </tr>
+          <tr>
+            <td><strong>Debate</strong></td>
+            <td>Quality/accuracy critical</td>
+            <td>Turn-based</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>MoE</strong></td>
+            <td>Varied task types</td>
+            <td>Router-based</td>
+            <td>Medium</td>
+          </tr>
+          <tr>
+            <td><strong>Sequential</strong></td>
+            <td>Pipeline workflows</td>
+            <td>Linear</td>
+            <td>Low</td>
+          </tr>
+          <tr>
+            <td><strong>Hierarchical</strong></td>
+            <td>Large-scale systems</td>
+            <td>Tree structure</td>
+            <td>High</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Framework Comparison -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Framework Comparison
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Several frameworks provide multi-agent orchestration out of the box:
+      </p>
+
+      <CodeBlock tabs={frameworkComparisonExample} title="Framework Implementations" />
+
+      <Table caption="Framework comparison">
+        <thead>
+          <tr>
+            <th>Framework</th>
+            <th>Language</th>
+            <th>Paradigm</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>LangGraph</strong></td>
+            <td>Python</td>
+            <td>Graph-based</td>
+            <td>Complex stateful workflows</td>
+          </tr>
+          <tr>
+            <td><strong>CrewAI</strong></td>
+            <td>Python</td>
+            <td>Role-based</td>
+            <td>Team-like workflows</td>
+          </tr>
+          <tr>
+            <td><strong>AutoGen</strong></td>
+            <td>Python</td>
+            <td>Conversational</td>
+            <td>Open-ended collaboration</td>
+          </tr>
+          <tr>
+            <td><strong>Semantic Kernel</strong></td>
+            <td>C#/.NET</td>
+            <td>Plugin-based</td>
+            <td>Enterprise applications</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Metrics
+      </h2>
+
+      <Table caption="Key metrics for multi-agent systems">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>How to Calculate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Task Completion</strong></td>
+            <td>Did the system solve the task?</td>
+            <td>Binary or graded evaluation</td>
+          </tr>
+          <tr>
+            <td><strong>Coordination Overhead</strong></td>
+            <td>Extra cost from multi-agent</td>
+            <td>Total tokens / single-agent tokens</td>
+          </tr>
+          <tr>
+            <td><strong>Latency</strong></td>
+            <td>Time to completion</td>
+            <td>Wall clock time</td>
+          </tr>
+          <tr>
+            <td><strong>Agent Utilization</strong></td>
+            <td>Are all agents contributing?</td>
+            <td>Messages per agent</td>
+          </tr>
+          <tr>
+            <td><strong>Redundancy</strong></td>
+            <td>Duplicate work across agents</td>
+            <td>Semantic similarity of outputs</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Infinite Loops">
+          Agents can get stuck passing tasks back and forth. Always implement maximum iteration limits.
+        </Callout>
+
+        <Callout type="danger" title="Context Explosion">
+          Each agent adds to context. Multi-agent conversations can quickly exceed context limits.
+        </Callout>
+
+        <Callout type="warning" title="Role Confusion">
+          Agents may not stay in their assigned roles. Use clear, distinct system prompts.
+        </Callout>
+
+        <Callout type="warning" title="Premature Multi-Agent">
+          Don't use multi-agent when single-agent suffices. Added complexity should have clear benefits.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/a2a/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Agent2Agent Protocol</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Standard protocol for agent-to-agent communication
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            How individual agents interact with tools
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Managing context across multiple agents
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Shared memory for multi-agent coordination
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

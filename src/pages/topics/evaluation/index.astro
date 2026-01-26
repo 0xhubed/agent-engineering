@@ -1,0 +1,1293 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const evaluationTaxonomy = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `// Agent Evaluation Taxonomy
+// Three-layer evaluation approach
+
+Layer 1: Component Evaluation
+├── Tool Calling Accuracy    // Does the agent select correct tools?
+├── Argument Extraction      // Are parameters correctly parsed?
+├── Response Formatting      // Is output properly structured?
+└── Context Utilization      // Does it use available context well?
+
+Layer 2: Task Evaluation
+├── Task Completion Rate     // Did the agent achieve the goal?
+├── Step Efficiency          // How many steps vs optimal?
+├── Error Recovery           // Did it handle failures gracefully?
+└── Output Quality           // Is the result correct and complete?
+
+Layer 3: System Evaluation
+├── End-to-End Latency       // Total time from request to result
+├── Cost Efficiency          // Tokens/API calls per task
+├── Safety Compliance        // Did it stay within guardrails?
+└── User Satisfaction        // Human preference ratings`
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from enum import Enum
+from typing import List, Optional
+
+class EvaluationLayer(Enum):
+    COMPONENT = "component"
+    TASK = "task"
+    SYSTEM = "system"
+
+@dataclass
+class Metric:
+    name: str
+    layer: EvaluationLayer
+    description: str
+    higher_is_better: bool = True
+
+# Define evaluation taxonomy
+EVALUATION_TAXONOMY = [
+    # Layer 1: Component Evaluation
+    Metric("tool_calling_accuracy", EvaluationLayer.COMPONENT,
+           "Percentage of correct tool selections", True),
+    Metric("argument_extraction_f1", EvaluationLayer.COMPONENT,
+           "F1 score for parameter extraction", True),
+    Metric("response_format_validity", EvaluationLayer.COMPONENT,
+           "Percentage of valid JSON/structured outputs", True),
+    Metric("context_utilization", EvaluationLayer.COMPONENT,
+           "Relevant context retrieval rate", True),
+
+    # Layer 2: Task Evaluation
+    Metric("task_completion_rate", EvaluationLayer.TASK,
+           "Percentage of successfully completed tasks", True),
+    Metric("step_efficiency", EvaluationLayer.TASK,
+           "Actual steps / optimal steps ratio", False),
+    Metric("error_recovery_rate", EvaluationLayer.TASK,
+           "Successful recoveries from errors", True),
+    Metric("output_correctness", EvaluationLayer.TASK,
+           "Factual accuracy of generated output", True),
+
+    # Layer 3: System Evaluation
+    Metric("e2e_latency_p95", EvaluationLayer.SYSTEM,
+           "95th percentile end-to-end latency", False),
+    Metric("cost_per_task", EvaluationLayer.SYSTEM,
+           "Average cost in tokens/dollars per task", False),
+    Metric("safety_compliance", EvaluationLayer.SYSTEM,
+           "Percentage of responses within guardrails", True),
+    Metric("user_preference", EvaluationLayer.SYSTEM,
+           "Human preference win rate vs baseline", True),
+]
+
+def get_metrics_by_layer(layer: EvaluationLayer) -> List[Metric]:
+    """Get all metrics for a specific evaluation layer."""
+    return [m for m in EVALUATION_TAXONOMY if m.layer == layer]`
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public enum EvaluationLayer
+{
+    Component,
+    Task,
+    System
+}
+
+public record Metric(
+    string Name,
+    EvaluationLayer Layer,
+    string Description,
+    bool HigherIsBetter = true
+);
+
+public static class EvaluationTaxonomy
+{
+    public static readonly List<Metric> Metrics = new()
+    {
+        // Layer 1: Component Evaluation
+        new("ToolCallingAccuracy", EvaluationLayer.Component,
+            "Percentage of correct tool selections"),
+        new("ArgumentExtractionF1", EvaluationLayer.Component,
+            "F1 score for parameter extraction"),
+        new("ResponseFormatValidity", EvaluationLayer.Component,
+            "Percentage of valid JSON/structured outputs"),
+        new("ContextUtilization", EvaluationLayer.Component,
+            "Relevant context retrieval rate"),
+
+        // Layer 2: Task Evaluation
+        new("TaskCompletionRate", EvaluationLayer.Task,
+            "Percentage of successfully completed tasks"),
+        new("StepEfficiency", EvaluationLayer.Task,
+            "Actual steps / optimal steps ratio", false),
+        new("ErrorRecoveryRate", EvaluationLayer.Task,
+            "Successful recoveries from errors"),
+        new("OutputCorrectness", EvaluationLayer.Task,
+            "Factual accuracy of generated output"),
+
+        // Layer 3: System Evaluation
+        new("E2ELatencyP95", EvaluationLayer.System,
+            "95th percentile end-to-end latency", false),
+        new("CostPerTask", EvaluationLayer.System,
+            "Average cost in tokens/dollars per task", false),
+        new("SafetyCompliance", EvaluationLayer.System,
+            "Percentage of responses within guardrails"),
+        new("UserPreference", EvaluationLayer.System,
+            "Human preference win rate vs baseline")
+    };
+
+    public static IEnumerable<Metric> GetByLayer(EvaluationLayer layer) =>
+        Metrics.Where(m => m.Layer == layer);
+}`
+  }
+];
+
+const deepEvalCode = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `// DeepEval: Agent-Specific Metrics
+// Framework for evaluating agentic behaviors
+
+function evaluate_agent_response(response, context):
+    results = {}
+
+    // 1. Tool Call Correctness
+    // Did the agent call the right tools with right arguments?
+    results["tool_correctness"] = evaluate_tool_calls(
+        actual_calls = response.tool_calls,
+        expected_calls = context.ground_truth_tools
+    )
+
+    // 2. Faithfulness (Grounding)
+    // Is the response grounded in retrieved context?
+    results["faithfulness"] = evaluate_faithfulness(
+        response = response.text,
+        retrieved_context = context.retrieved_docs
+    )
+
+    // 3. Answer Relevancy
+    // Does the answer address the original question?
+    results["relevancy"] = evaluate_relevancy(
+        question = context.original_query,
+        answer = response.text
+    )
+
+    // 4. Task Completion
+    // Did the agent complete the assigned task?
+    results["task_completion"] = evaluate_task(
+        task = context.task_definition,
+        result = response.final_output,
+        expected = context.expected_output
+    )
+
+    // 5. Trajectory Quality
+    // Was the agent's reasoning path efficient?
+    results["trajectory_quality"] = evaluate_trajectory(
+        steps = response.reasoning_trace,
+        optimal_path = context.optimal_steps
+    )
+
+    return results`
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from deepeval import evaluate
+from deepeval.metrics import (
+    ToolCorrectnessMetric,
+    FaithfulnessMetric,
+    AnswerRelevancyMetric,
+    TaskCompletionMetric,
+)
+from deepeval.test_case import LLMTestCase, ToolCall
+
+# Define test case for agent evaluation
+test_case = LLMTestCase(
+    input="Find the weather in London and book a restaurant nearby",
+    actual_output="The weather in London is 15°C with light rain. I found 'The Ivy' restaurant nearby and booked a table for 7pm.",
+    expected_output="Weather retrieved and restaurant booked successfully",
+    retrieval_context=[
+        "London weather: 15°C, light rain, humidity 80%",
+        "Nearby restaurants: The Ivy (0.3mi), Sketch (0.5mi)"
+    ],
+    tools_called=[
+        ToolCall(name="get_weather", args={"city": "London"}),
+        ToolCall(name="search_restaurants", args={"location": "London", "cuisine": "any"}),
+        ToolCall(name="book_restaurant", args={"restaurant": "The Ivy", "time": "19:00"})
+    ],
+    expected_tools=[
+        ToolCall(name="get_weather", args={"city": "London"}),
+        ToolCall(name="search_restaurants", args={"location": "London"}),
+        ToolCall(name="book_restaurant", args={})  # Args can vary
+    ]
+)
+
+# Define metrics
+metrics = [
+    ToolCorrectnessMetric(
+        threshold=0.8,
+        include_args=True  # Also check arguments
+    ),
+    FaithfulnessMetric(
+        threshold=0.7,
+        model="gpt-4"  # Judge model
+    ),
+    AnswerRelevancyMetric(
+        threshold=0.7,
+        model="gpt-4"
+    ),
+    TaskCompletionMetric(
+        threshold=0.8,
+        model="gpt-4"
+    )
+]
+
+# Run evaluation
+results = evaluate([test_case], metrics)
+
+# Access results
+for metric_result in results:
+    print(f"{metric_result.name}: {metric_result.score:.2f}")
+    if metric_result.reason:
+        print(f"  Reason: {metric_result.reason}")`
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `// Agent evaluation in C# using a custom framework
+public interface IAgentMetric
+{
+    string Name { get; }
+    double Threshold { get; }
+    Task<MetricResult> EvaluateAsync(AgentTestCase testCase);
+}
+
+public record MetricResult(
+    string MetricName,
+    double Score,
+    bool Passed,
+    string? Reason = null
+);
+
+public record AgentTestCase(
+    string Input,
+    string ActualOutput,
+    string ExpectedOutput,
+    List<string> RetrievalContext,
+    List<ToolCall> ToolsCalled,
+    List<ToolCall> ExpectedTools
+);
+
+public class ToolCorrectnessMetric : IAgentMetric
+{
+    public string Name => "ToolCorrectness";
+    public double Threshold { get; init; } = 0.8;
+    public bool IncludeArgs { get; init; } = true;
+
+    public Task<MetricResult> EvaluateAsync(AgentTestCase testCase)
+    {
+        var expectedTools = testCase.ExpectedTools.Select(t => t.Name).ToHashSet();
+        var actualTools = testCase.ToolsCalled.Select(t => t.Name).ToHashSet();
+
+        // Calculate precision and recall
+        var truePositives = expectedTools.Intersect(actualTools).Count();
+        var precision = actualTools.Count > 0
+            ? (double)truePositives / actualTools.Count : 0;
+        var recall = expectedTools.Count > 0
+            ? (double)truePositives / expectedTools.Count : 0;
+
+        // F1 score
+        var score = precision + recall > 0
+            ? 2 * (precision * recall) / (precision + recall) : 0;
+
+        return Task.FromResult(new MetricResult(
+            Name, score, score >= Threshold,
+            $"Precision: {precision:P0}, Recall: {recall:P0}"
+        ));
+    }
+}
+
+// Evaluate agent
+public class AgentEvaluator
+{
+    private readonly List<IAgentMetric> _metrics;
+
+    public AgentEvaluator(List<IAgentMetric> metrics)
+    {
+        _metrics = metrics;
+    }
+
+    public async Task<List<MetricResult>> EvaluateAsync(AgentTestCase testCase)
+    {
+        var results = new List<MetricResult>();
+        foreach (var metric in _metrics)
+        {
+            results.Add(await metric.EvaluateAsync(testCase));
+        }
+        return results;
+    }
+}`
+  }
+];
+
+const trajectoryEvalCode = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `// Trajectory-Level Evaluation
+// Evaluate the full reasoning path, not just final output
+
+function evaluate_trajectory(trajectory, task):
+    metrics = {}
+
+    // 1. Step Count Efficiency
+    // Compare actual steps to known optimal
+    optimal_steps = get_optimal_path(task)
+    metrics["step_ratio"] = len(trajectory.steps) / len(optimal_steps)
+
+    // 2. Action Diversity
+    // Penalize repetitive actions (agent stuck in loop)
+    unique_actions = set(s.action for s in trajectory.steps)
+    metrics["action_diversity"] = len(unique_actions) / len(trajectory.steps)
+
+    // 3. Progress Rate
+    // How much progress per step toward goal?
+    progress_scores = []
+    for i, step in enumerate(trajectory.steps):
+        progress = estimate_progress(step.state, task.goal)
+        progress_scores.append(progress)
+    metrics["progress_rate"] = average_improvement(progress_scores)
+
+    // 4. Error Recovery
+    // Did agent recover from mistakes?
+    errors = [s for s in trajectory.steps if s.is_error]
+    recoveries = count_successful_recoveries(errors, trajectory)
+    metrics["recovery_rate"] = recoveries / max(len(errors), 1)
+
+    // 5. Reasoning Quality (LLM-as-Judge)
+    // Have an LLM evaluate reasoning coherence
+    metrics["reasoning_quality"] = llm_judge_reasoning(
+        trajectory.reasoning_traces,
+        task.description
+    )
+
+    return metrics`
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from typing import List, Dict, Any
+import numpy as np
+
+@dataclass
+class TrajectoryStep:
+    state: Dict[str, Any]
+    action: str
+    observation: str
+    reasoning: str
+    is_error: bool = False
+
+@dataclass
+class AgentTrajectory:
+    steps: List[TrajectoryStep]
+    final_result: Any
+    task_completed: bool
+
+class TrajectoryEvaluator:
+    def __init__(self, llm_judge=None):
+        self.llm_judge = llm_judge
+
+    def evaluate(self,
+                 trajectory: AgentTrajectory,
+                 optimal_steps: int = None) -> Dict[str, float]:
+        metrics = {}
+
+        # 1. Step efficiency
+        if optimal_steps:
+            metrics["step_efficiency"] = min(
+                1.0, optimal_steps / len(trajectory.steps)
+            )
+
+        # 2. Action diversity (detect loops)
+        actions = [s.action for s in trajectory.steps]
+        metrics["action_diversity"] = len(set(actions)) / len(actions)
+
+        # 3. Detect repetition (exact action sequences)
+        metrics["repetition_score"] = self._detect_repetition(actions)
+
+        # 4. Error recovery rate
+        errors = [s for s in trajectory.steps if s.is_error]
+        if errors:
+            recoveries = self._count_recoveries(trajectory, errors)
+            metrics["recovery_rate"] = recoveries / len(errors)
+        else:
+            metrics["recovery_rate"] = 1.0  # No errors = perfect
+
+        # 5. LLM-as-judge for reasoning quality
+        if self.llm_judge:
+            metrics["reasoning_quality"] = self._judge_reasoning(
+                trajectory
+            )
+
+        return metrics
+
+    def _detect_repetition(self, actions: List[str]) -> float:
+        """Return 1.0 if no repetition, lower if patterns repeat."""
+        if len(actions) < 4:
+            return 1.0
+
+        # Check for repeating patterns of length 2-3
+        for pattern_len in [2, 3]:
+            for i in range(len(actions) - pattern_len * 2):
+                pattern = actions[i:i + pattern_len]
+                next_seq = actions[i + pattern_len:i + pattern_len * 2]
+                if pattern == next_seq:
+                    return 0.5  # Repetition detected
+        return 1.0
+
+    def _count_recoveries(self,
+                          trajectory: AgentTrajectory,
+                          errors: List[TrajectoryStep]) -> int:
+        """Count how many errors led to successful recovery."""
+        recoveries = 0
+        for error in errors:
+            error_idx = trajectory.steps.index(error)
+            # Check if subsequent steps show different approach
+            if error_idx + 1 < len(trajectory.steps):
+                next_step = trajectory.steps[error_idx + 1]
+                if next_step.action != error.action:
+                    recoveries += 1
+        return recoveries
+
+    def _judge_reasoning(self, trajectory: AgentTrajectory) -> float:
+        """Use LLM to judge reasoning quality."""
+        reasoning_trace = "\\n".join(
+            f"Step {i}: {s.reasoning}"
+            for i, s in enumerate(trajectory.steps)
+        )
+
+        prompt = f"""Evaluate the quality of this agent's reasoning trace.
+
+Reasoning trace:
+{reasoning_trace}
+
+Rate from 0-1 based on:
+- Logical coherence
+- Goal-directed behavior
+- Appropriate use of observations
+- Clear decision making
+
+Return only a number between 0 and 1."""
+
+        response = self.llm_judge.generate(prompt)
+        return float(response.strip())`
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public record TrajectoryStep(
+    Dictionary<string, object> State,
+    string Action,
+    string Observation,
+    string Reasoning,
+    bool IsError = false
+);
+
+public record AgentTrajectory(
+    List<TrajectoryStep> Steps,
+    object FinalResult,
+    bool TaskCompleted
+);
+
+public class TrajectoryEvaluator
+{
+    private readonly ILLMJudge? _llmJudge;
+
+    public TrajectoryEvaluator(ILLMJudge? llmJudge = null)
+    {
+        _llmJudge = llmJudge;
+    }
+
+    public async Task<Dictionary<string, double>> EvaluateAsync(
+        AgentTrajectory trajectory,
+        int? optimalSteps = null)
+    {
+        var metrics = new Dictionary<string, double>();
+
+        // 1. Step efficiency
+        if (optimalSteps.HasValue)
+        {
+            metrics["step_efficiency"] = Math.Min(
+                1.0, (double)optimalSteps.Value / trajectory.Steps.Count
+            );
+        }
+
+        // 2. Action diversity
+        var actions = trajectory.Steps.Select(s => s.Action).ToList();
+        metrics["action_diversity"] =
+            (double)actions.Distinct().Count() / actions.Count;
+
+        // 3. Repetition detection
+        metrics["repetition_score"] = DetectRepetition(actions);
+
+        // 4. Error recovery
+        var errors = trajectory.Steps.Where(s => s.IsError).ToList();
+        if (errors.Any())
+        {
+            var recoveries = CountRecoveries(trajectory, errors);
+            metrics["recovery_rate"] = (double)recoveries / errors.Count;
+        }
+        else
+        {
+            metrics["recovery_rate"] = 1.0;
+        }
+
+        // 5. LLM judge
+        if (_llmJudge != null)
+        {
+            metrics["reasoning_quality"] =
+                await JudgeReasoningAsync(trajectory);
+        }
+
+        return metrics;
+    }
+
+    private double DetectRepetition(List<string> actions)
+    {
+        if (actions.Count < 4) return 1.0;
+
+        for (int patternLen = 2; patternLen <= 3; patternLen++)
+        {
+            for (int i = 0; i < actions.Count - patternLen * 2; i++)
+            {
+                var pattern = actions.Skip(i).Take(patternLen).ToList();
+                var next = actions.Skip(i + patternLen).Take(patternLen).ToList();
+                if (pattern.SequenceEqual(next)) return 0.5;
+            }
+        }
+        return 1.0;
+    }
+
+    private int CountRecoveries(
+        AgentTrajectory trajectory,
+        List<TrajectoryStep> errors)
+    {
+        int recoveries = 0;
+        foreach (var error in errors)
+        {
+            int idx = trajectory.Steps.IndexOf(error);
+            if (idx + 1 < trajectory.Steps.Count)
+            {
+                var next = trajectory.Steps[idx + 1];
+                if (next.Action != error.Action) recoveries++;
+            }
+        }
+        return recoveries;
+    }
+
+    private async Task<double> JudgeReasoningAsync(AgentTrajectory trajectory)
+    {
+        var trace = string.Join("\\n", trajectory.Steps.Select(
+            (s, i) => $"Step {i}: {s.Reasoning}"
+        ));
+
+        var result = await _llmJudge!.JudgeAsync(trace);
+        return result;
+    }
+}`
+  }
+];
+
+const benchmarkCode = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `// Major Agent Benchmarks Overview
+
+// SWE-bench: Software Engineering
+// - 2,294 real GitHub issues from popular Python repos
+// - Agent must: understand issue, locate code, implement fix
+// - Evaluated by running repository's test suite
+SWEBench:
+    input: GitHub issue description + repository snapshot
+    output: Git patch that fixes the issue
+    evaluation: run_tests(patched_repo) → pass/fail
+    variants:
+        - SWE-bench Full: all 2,294 issues
+        - SWE-bench Verified: 500 human-verified subset
+        - SWE-bench Lite: 300 simpler issues
+
+// WebArena: Web Navigation
+// - 812 tasks across 5 real websites
+// - Agent must navigate, fill forms, extract info
+// - Evaluated by checking final page state
+WebArena:
+    input: Natural language instruction
+    output: Sequence of browser actions
+    evaluation: check_page_state(final_page) → match/no_match
+    websites: shopping, reddit, gitlab, maps, wikipedia
+
+// τ-bench (Tau-bench): Tool Use + Conversation
+// - 680 multi-turn conversations requiring tool use
+// - Tests realistic agentic assistance scenarios
+// - Evaluates both tool use and conversational ability
+TauBench:
+    input: Multi-turn user conversation
+    output: Agent responses + tool calls
+    evaluation:
+        - Tool call correctness
+        - Response helpfulness
+        - Goal achievement
+    domains: airline, retail, banking (simulated APIs)
+
+// GAIA: General AI Assistant
+// - 466 questions requiring multi-step reasoning
+// - Three difficulty levels
+// - Requires web search, calculation, reasoning
+GAIA:
+    input: Question (may include files/images)
+    output: Final answer (short text)
+    evaluation: exact_match(answer, ground_truth)
+    levels:
+        - Level 1: 1-2 steps
+        - Level 2: 3-5 steps
+        - Level 3: 6+ steps`
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `# Running SWE-bench evaluation
+from swebench.harness.run_evaluation import run_evaluation
+from swebench.harness.constants import KEY_INSTANCE_ID, KEY_MODEL, KEY_PREDICTION
+
+# Prepare predictions (your agent's patches)
+predictions = [
+    {
+        KEY_INSTANCE_ID: "django__django-11039",
+        KEY_MODEL: "my_agent_v1",
+        KEY_PREDICTION: '''
+--- a/django/db/models/sql/query.py
++++ b/django/db/models/sql/query.py
+@@ -1234,6 +1234,8 @@ class Query:
+     def add_ordering(self, *ordering):
++        if not ordering:
++            return
+         errors = []
+'''
+    }
+]
+
+# Run evaluation
+results = run_evaluation(
+    predictions=predictions,
+    swe_bench_tasks="princeton-nlp/SWE-bench_Verified",
+    log_dir="./logs",
+    timeout=1800  # 30 min per instance
+)
+
+# Results structure
+for result in results:
+    print(f"Instance: {result['instance_id']}")
+    print(f"  Resolved: {result['resolved']}")
+    print(f"  Tests passed: {result['tests_passed']}")
+
+
+# Running GAIA evaluation
+from datasets import load_dataset
+
+# Load GAIA dataset
+gaia = load_dataset("gaia-benchmark/GAIA", "2023_all")
+
+def evaluate_gaia_response(prediction: str, ground_truth: str) -> bool:
+    """GAIA uses relaxed exact match."""
+    # Normalize both strings
+    pred = prediction.lower().strip()
+    truth = ground_truth.lower().strip()
+
+    # Remove common suffixes/prefixes
+    pred = pred.rstrip('.')
+    truth = truth.rstrip('.')
+
+    return pred == truth
+
+# Evaluate your agent
+correct = 0
+total = 0
+for level in [1, 2, 3]:
+    level_data = gaia['test'].filter(lambda x: x['level'] == level)
+    for item in level_data:
+        agent_answer = my_agent.answer(item['question'], item.get('file'))
+        if evaluate_gaia_response(agent_answer, item['ground_truth']):
+            correct += 1
+        total += 1
+    print(f"Level {level}: {correct}/{total} = {correct/total:.1%}")`
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `// Benchmark evaluation framework in C#
+public interface IBenchmark
+{
+    string Name { get; }
+    Task<BenchmarkResult> EvaluateAsync(IAgent agent);
+}
+
+public record BenchmarkResult(
+    string BenchmarkName,
+    int TotalTasks,
+    int Passed,
+    double Accuracy,
+    Dictionary<string, double> CategoryScores,
+    TimeSpan TotalTime
+);
+
+public class SWEBenchEvaluator : IBenchmark
+{
+    public string Name => "SWE-bench";
+    private readonly List<SWEBenchTask> _tasks;
+    private readonly IDockerRunner _docker;
+
+    public SWEBenchEvaluator(List<SWEBenchTask> tasks, IDockerRunner docker)
+    {
+        _tasks = tasks;
+        _docker = docker;
+    }
+
+    public async Task<BenchmarkResult> EvaluateAsync(IAgent agent)
+    {
+        var sw = Stopwatch.StartNew();
+        var results = new List<TaskResult>();
+        var categoryScores = new Dictionary<string, List<bool>>();
+
+        foreach (var task in _tasks)
+        {
+            // Agent generates patch
+            var patch = await agent.GeneratePatchAsync(
+                task.IssueDescription,
+                task.RepoSnapshot
+            );
+
+            // Apply patch and run tests in Docker
+            var testResult = await _docker.RunTestsAsync(
+                task.RepoSnapshot,
+                patch,
+                task.TestCommand,
+                timeoutSeconds: 1800
+            );
+
+            var passed = testResult.AllTestsPassed;
+            results.Add(new TaskResult(task.InstanceId, passed));
+
+            // Track by category
+            if (!categoryScores.ContainsKey(task.Category))
+                categoryScores[task.Category] = new List<bool>();
+            categoryScores[task.Category].Add(passed);
+        }
+
+        sw.Stop();
+        return new BenchmarkResult(
+            Name,
+            _tasks.Count,
+            results.Count(r => r.Passed),
+            (double)results.Count(r => r.Passed) / _tasks.Count,
+            categoryScores.ToDictionary(
+                kv => kv.Key,
+                kv => (double)kv.Value.Count(p => p) / kv.Value.Count
+            ),
+            sw.Elapsed
+        );
+    }
+}
+
+public class GAIAEvaluator : IBenchmark
+{
+    public string Name => "GAIA";
+
+    public async Task<BenchmarkResult> EvaluateAsync(IAgent agent)
+    {
+        var levelScores = new Dictionary<int, (int passed, int total)>
+        {
+            [1] = (0, 0), [2] = (0, 0), [3] = (0, 0)
+        };
+
+        foreach (var task in LoadGAIATasks())
+        {
+            var answer = await agent.AnswerAsync(task.Question, task.File);
+            var passed = EvaluateAnswer(answer, task.GroundTruth);
+
+            var (p, t) = levelScores[task.Level];
+            levelScores[task.Level] = (p + (passed ? 1 : 0), t + 1);
+        }
+
+        var totalPassed = levelScores.Values.Sum(x => x.passed);
+        var totalTasks = levelScores.Values.Sum(x => x.total);
+
+        return new BenchmarkResult(
+            Name, totalTasks, totalPassed,
+            (double)totalPassed / totalTasks,
+            levelScores.ToDictionary(
+                kv => $"Level {kv.Key}",
+                kv => (double)kv.Value.passed / kv.Value.total
+            ),
+            TimeSpan.Zero
+        );
+    }
+
+    private bool EvaluateAnswer(string prediction, string groundTruth)
+    {
+        // GAIA relaxed exact match
+        return prediction.Trim().ToLower().TrimEnd('.')
+            == groundTruth.Trim().ToLower().TrimEnd('.');
+    }
+}`
+  }
+];
+
+---
+
+<BaseLayout title="Evaluation & Metrics">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-12">
+      <div class="flex items-center gap-3 mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400"
+        >
+          Topics
+        </a>
+        <span class="text-slate-300 dark:text-slate-600">/</span>
+        <span class="text-sm text-slate-700 dark:text-slate-300">Evaluation & Metrics</span>
+      </div>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation & Metrics
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
+        How do you know if your agent is actually working? Evaluation is the discipline of measuring agent performance across multiple dimensions: component accuracy, task completion, and system-level metrics. This guide covers evaluation taxonomy, agent-specific metrics, and major benchmarks.
+      </p>
+    </div>
+
+    <!-- Three-Layer Diagram -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Evaluation Taxonomy
+      </h2>
+      <Diagram>
+{`┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Agent Evaluation Layers                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 3: SYSTEM                                                     │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ E2E Latency │ │ Cost/Task   │ │ Safety      │ │ User Pref   │    │   │
+│  │  │ P95 < 30s   │ │ $/query     │ │ Compliance  │ │ Win Rate    │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    ↑                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 2: TASK                                                       │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ Completion  │ │ Step        │ │ Error       │ │ Output      │    │   │
+│  │  │ Rate        │ │ Efficiency  │ │ Recovery    │ │ Quality     │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    ↑                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 1: COMPONENT                                                  │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ Tool Call   │ │ Argument    │ │ Response    │ │ Context     │    │   │
+│  │  │ Accuracy    │ │ Extraction  │ │ Format      │ │ Utilization │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Evaluation flows bottom-up: Strong component metrics are necessary but not
+sufficient for good task metrics, which are necessary but not sufficient
+for good system metrics.`}
+      </Diagram>
+      <p class="text-slate-600 dark:text-slate-400 mt-4">
+        Agent evaluation operates at three layers. Component-level metrics measure individual capabilities (tool calling, parsing). Task-level metrics measure goal achievement. System-level metrics measure real-world deployment concerns (latency, cost, safety).
+      </p>
+    </section>
+
+    <!-- Taxonomy Table -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Evaluation Metrics Reference
+      </h2>
+      <Table caption="Evaluation metrics organized by layer">
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Metric</th>
+            <th>Description</th>
+            <th>Evaluation Method</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Component</td>
+            <td>Tool Calling Accuracy</td>
+            <td>Correct tool selection rate</td>
+            <td>Compare to ground truth tool sequence</td>
+          </tr>
+          <tr>
+            <td>Component</td>
+            <td>Argument Extraction F1</td>
+            <td>Parameter parsing accuracy</td>
+            <td>Compare extracted args to expected</td>
+          </tr>
+          <tr>
+            <td>Component</td>
+            <td>Response Format Validity</td>
+            <td>Structured output correctness</td>
+            <td>JSON schema validation</td>
+          </tr>
+          <tr>
+            <td>Task</td>
+            <td>Task Completion Rate</td>
+            <td>Goal achievement percentage</td>
+            <td>Binary pass/fail per task</td>
+          </tr>
+          <tr>
+            <td>Task</td>
+            <td>Step Efficiency</td>
+            <td>Steps taken vs optimal path</td>
+            <td>Ratio of actual to optimal steps</td>
+          </tr>
+          <tr>
+            <td>Task</td>
+            <td>Error Recovery Rate</td>
+            <td>Recovery from failures</td>
+            <td>Track retry success rate</td>
+          </tr>
+          <tr>
+            <td>System</td>
+            <td>End-to-End Latency</td>
+            <td>Total response time</td>
+            <td>Measure P50, P95, P99</td>
+          </tr>
+          <tr>
+            <td>System</td>
+            <td>Cost per Task</td>
+            <td>Resource consumption</td>
+            <td>Tokens/API calls/dollars</td>
+          </tr>
+          <tr>
+            <td>System</td>
+            <td>Safety Compliance</td>
+            <td>Guardrail adherence</td>
+            <td>Red team testing</td>
+          </tr>
+        </tbody>
+      </Table>
+      <CodeBlock tabs={evaluationTaxonomy} title="Evaluation Taxonomy Implementation" />
+    </section>
+
+    <!-- DeepEval Section -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Agent-Specific Metrics (DeepEval)
+      </h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6">
+        <a href="https://docs.confident-ai.com/" class="text-primary-600 dark:text-primary-400 hover:underline">DeepEval</a> is an open-source evaluation framework with metrics specifically designed for agentic systems. Unlike traditional NLP metrics, these capture tool use, grounding, and multi-step reasoning.
+      </p>
+      <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Tool Correctness</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Measures whether the agent called the correct tools with correct arguments. Compares actual tool calls to expected calls.
+          </p>
+        </div>
+        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Faithfulness</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Measures whether the agent's response is grounded in retrieved context. Detects hallucination and fabrication.
+          </p>
+        </div>
+        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Answer Relevancy</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Measures whether the response actually addresses the user's question. Detects tangential or off-topic responses.
+          </p>
+        </div>
+        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Task Completion</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Uses an LLM judge to determine if the agent achieved the stated goal. More nuanced than binary pass/fail.
+          </p>
+        </div>
+      </div>
+      <CodeBlock tabs={deepEvalCode} title="DeepEval Agent Metrics" />
+    </section>
+
+    <!-- Trajectory Evaluation -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Trajectory-Level Evaluation
+      </h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6">
+        Beyond final outputs, trajectory evaluation examines the agent's reasoning path. This is crucial for understanding why an agent succeeded or failed, and for detecting issues like reasoning loops or inefficient strategies.
+      </p>
+      <Callout type="tip" title="Why Trajectory Evaluation?">
+        An agent might reach the correct answer through a convoluted path, wasting tokens and time. Trajectory metrics reveal these inefficiencies that final-answer metrics miss.
+      </Callout>
+      <CodeBlock tabs={trajectoryEvalCode} title="Trajectory Evaluation" />
+    </section>
+
+    <!-- Benchmarks Overview -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Major Agent Benchmarks
+      </h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6">
+        Benchmarks provide standardized tasks for comparing agent capabilities. Each focuses on different aspects of agentic behavior.
+      </p>
+      <Table caption="Major agent benchmarks comparison">
+        <thead>
+          <tr>
+            <th>Benchmark</th>
+            <th>Domain</th>
+            <th>Tasks</th>
+            <th>Primary Metric</th>
+            <th>Top Score (2025)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SWE-bench Verified</td>
+            <td>Software Engineering</td>
+            <td>500</td>
+            <td>Resolved Rate</td>
+            <td>~72% (Claude 3.5 Sonnet)</td>
+          </tr>
+          <tr>
+            <td>SWE-bench Full</td>
+            <td>Software Engineering</td>
+            <td>2,294</td>
+            <td>Resolved Rate</td>
+            <td>~51%</td>
+          </tr>
+          <tr>
+            <td>WebArena</td>
+            <td>Web Navigation</td>
+            <td>812</td>
+            <td>Task Success Rate</td>
+            <td>~42%</td>
+          </tr>
+          <tr>
+            <td>GAIA Level 1</td>
+            <td>General Assistant</td>
+            <td>~165</td>
+            <td>Exact Match</td>
+            <td>~75%</td>
+          </tr>
+          <tr>
+            <td>GAIA Level 2</td>
+            <td>General Assistant</td>
+            <td>~186</td>
+            <td>Exact Match</td>
+            <td>~60%</td>
+          </tr>
+          <tr>
+            <td>GAIA Level 3</td>
+            <td>General Assistant</td>
+            <td>~115</td>
+            <td>Exact Match</td>
+            <td>~40%</td>
+          </tr>
+          <tr>
+            <td>t-bench</td>
+            <td>Tool + Conversation</td>
+            <td>680</td>
+            <td>Pass Rate</td>
+            <td>~45% (Retail)</td>
+          </tr>
+          <tr>
+            <td>AgentBench</td>
+            <td>Multi-Environment</td>
+            <td>1,632</td>
+            <td>Overall Score</td>
+            <td>Model-dependent</td>
+          </tr>
+          <tr>
+            <td>HumanEval</td>
+            <td>Code Generation</td>
+            <td>164</td>
+            <td>Pass@1</td>
+            <td>~95%</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Benchmark Deep Dives -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Benchmark Details
+      </h2>
+
+      <div class="space-y-8">
+        <!-- SWE-bench -->
+        <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h3 class="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+            SWE-bench: Software Engineering
+          </h3>
+          <p class="text-slate-600 dark:text-slate-400 mb-4">
+            SWE-bench evaluates agents on real GitHub issues from popular Python repositories (Django, Flask, scikit-learn, etc.). The agent must understand the issue, locate relevant code, and generate a patch that passes the repository's test suite.
+          </p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">Code Understanding</span>
+            <span class="px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">Code Generation</span>
+            <span class="px-2 py-1 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">Test-Driven</span>
+          </div>
+          <Callout type="info" title="Variants">
+            <strong>SWE-bench Verified</strong> (500 tasks) uses human-verified ground truth. <strong>SWE-bench Lite</strong> (300 tasks) contains simpler issues for faster iteration. <strong>SWE-bench Full</strong> (2,294 tasks) is the complete dataset.
+          </Callout>
+        </div>
+
+        <!-- WebArena -->
+        <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h3 class="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+            WebArena: Web Navigation
+          </h3>
+          <p class="text-slate-600 dark:text-slate-400 mb-4">
+            WebArena tests agents on realistic web navigation tasks across 5 self-hosted websites (shopping, forums, code hosting, maps, wiki). Tasks include filling forms, navigating menus, and extracting information.
+          </p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">Visual Understanding</span>
+            <span class="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">Action Planning</span>
+            <span class="px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">Real Websites</span>
+          </div>
+        </div>
+
+        <!-- τ-bench -->
+        <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h3 class="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+            τ-bench (Tau-bench): Tool + Conversation
+          </h3>
+          <p class="text-slate-600 dark:text-slate-400 mb-4">
+            τ-bench evaluates agents on multi-turn conversations that require tool use. Unlike single-turn benchmarks, it tests the agent's ability to maintain context across turns while calling appropriate tools.
+          </p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="px-2 py-1 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">Multi-Turn</span>
+            <span class="px-2 py-1 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">Tool Use</span>
+            <span class="px-2 py-1 text-xs font-medium bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded">Conversation</span>
+          </div>
+          <Callout type="info" title="Domains">
+            τ-bench covers three domains: <strong>Airline</strong> (booking, changes, cancellations), <strong>Retail</strong> (orders, returns, product search), and <strong>Banking</strong> (transactions, account management). Each domain has simulated APIs.
+          </Callout>
+        </div>
+
+        <!-- GAIA -->
+        <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <h3 class="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+            GAIA: General AI Assistant
+          </h3>
+          <p class="text-slate-600 dark:text-slate-400 mb-4">
+            GAIA tests general-purpose assistant capabilities with questions requiring web search, file processing, calculation, and multi-step reasoning. Questions are designed so humans can answer them but require agentic capabilities for AI.
+          </p>
+          <div class="flex flex-wrap gap-2 mb-4">
+            <span class="px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">Web Search</span>
+            <span class="px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">Multi-Step Reasoning</span>
+            <span class="px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">File Processing</span>
+          </div>
+        </div>
+      </div>
+
+      <CodeBlock tabs={benchmarkCode} title="Running Benchmark Evaluations" />
+    </section>
+
+    <!-- LLM-as-Judge -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        LLM-as-Judge
+      </h2>
+      <p class="text-slate-600 dark:text-slate-400 mb-6">
+        Many agent behaviors are hard to evaluate with deterministic metrics. LLM-as-Judge uses a capable model to evaluate agent outputs, providing more nuanced assessment.
+      </p>
+
+      <Diagram>
+{`┌──────────────────────────────────────────────────────────────────┐
+│                      LLM-as-Judge Pipeline                        │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   ┌─────────────┐    ┌──────────────┐    ┌─────────────────┐     │
+│   │ Agent       │    │ Judge        │    │ Structured      │     │
+│   │ Output      │───▶│ Prompt       │───▶│ Evaluation      │     │
+│   │             │    │ + Rubric     │    │                 │     │
+│   └─────────────┘    └──────────────┘    │ • Score: 0-1    │     │
+│                                          │ • Reasoning     │     │
+│   ┌─────────────┐                        │ • Suggestions   │     │
+│   │ Ground      │                        └─────────────────┘     │
+│   │ Truth       │────────▶ Compare                               │
+│   │ (optional)  │                                                │
+│   └─────────────┘                                                │
+│                                                                   │
+│   Judge Models: GPT-4, Claude 3 Opus, Gemini 1.5 Pro             │
+└──────────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Callout type="warning" title="Judge Bias">
+        LLM judges have known biases: they prefer verbose responses, may favor their own writing style, and can be fooled by confident-sounding but incorrect answers. Use multiple judges and calibrate against human labels.
+      </Callout>
+    </section>
+
+    <!-- Best Practices -->
+    <section class="mb-16">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Evaluation Best Practices
+      </h2>
+      <div class="grid md:grid-cols-2 gap-6">
+        <div class="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+          <h3 class="font-semibold text-green-800 dark:text-green-200 mb-2">Do</h3>
+          <ul class="text-sm text-green-700 dark:text-green-300 space-y-2">
+            <li>Evaluate at multiple layers (component, task, system)</li>
+            <li>Use held-out test sets separate from development</li>
+            <li>Include adversarial/edge cases in test suite</li>
+            <li>Track metrics over time to detect regression</li>
+            <li>Combine automated metrics with human evaluation</li>
+            <li>Report confidence intervals, not just point estimates</li>
+          </ul>
+        </div>
+        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+          <h3 class="font-semibold text-red-800 dark:text-red-200 mb-2">Don't</h3>
+          <ul class="text-sm text-red-700 dark:text-red-300 space-y-2">
+            <li>Rely only on final answer accuracy</li>
+            <li>Overfit to benchmark-specific patterns</li>
+            <li>Ignore trajectory quality (how the answer was reached)</li>
+            <li>Skip safety/guardrail evaluation</li>
+            <li>Use only synthetic test cases</li>
+            <li>Assume benchmark scores reflect production performance</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Related Topics -->
+    <section>
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <a href="/agent-patterns/topics/tool-use/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Component-level evaluation of tool calling</p>
+        </a>
+        <a href="/agent-patterns/topics/safety/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Safety & Guardrails</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Evaluating safety compliance</p>
+        </a>
+        <a href="/agent-patterns/benchmarks/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Benchmarks</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Detailed benchmark documentation</p>
+        </a>
+      </div>
+    </section>
+  </div>
+</BaseLayout>

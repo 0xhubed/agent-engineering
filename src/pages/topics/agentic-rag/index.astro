@@ -1,0 +1,1590 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const basicRagExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Basic RAG: Always retrieve, then generate
+
+function basicRAG(query, vectorStore, llm):
+    # Step 1: Embed the query
+    queryEmbedding = embedModel.encode(query)
+
+    # Step 2: Retrieve relevant documents
+    documents = vectorStore.search(
+        embedding: queryEmbedding,
+        topK: 5
+    )
+
+    # Step 3: Build context from retrieved docs
+    context = formatDocuments(documents)
+
+    # Step 4: Generate response with context
+    prompt = """
+    Use the following context to answer the question.
+    If the context doesn't contain the answer, say "I don't know."
+
+    Context:
+    {context}
+
+    Question: {query}
+    """
+
+    response = llm.generate(prompt)
+    return response
+
+# Limitations:
+# - Always retrieves, even for simple questions
+# - No quality check on retrieved documents
+# - Single retrieval pass (may miss info)
+# - No reasoning about what to retrieve`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_community.vectorstores import Chroma
+from langchain.chains import RetrievalQA
+
+def create_basic_rag(documents: list[str], collection_name: str = "docs"):
+    """Create a basic RAG pipeline."""
+
+    # Initialize embeddings
+    embeddings = OpenAIEmbeddings()
+
+    # Create vector store
+    vectorstore = Chroma.from_texts(
+        texts=documents,
+        embedding=embeddings,
+        collection_name=collection_name
+    )
+
+    # Create retriever
+    retriever = vectorstore.as_retriever(
+        search_type="similarity",
+        search_kwargs={"k": 5}
+    )
+
+    # Create QA chain
+    llm = ChatOpenAI(model="gpt-4", temperature=0)
+
+    qa_chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",  # Simple: stuff all docs into context
+        retriever=retriever,
+        return_source_documents=True
+    )
+
+    return qa_chain
+
+# Usage
+qa = create_basic_rag(my_documents)
+result = qa.invoke({"query": "What is the refund policy?"})
+print(result["result"])
+print(f"Sources: {[doc.metadata for doc in result['source_documents']]}")]`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.Memory;
+
+public class BasicRagPipeline
+{
+    private readonly ISemanticTextMemory _memory;
+    private readonly Kernel _kernel;
+    private const string CollectionName = "documents";
+
+    public BasicRagPipeline(string openAiKey)
+    {
+        // Initialize memory with embeddings
+        var memoryBuilder = new MemoryBuilder()
+            .WithOpenAITextEmbeddingGeneration("text-embedding-3-small", openAiKey)
+            .WithMemoryStore(new VolatileMemoryStore());
+
+        _memory = memoryBuilder.Build();
+
+        // Initialize kernel for generation
+        _kernel = Kernel.CreateBuilder()
+            .AddOpenAIChatCompletion("gpt-4", openAiKey)
+            .Build();
+    }
+
+    public async Task IndexDocumentsAsync(
+        IEnumerable<(string Id, string Text)> documents,
+        CancellationToken ct = default)
+    {
+        foreach (var (id, text) in documents)
+        {
+            await _memory.SaveInformationAsync(
+                CollectionName,
+                text,
+                id,
+                cancellationToken: ct
+            );
+        }
+    }
+
+    public async Task<string> QueryAsync(
+        string query,
+        int topK = 5,
+        CancellationToken ct = default)
+    {
+        // Step 1: Retrieve relevant documents
+        var results = await _memory.SearchAsync(
+            CollectionName,
+            query,
+            topK,
+            minRelevanceScore: 0.5,
+            cancellationToken: ct
+        ).ToListAsync(ct);
+
+        // Step 2: Build context
+        var context = string.Join("\n\n", results.Select(r => r.Metadata.Text));
+
+        // Step 3: Generate response
+        var prompt = $@"Use the following context to answer the question.
+If the context doesn't contain the answer, say ""I don't know.""
+
+Context:
+{context}
+
+Question: {query}";
+
+        var response = await _kernel.InvokePromptAsync(prompt, cancellationToken: ct);
+        return response.GetValue<string>() ?? "";
+    }
+}`,
+  },
+];
+
+const agenticRagExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Agentic RAG: Agent decides when and what to retrieve
+
+class AgenticRAG:
+    tools: [
+        searchDocuments(query, filters),  # Vector search
+        lookupEntity(entityName),          # Knowledge base lookup
+        webSearch(query),                  # External search
+        noRetrieval()                      # Answer from knowledge
+    ]
+
+    function answer(question):
+        # Agent reasons about retrieval strategy
+        while not hasAnswer:
+            thought = llm.reason(
+                question: question,
+                previousSteps: history,
+                availableTools: tools
+            )
+
+            if thought.needsRetrieval:
+                # Agent formulates retrieval query (may differ from question)
+                retrievalQuery = thought.formulatedQuery
+                results = executeRetrieval(thought.selectedTool, retrievalQuery)
+
+                # Agent evaluates results
+                evaluation = llm.evaluate(
+                    question: question,
+                    retrievedInfo: results
+                )
+
+                if evaluation.sufficient:
+                    hasAnswer = true
+                elif evaluation.needsMoreInfo:
+                    # Refine and retrieve again
+                    history.append(results)
+                else:
+                    # Try different retrieval strategy
+                    continue
+
+            else:
+                # Agent can answer without retrieval
+                hasAnswer = true
+
+        return llm.generateAnswer(question, history)
+
+# Key differences from basic RAG:
+# 1. Agent DECIDES whether to retrieve
+# 2. Agent FORMULATES the retrieval query
+# 3. Agent EVALUATES retrieval results
+# 4. Agent can do MULTIPLE retrieval rounds
+# 5. Agent can use DIFFERENT retrieval tools`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangGraph)',
+    code: `from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from typing import TypedDict, Annotated
+import operator
+
+# Define state
+class AgentState(TypedDict):
+    messages: Annotated[list, operator.add]
+    retrieved_docs: list
+    needs_retrieval: bool
+
+# Define tools
+@tool
+def search_documents(query: str, max_results: int = 5) -> str:
+    """Search the document store for relevant information."""
+    results = vector_store.similarity_search(query, k=max_results)
+    return "\n\n".join([doc.page_content for doc in results])
+
+@tool
+def search_web(query: str) -> str:
+    """Search the web for current information."""
+    # Implementation with web search API
+    return web_search_api.search(query)
+
+@tool
+def lookup_entity(entity_name: str) -> str:
+    """Look up specific entity in knowledge base."""
+    return knowledge_base.get(entity_name, "Entity not found")
+
+# Create the agent
+llm = ChatOpenAI(model="gpt-4").bind_tools([
+    search_documents, search_web, lookup_entity
+])
+
+def should_retrieve(state: AgentState) -> str:
+    """Decide if we need to retrieve or can answer."""
+    last_message = state["messages"][-1]
+
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "retrieve"
+    return "answer"
+
+def call_model(state: AgentState) -> dict:
+    """Have the agent reason about what to do."""
+    messages = state["messages"]
+
+    # Add system prompt for RAG behavior
+    system = """You are a helpful assistant with access to retrieval tools.
+
+    IMPORTANT: Before answering, consider:
+    1. Can you answer this from your knowledge? If yes, just respond.
+    2. Does this need current/specific information? Use search_web.
+    3. Does this need document lookup? Use search_documents.
+    4. Is this about a specific entity? Use lookup_entity.
+
+    Be strategic about retrieval - don't retrieve if unnecessary."""
+
+    response = llm.invoke([{"role": "system", "content": system}] + messages)
+    return {"messages": [response]}
+
+def generate_answer(state: AgentState) -> dict:
+    """Generate final answer based on retrieved context."""
+    messages = state["messages"]
+    docs = state.get("retrieved_docs", [])
+
+    if docs:
+        context = "\n\n".join(docs)
+        messages = messages + [
+            {"role": "system", "content": f"Context from retrieval:\n{context}"}
+        ]
+
+    response = llm.invoke(messages)
+    return {"messages": [response]}
+
+# Build the graph
+workflow = StateGraph(AgentState)
+
+workflow.add_node("agent", call_model)
+workflow.add_node("retrieve", ToolNode([search_documents, search_web, lookup_entity]))
+workflow.add_node("answer", generate_answer)
+
+workflow.set_entry_point("agent")
+workflow.add_conditional_edges("agent", should_retrieve, {
+    "retrieve": "retrieve",
+    "answer": "answer"
+})
+workflow.add_edge("retrieve", "agent")  # Loop back after retrieval
+workflow.add_edge("answer", END)
+
+app = workflow.compile()
+
+# Usage
+result = app.invoke({
+    "messages": [{"role": "user", "content": "What's our Q3 revenue?"}],
+    "retrieved_docs": [],
+    "needs_retrieval": False
+})`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using System.ComponentModel;
+
+public class AgenticRagPipeline
+{
+    private readonly Kernel _kernel;
+    private readonly IChatCompletionService _chat;
+    private readonly ISemanticTextMemory _memory;
+
+    public AgenticRagPipeline(Kernel kernel, ISemanticTextMemory memory)
+    {
+        _kernel = kernel;
+        _chat = kernel.GetRequiredService<IChatCompletionService>();
+        _memory = memory;
+
+        // Register retrieval functions
+        _kernel.ImportPluginFromFunctions("Retrieval", new[]
+        {
+            KernelFunctionFactory.CreateFromMethod(SearchDocuments, "SearchDocuments"),
+            KernelFunctionFactory.CreateFromMethod(SearchWeb, "SearchWeb"),
+            KernelFunctionFactory.CreateFromMethod(LookupEntity, "LookupEntity")
+        });
+    }
+
+    [Description("Search documents for relevant information")]
+    private async Task<string> SearchDocuments(
+        [Description("Search query")] string query,
+        [Description("Maximum results")] int maxResults = 5)
+    {
+        var results = await _memory.SearchAsync("documents", query, maxResults)
+            .ToListAsync();
+
+        return string.Join("\n\n", results.Select(r => r.Metadata.Text));
+    }
+
+    [Description("Search the web for current information")]
+    private async Task<string> SearchWeb(
+        [Description("Search query")] string query)
+    {
+        // Web search implementation
+        return await _webSearchService.SearchAsync(query);
+    }
+
+    [Description("Look up a specific entity in the knowledge base")]
+    private async Task<string> LookupEntity(
+        [Description("Entity name")] string entityName)
+    {
+        return await _knowledgeBase.GetAsync(entityName) ?? "Entity not found";
+    }
+
+    public async Task<string> QueryAsync(
+        string question,
+        int maxIterations = 5,
+        CancellationToken ct = default)
+    {
+        var history = new ChatHistory();
+        history.AddSystemMessage(@"You are a helpful assistant with retrieval tools.
+
+Before answering, consider:
+1. Can you answer from knowledge? Just respond.
+2. Need current info? Use SearchWeb.
+3. Need document lookup? Use SearchDocuments.
+4. About specific entity? Use LookupEntity.
+
+Be strategic - don't retrieve unnecessarily.");
+
+        history.AddUserMessage(question);
+
+        var settings = new OpenAIPromptExecutionSettings
+        {
+            ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+            MaxTokens = 2000
+        };
+
+        for (int i = 0; i < maxIterations; i++)
+        {
+            var response = await _chat.GetChatMessageContentAsync(
+                history,
+                settings,
+                _kernel,
+                ct
+            );
+
+            history.Add(response);
+
+            // Check if we got a final answer (no tool calls)
+            if (response.Items.All(item => item is not FunctionCallContent))
+            {
+                return response.Content ?? "";
+            }
+        }
+
+        return "Unable to generate answer within iteration limit.";
+    }
+}`,
+  },
+];
+
+const selfRagExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Self-RAG: Model critiques its own retrieval and generation
+
+class SelfRAG:
+    function answer(question):
+        # Step 1: Decide if retrieval is needed
+        retrievalDecision = llm.generate(
+            prompt: "Given this question, do I need to retrieve information? [Yes/No]",
+            question: question
+        )
+
+        if retrievalDecision == "No":
+            # Generate without retrieval
+            response = llm.generate(question)
+            return selfCritique(question, response, [])
+
+        # Step 2: Retrieve documents
+        documents = retrieve(question)
+
+        # Step 3: For each document, assess relevance
+        relevantDocs = []
+        for doc in documents:
+            isRelevant = llm.generate(
+                prompt: "Is this document relevant to the question? [Relevant/Irrelevant]",
+                question: question,
+                document: doc
+            )
+            if isRelevant == "Relevant":
+                relevantDocs.append(doc)
+
+        # Step 4: Generate response with relevant docs
+        response = llm.generate(
+            prompt: question,
+            context: relevantDocs
+        )
+
+        # Step 5: Self-critique the response
+        return selfCritique(question, response, relevantDocs)
+
+    function selfCritique(question, response, sources):
+        # Check if response is supported by sources
+        supportScore = llm.generate(
+            prompt: "Is this response fully supported by the sources? [Fully/Partially/No]",
+            response: response,
+            sources: sources
+        )
+
+        # Check if response is useful
+        usefulnessScore = llm.generate(
+            prompt: "How useful is this response? [5/4/3/2/1]",
+            question: question,
+            response: response
+        )
+
+        if supportScore == "No" or usefulnessScore < 3:
+            # Regenerate with feedback
+            return regenerateWithCritique(question, response, supportScore, usefulnessScore)
+
+        return {
+            response: response,
+            supported: supportScore,
+            usefulness: usefulnessScore,
+            sources: sources
+        }`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from enum import Enum
+
+class RetrievalDecision(Enum):
+    YES = "yes"
+    NO = "no"
+
+class RelevanceScore(Enum):
+    RELEVANT = "relevant"
+    IRRELEVANT = "irrelevant"
+
+class SupportScore(Enum):
+    FULLY_SUPPORTED = "fully_supported"
+    PARTIALLY_SUPPORTED = "partially_supported"
+    NOT_SUPPORTED = "not_supported"
+
+@dataclass
+class SelfRAGResponse:
+    answer: str
+    sources: list[str]
+    support_score: SupportScore
+    usefulness_score: int
+    retrieval_used: bool
+
+class SelfRAG:
+    def __init__(self, client, retriever, model: str = "gpt-4"):
+        self.client = client
+        self.retriever = retriever
+        self.model = model
+
+    def query(self, question: str) -> SelfRAGResponse:
+        # Step 1: Decide if retrieval is needed
+        retrieval_decision = self._decide_retrieval(question)
+
+        if retrieval_decision == RetrievalDecision.NO:
+            answer = self._generate_without_context(question)
+            return self._self_critique(question, answer, [], False)
+
+        # Step 2: Retrieve documents
+        documents = self.retriever.search(question, k=5)
+
+        # Step 3: Filter by relevance
+        relevant_docs = self._filter_relevant(question, documents)
+
+        if not relevant_docs:
+            # Fall back to generation without context
+            answer = self._generate_without_context(question)
+            return self._self_critique(question, answer, [], True)
+
+        # Step 4: Generate with relevant context
+        answer = self._generate_with_context(question, relevant_docs)
+
+        # Step 5: Self-critique
+        return self._self_critique(question, answer, relevant_docs, True)
+
+    def _decide_retrieval(self, question: str) -> RetrievalDecision:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Given this question, do you need to retrieve external information to answer accurately?
+
+Question: {question}
+
+Consider:
+- Is this about specific facts, data, or recent events? -> Retrieve
+- Is this about general knowledge or reasoning? -> No retrieval
+- Is this about personal opinions or hypotheticals? -> No retrieval
+
+Answer with just: YES or NO"""
+            }]
+        )
+        answer = response.choices[0].message.content.strip().upper()
+        return RetrievalDecision.YES if "YES" in answer else RetrievalDecision.NO
+
+    def _filter_relevant(self, question: str, documents: list[str]) -> list[str]:
+        relevant = []
+        for doc in documents:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{
+                    "role": "user",
+                    "content": f"""Is this document relevant to answering the question?
+
+Question: {question}
+
+Document: {doc[:500]}...
+
+Answer with just: RELEVANT or IRRELEVANT"""
+                }]
+            )
+            if "RELEVANT" in response.choices[0].message.content.upper():
+                relevant.append(doc)
+        return relevant
+
+    def _self_critique(
+        self,
+        question: str,
+        answer: str,
+        sources: list[str],
+        retrieval_used: bool
+    ) -> SelfRAGResponse:
+        # Check support
+        support_score = self._check_support(answer, sources)
+
+        # Check usefulness
+        usefulness_score = self._check_usefulness(question, answer)
+
+        # Regenerate if quality is low
+        if support_score == SupportScore.NOT_SUPPORTED and sources:
+            answer = self._regenerate_with_feedback(
+                question, answer, sources, "not supported by sources"
+            )
+            support_score = self._check_support(answer, sources)
+
+        if usefulness_score < 3:
+            answer = self._regenerate_with_feedback(
+                question, answer, sources, "not useful enough"
+            )
+            usefulness_score = self._check_usefulness(question, answer)
+
+        return SelfRAGResponse(
+            answer=answer,
+            sources=sources,
+            support_score=support_score,
+            usefulness_score=usefulness_score,
+            retrieval_used=retrieval_used
+        )
+
+    def _check_support(self, answer: str, sources: list[str]) -> SupportScore:
+        if not sources:
+            return SupportScore.FULLY_SUPPORTED  # No sources to contradict
+
+        sources_text = "\n---\n".join(sources)
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Is this answer supported by the source documents?
+
+Answer: {answer}
+
+Sources:
+{sources_text}
+
+Respond with:
+- FULLY_SUPPORTED: All claims in the answer are backed by sources
+- PARTIALLY_SUPPORTED: Some claims are backed, others are not
+- NOT_SUPPORTED: The answer contradicts or goes beyond the sources"""
+            }]
+        )
+        content = response.choices[0].message.content.upper()
+        if "FULLY" in content:
+            return SupportScore.FULLY_SUPPORTED
+        elif "PARTIALLY" in content:
+            return SupportScore.PARTIALLY_SUPPORTED
+        return SupportScore.NOT_SUPPORTED
+
+    def _check_usefulness(self, question: str, answer: str) -> int:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Rate how useful this answer is for the question (1-5):
+
+Question: {question}
+Answer: {answer}
+
+5 = Perfectly answers the question
+4 = Good answer with minor gaps
+3 = Adequate but could be better
+2 = Partially helpful
+1 = Not helpful
+
+Respond with just the number."""
+            }]
+        )
+        try:
+            return int(response.choices[0].message.content.strip()[0])
+        except:
+            return 3`,
+  },
+];
+
+const correctiveRagExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Corrective RAG (CRAG): Evaluate and correct retrieval quality
+
+class CorrectiveRAG:
+    function answer(question):
+        # Step 1: Initial retrieval
+        documents = retrieve(question)
+
+        # Step 2: Evaluate each document's relevance
+        evaluations = []
+        for doc in documents:
+            score = evaluateRelevance(question, doc)
+            evaluations.append({ doc: doc, score: score })
+
+        # Step 3: Determine action based on evaluation
+        relevantDocs = filter(evaluations, score == "Correct")
+        ambiguousDocs = filter(evaluations, score == "Ambiguous")
+        irrelevantDocs = filter(evaluations, score == "Incorrect")
+
+        if allRelevant(evaluations):
+            # All documents are relevant - use them directly
+            action = "CORRECT"
+            context = relevantDocs
+
+        elif allIrrelevant(evaluations):
+            # All documents are irrelevant - use web search
+            action = "INCORRECT"
+            webResults = webSearch(question)
+            context = webResults
+
+        else:
+            # Mixed relevance - combine strategies
+            action = "AMBIGUOUS"
+            webResults = webSearch(question)
+            context = relevantDocs + refineDocuments(ambiguousDocs) + webResults
+
+        # Step 4: Generate with corrected context
+        return generate(question, context)
+
+    function evaluateRelevance(question, document):
+        # Three-way classification
+        prompt = """
+        Evaluate if this document is relevant to the question.
+
+        Question: {question}
+        Document: {document}
+
+        - CORRECT: Document directly helps answer the question
+        - INCORRECT: Document is not relevant at all
+        - AMBIGUOUS: Document is partially relevant or tangential
+
+        Respond with: CORRECT, INCORRECT, or AMBIGUOUS
+        """
+        return llm.generate(prompt)
+
+    function refineDocuments(documents):
+        # Extract only the relevant portions
+        refined = []
+        for doc in documents:
+            relevantParts = llm.extract(
+                prompt: "Extract only the parts relevant to the question",
+                document: doc
+            )
+            refined.append(relevantParts)
+        return refined`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from enum import Enum
+
+class RelevanceGrade(Enum):
+    CORRECT = "correct"      # Directly relevant
+    INCORRECT = "incorrect"  # Not relevant
+    AMBIGUOUS = "ambiguous"  # Partially relevant
+
+class RetrievalAction(Enum):
+    USE_RETRIEVED = "use_retrieved"
+    USE_WEB = "use_web"
+    COMBINE = "combine"
+
+@dataclass
+class GradedDocument:
+    content: str
+    grade: RelevanceGrade
+    confidence: float
+
+class CorrectiveRAG:
+    def __init__(self, client, retriever, web_search, model: str = "gpt-4"):
+        self.client = client
+        self.retriever = retriever
+        self.web_search = web_search
+        self.model = model
+
+    def query(self, question: str) -> str:
+        # Step 1: Initial retrieval
+        documents = self.retriever.search(question, k=5)
+
+        # Step 2: Grade each document
+        graded_docs = [
+            self._grade_document(question, doc)
+            for doc in documents
+        ]
+
+        # Step 3: Determine corrective action
+        action = self._determine_action(graded_docs)
+
+        # Step 4: Build context based on action
+        if action == RetrievalAction.USE_RETRIEVED:
+            context = self._build_context_from_docs(graded_docs)
+
+        elif action == RetrievalAction.USE_WEB:
+            web_results = self.web_search.search(question)
+            context = self._format_web_results(web_results)
+
+        else:  # COMBINE
+            # Use correct docs + refined ambiguous + web
+            correct_docs = [d for d in graded_docs if d.grade == RelevanceGrade.CORRECT]
+            ambiguous_docs = [d for d in graded_docs if d.grade == RelevanceGrade.AMBIGUOUS]
+
+            refined = self._refine_ambiguous(question, ambiguous_docs)
+            web_results = self.web_search.search(question)
+
+            context = (
+                self._build_context_from_docs(correct_docs) +
+                "\n\n" + refined +
+                "\n\n" + self._format_web_results(web_results)
+            )
+
+        # Step 5: Generate answer
+        return self._generate(question, context)
+
+    def _grade_document(self, question: str, document: str) -> GradedDocument:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Grade this document's relevance to the question.
+
+Question: {question}
+
+Document:
+{document[:1000]}
+
+Grades:
+- CORRECT: Directly helps answer the question
+- INCORRECT: Not relevant to the question
+- AMBIGUOUS: Partially relevant or tangential
+
+Respond with JSON: {{"grade": "...", "confidence": 0.0-1.0, "reason": "..."}}"""
+            }],
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+        return GradedDocument(
+            content=document,
+            grade=RelevanceGrade(data["grade"].lower()),
+            confidence=data.get("confidence", 0.5)
+        )
+
+    def _determine_action(self, graded_docs: list[GradedDocument]) -> RetrievalAction:
+        correct = sum(1 for d in graded_docs if d.grade == RelevanceGrade.CORRECT)
+        incorrect = sum(1 for d in graded_docs if d.grade == RelevanceGrade.INCORRECT)
+        ambiguous = sum(1 for d in graded_docs if d.grade == RelevanceGrade.AMBIGUOUS)
+
+        total = len(graded_docs)
+
+        if correct / total >= 0.6:
+            return RetrievalAction.USE_RETRIEVED
+        elif incorrect / total >= 0.8:
+            return RetrievalAction.USE_WEB
+        else:
+            return RetrievalAction.COMBINE
+
+    def _refine_ambiguous(
+        self,
+        question: str,
+        ambiguous_docs: list[GradedDocument]
+    ) -> str:
+        if not ambiguous_docs:
+            return ""
+
+        docs_text = "\n---\n".join([d.content for d in ambiguous_docs])
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Extract only the parts of these documents that are relevant to the question.
+
+Question: {question}
+
+Documents:
+{docs_text}
+
+Return only the relevant excerpts, removing irrelevant content."""
+            }]
+        )
+        return response.choices[0].message.content
+
+    def _generate(self, question: str, context: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": f"Context:\n{context}"},
+                {"role": "user", "content": question}
+            ]
+        )
+        return response.choices[0].message.content`,
+  },
+];
+
+const graphRagExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Graph RAG: Combine knowledge graphs with vector retrieval
+
+class GraphRAG:
+    vectorStore: VectorDB      # For semantic search
+    knowledgeGraph: Neo4j      # For structured relationships
+
+    function answer(question):
+        # Step 1: Extract entities from question
+        entities = extractEntities(question)
+
+        # Step 2: Retrieve from both sources
+        # Vector retrieval for semantic similarity
+        vectorResults = vectorStore.search(question, topK = 5)
+
+        # Graph traversal for related entities
+        graphResults = []
+        for entity in entities:
+            # Find entity in graph
+            node = knowledgeGraph.findNode(entity)
+            if node:
+                # Get related nodes (neighbors, paths)
+                related = knowledgeGraph.traverse(
+                    startNode: node,
+                    maxDepth: 2,
+                    relationTypes: ["related_to", "part_of", "caused_by"]
+                )
+                graphResults.append(related)
+
+        # Step 3: Combine and deduplicate
+        combinedContext = merge(vectorResults, graphResults)
+
+        # Step 4: Build structured context
+        context = formatContext(
+            semanticDocs: vectorResults,
+            entityRelations: graphResults,
+            entities: entities
+        )
+
+        # Step 5: Generate with structured knowledge
+        return llm.generate(question, context)
+
+    function extractEntities(question):
+        # Use NER or LLM to extract entities
+        return llm.generate(
+            prompt: "Extract named entities (people, places, concepts) from: " + question
+        )
+
+    function formatContext(semanticDocs, entityRelations, entities):
+        context = "## Relevant Documents\n"
+        for doc in semanticDocs:
+            context += "- " + doc.summary + "\n"
+
+        context += "\n## Entity Relationships\n"
+        for entity in entities:
+            relations = entityRelations.get(entity, [])
+            context += f"### {entity}\n"
+            for rel in relations:
+                context += f"- {rel.type}: {rel.target}\n"
+
+        return context`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from neo4j import GraphDatabase
+from dataclasses import dataclass
+
+@dataclass
+class EntityRelation:
+    source: str
+    relation: str
+    target: str
+    properties: dict
+
+class GraphRAG:
+    def __init__(
+        self,
+        client,
+        vector_store,
+        neo4j_uri: str,
+        neo4j_auth: tuple,
+        model: str = "gpt-4"
+    ):
+        self.client = client
+        self.vector_store = vector_store
+        self.graph = GraphDatabase.driver(neo4j_uri, auth=neo4j_auth)
+        self.model = model
+
+    def query(self, question: str) -> str:
+        # Step 1: Extract entities
+        entities = self._extract_entities(question)
+
+        # Step 2: Vector retrieval
+        vector_results = self.vector_store.similarity_search(question, k=5)
+
+        # Step 3: Graph retrieval
+        graph_results = self._graph_retrieval(entities)
+
+        # Step 4: Build combined context
+        context = self._build_context(
+            question, entities, vector_results, graph_results
+        )
+
+        # Step 5: Generate answer
+        return self._generate(question, context)
+
+    def _extract_entities(self, question: str) -> list[str]:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "user",
+                "content": f"""Extract named entities from this question.
+Include: people, organizations, products, concepts, locations.
+
+Question: {question}
+
+Return as JSON: {{"entities": ["entity1", "entity2", ...]}}"""
+            }],
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+        return data.get("entities", [])
+
+    def _graph_retrieval(self, entities: list[str]) -> dict[str, list[EntityRelation]]:
+        results = {}
+
+        with self.graph.session() as session:
+            for entity in entities:
+                # Find entity and its relationships
+                query = """
+                MATCH (e)-[r]-(related)
+                WHERE e.name =~ $pattern OR e.label =~ $pattern
+                RETURN e.name as source,
+                       type(r) as relation,
+                       related.name as target,
+                       properties(r) as props
+                LIMIT 20
+                """
+                pattern = f"(?i).*{entity}.*"
+
+                records = session.run(query, pattern=pattern)
+
+                relations = [
+                    EntityRelation(
+                        source=record["source"],
+                        relation=record["relation"],
+                        target=record["target"],
+                        properties=record["props"] or {}
+                    )
+                    for record in records
+                ]
+
+                if relations:
+                    results[entity] = relations
+
+        return results
+
+    def _build_context(
+        self,
+        question: str,
+        entities: list[str],
+        vector_results: list,
+        graph_results: dict[str, list[EntityRelation]]
+    ) -> str:
+        parts = []
+
+        # Semantic documents
+        if vector_results:
+            parts.append("## Relevant Documents")
+            for i, doc in enumerate(vector_results, 1):
+                parts.append(f"{i}. {doc.page_content[:300]}...")
+
+        # Entity relationships from graph
+        if graph_results:
+            parts.append("\n## Entity Knowledge Graph")
+            for entity, relations in graph_results.items():
+                parts.append(f"\n### {entity}")
+                for rel in relations[:10]:  # Limit relations
+                    parts.append(f"- {rel.relation} -> {rel.target}")
+                    if rel.properties:
+                        props = ", ".join(f"{k}={v}" for k, v in rel.properties.items())
+                        parts.append(f"  ({props})")
+
+        # Extracted entities for reference
+        parts.append(f"\n## Detected Entities: {', '.join(entities)}")
+
+        return "\n".join(parts)
+
+    def _generate(self, question: str, context: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": f"""You have access to both document search results and a knowledge graph.
+Use both sources to provide a comprehensive answer.
+
+{context}"""},
+                {"role": "user", "content": question}
+            ]
+        )
+        return response.choices[0].message.content
+
+    def close(self):
+        self.graph.close()`,
+  },
+];
+---
+
+<BaseLayout
+  title="Agentic RAG"
+  description="Evolution from basic retrieval to intelligent agents that decide when, what, and how to retrieve information"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Agentic RAG
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        Beyond simple retrieve-then-generate: agents that intelligently decide when, what, and how to retrieve, then critique and correct their own retrieval.
+      </p>
+    </header>
+
+    <!-- Evolution Diagram -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The RAG Evolution
+      </h2>
+
+      <Diagram title="RAG Architecture Evolution">
+{`BASIC RAG              AGENTIC RAG           SELF-RAG              CORRECTIVE RAG
+──────────────         ──────────────        ──────────────        ──────────────
+
+Query                  Query                 Query                 Query
+  │                      │                     │                     │
+  ▼                      ▼                     ▼                     ▼
+┌─────────┐          ┌─────────┐          ┌─────────┐          ┌─────────┐
+│ ALWAYS  │          │ DECIDE  │          │ DECIDE  │          │ ALWAYS  │
+│RETRIEVE │          │IF NEEDED│          │IF NEEDED│          │RETRIEVE │
+└────┬────┘          └────┬────┘          └────┬────┘          └────┬────┘
+     │                    │                    │                    │
+     ▼                    ▼                    ▼                    ▼
+┌─────────┐          ┌─────────┐          ┌─────────┐          ┌─────────┐
+│ Vector  │          │ Multiple│          │ Retrieve│          │ GRADE   │
+│ Search  │          │ Tools   │          │ + Grade │          │ EACH    │
+└────┬────┘          └────┬────┘          │ Relevance          │ DOCUMENT│
+     │                    │               └────┬────┘          └────┬────┘
+     │                    │                    │                    │
+     │                    │                    ▼               ┌────┴────┐
+     │                    │               ┌─────────┐          │ CORRECT │
+     │                    │               │ Generate│          │ AMBIG.  │
+     │                    │               │+ Self-  │          │ INCORR. │
+     │                    │               │ Critique│          └────┬────┘
+     ▼                    ▼               └────┬────┘               │
+┌─────────┐          ┌─────────┐               │                    ▼
+│GENERATE │          │GENERATE │               ▼               ┌─────────┐
+└─────────┘          └─────────┘          ┌─────────┐          │GENERATE │
+                                          │ Revise  │          └─────────┘
+                                          │if Needed│
+                                          └─────────┘
+
+
+GRAPH RAG
+──────────────
+
+Query
+  │
+  ├──────────────┐
+  ▼              ▼
+┌─────────┐  ┌─────────┐
+│ Extract │  │ Vector  │
+│Entities │  │ Search  │
+└────┬────┘  └────┬────┘
+     │            │
+     ▼            │
+┌─────────┐       │
+│ Graph   │       │
+│Traversal│       │
+└────┬────┘       │
+     │            │
+     └─────┬──────┘
+           ▼
+      ┌─────────┐
+      │ COMBINE │
+      │ Context │
+      └────┬────┘
+           ▼
+      ┌─────────┐
+      │GENERATE │
+      └─────────┘`}
+      </Diagram>
+    </section>
+
+    <!-- Comparison Table -->
+    <section class="mb-12">
+      <Table caption="RAG approach comparison">
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>When to Retrieve</th>
+            <th>Quality Control</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Basic RAG</strong></td>
+            <td>Always</td>
+            <td>None</td>
+            <td>Simple Q&A</td>
+          </tr>
+          <tr>
+            <td><strong>Agentic RAG</strong></td>
+            <td>Agent decides</td>
+            <td>Tool selection</td>
+            <td>Varied queries</td>
+          </tr>
+          <tr>
+            <td><strong>Self-RAG</strong></td>
+            <td>Agent decides</td>
+            <td>Self-critique</td>
+            <td>Accuracy critical</td>
+          </tr>
+          <tr>
+            <td><strong>Corrective RAG</strong></td>
+            <td>Always</td>
+            <td>Grade + correct</td>
+            <td>Noisy retrieval</td>
+          </tr>
+          <tr>
+            <td><strong>Graph RAG</strong></td>
+            <td>Always (dual)</td>
+            <td>Structured + semantic</td>
+            <td>Entity-rich domains</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Basic RAG -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        1. Basic RAG (Baseline)
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The simplest RAG architecture: always retrieve, then generate. No intelligence about whether retrieval is needed or if retrieved documents are relevant.
+      </p>
+
+      <CodeBlock tabs={basicRagExample} title="Basic RAG Implementation" />
+
+      <Callout type="warning" title="Limitations">
+        Basic RAG retrieves for every query (even "hello"), uses whatever is retrieved regardless of quality, and only does one retrieval pass.
+      </Callout>
+    </section>
+
+    <!-- Agentic RAG -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        2. Agentic RAG
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        An agent with retrieval tools that <strong>decides</strong> when retrieval is needed, which tool to use, and what query to formulate:
+      </p>
+
+      <CodeBlock tabs={agenticRagExample} title="Agentic RAG Implementation" />
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          Key Capabilities
+        </h3>
+        <ul class="space-y-2 text-slate-600 dark:text-slate-300">
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500 font-bold">1.</span>
+            <span><strong>Retrieval Decision</strong> - Agent decides IF retrieval is needed</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500 font-bold">2.</span>
+            <span><strong>Query Formulation</strong> - Agent rewrites query for better retrieval</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500 font-bold">3.</span>
+            <span><strong>Tool Selection</strong> - Agent chooses the right retrieval tool</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500 font-bold">4.</span>
+            <span><strong>Iterative Retrieval</strong> - Agent can retrieve multiple times</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Self-RAG -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        3. Self-RAG
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Self-RAG (Asai et al., 2023) adds self-reflection: the model critiques its own retrieval decisions and generation quality:
+      </p>
+
+      <CodeBlock tabs={selfRagExample} title="Self-RAG Implementation" />
+
+      <div class="mt-6 bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+        <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Self-RAG Reflection Tokens</h4>
+        <ul class="space-y-1 text-sm text-slate-600 dark:text-slate-400">
+          <li><code>[Retrieve]</code> - Should I retrieve? (Yes/No)</li>
+          <li><code>[IsRel]</code> - Is this document relevant? (Relevant/Irrelevant)</li>
+          <li><code>[IsSup]</code> - Is response supported? (Fully/Partially/No)</li>
+          <li><code>[IsUse]</code> - Is response useful? (5/4/3/2/1)</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Corrective RAG -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        4. Corrective RAG (CRAG)
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        CRAG (Yan et al., 2024) focuses on evaluating and correcting retrieval quality before generation:
+      </p>
+
+      <CodeBlock tabs={correctiveRagExample} title="Corrective RAG Implementation" />
+
+      <Diagram title="CRAG Decision Flow">
+{`Retrieved Documents
+        │
+        ▼
+┌───────────────────┐
+│   GRADE EACH      │
+│   DOCUMENT        │
+│                   │
+│  Correct?         │
+│  Incorrect?       │
+│  Ambiguous?       │
+└─────────┬─────────┘
+          │
+    ┌─────┴─────┐
+    │           │
+    ▼           ▼
+All Correct  All Incorrect   Mixed
+    │           │              │
+    │           │              │
+    ▼           ▼              ▼
+┌───────┐  ┌───────┐    ┌───────────┐
+│ USE   │  │ WEB   │    │ COMBINE   │
+│ DOCS  │  │SEARCH │    │ Correct + │
+└───────┘  └───────┘    │ Refined + │
+                        │ Web       │
+                        └───────────┘`}
+      </Diagram>
+
+      <Callout type="info" title="Key Innovation">
+        CRAG's three-way grading (Correct/Incorrect/Ambiguous) enables nuanced handling: keeping good docs, discarding bad ones, and refining ambiguous ones.
+      </Callout>
+    </section>
+
+    <!-- Graph RAG -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        5. Graph RAG
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Graph RAG combines vector search with knowledge graph traversal for structured + semantic retrieval:
+      </p>
+
+      <CodeBlock tabs={graphRagExample} title="Graph RAG Implementation" />
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          When to Use Graph RAG
+        </h3>
+        <Table>
+          <thead>
+            <tr>
+              <th>Use Case</th>
+              <th>Why Graph RAG Helps</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Multi-hop questions</td>
+              <td>Graph traversal connects related entities</td>
+            </tr>
+            <tr>
+              <td>Entity-rich domains</td>
+              <td>Structured relationships improve precision</td>
+            </tr>
+            <tr>
+              <td>Reasoning about relationships</td>
+              <td>"Who reports to whom?" needs graph structure</td>
+            </tr>
+            <tr>
+              <td>Combining structured + unstructured</td>
+              <td>Graph for facts, vectors for context</td>
+            </tr>
+          </tbody>
+        </Table>
+      </div>
+
+      <Callout type="tip" title="Graph Construction">
+        You can build knowledge graphs from documents using LLM-based entity extraction, or use existing structured data (databases, ontologies).
+      </Callout>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Metrics
+      </h2>
+
+      <Table caption="Key metrics for RAG evaluation">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>How to Calculate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Answer Accuracy</strong></td>
+            <td>Is the answer correct?</td>
+            <td>Human eval or exact match</td>
+          </tr>
+          <tr>
+            <td><strong>Faithfulness</strong></td>
+            <td>Is answer grounded in retrieved docs?</td>
+            <td>NLI or LLM-as-judge</td>
+          </tr>
+          <tr>
+            <td><strong>Relevance</strong></td>
+            <td>Are retrieved docs relevant?</td>
+            <td>Precision@K, NDCG</td>
+          </tr>
+          <tr>
+            <td><strong>Retrieval Efficiency</strong></td>
+            <td>How often is retrieval needed?</td>
+            <td>% queries requiring retrieval</td>
+          </tr>
+          <tr>
+            <td><strong>Latency</strong></td>
+            <td>Time to answer</td>
+            <td>Wall clock time</td>
+          </tr>
+          <tr>
+            <td><strong>Hallucination Rate</strong></td>
+            <td>Unsupported claims in answer</td>
+            <td>Manual or NLI checking</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Choosing an Approach -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Choosing an Approach
+      </h2>
+
+      <div class="space-y-4">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Use Basic RAG when:</h4>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>All queries need document lookup</li>
+            <li>Simple, single-turn Q&A</li>
+            <li>Latency is critical</li>
+          </ul>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Use Agentic RAG when:</h4>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Queries vary (some need retrieval, some don't)</li>
+            <li>Multiple retrieval sources available</li>
+            <li>Complex multi-step reasoning needed</li>
+          </ul>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Use Self-RAG when:</h4>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Accuracy is paramount</li>
+            <li>You need to minimize hallucinations</li>
+            <li>Quality > latency</li>
+          </ul>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Use Corrective RAG when:</h4>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Retrieval quality varies</li>
+            <li>Mixed document quality in corpus</li>
+            <li>Web fallback is acceptable</li>
+          </ul>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Use Graph RAG when:</h4>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Data has clear entity relationships</li>
+            <li>Multi-hop reasoning required</li>
+            <li>You have or can build a knowledge graph</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Over-retrieval">
+          Retrieving for every query wastes tokens and can confuse the model with irrelevant context.
+        </Callout>
+
+        <Callout type="danger" title="Chunk Size Mismatch">
+          Too small: loses context. Too large: dilutes relevance. Tune chunk size to your use case.
+        </Callout>
+
+        <Callout type="warning" title="Ignoring Retrieval Quality">
+          Just because you retrieved 5 documents doesn't mean they're all useful. Grade and filter.
+        </Callout>
+
+        <Callout type="warning" title="Single-Pass Retrieval">
+          Complex questions often need multiple retrieval rounds with refined queries.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Retrieval as a tool the agent can invoke
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Managing retrieved context effectively
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            RAG as external long-term memory
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/learning-adaptation/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Learning & Adaptation</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Self-RAG as a form of self-improvement
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

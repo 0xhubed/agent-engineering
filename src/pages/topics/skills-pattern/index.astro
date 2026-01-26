@@ -1,0 +1,1545 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const filesystemStructureExample = [
+  {
+    language: 'pseudo',
+    label: 'Directory Structure',
+    code: `skills/
+├── web-search/
+│   ├── SKILL.md           # Metadata + instructions
+│   ├── examples/          # Few-shot examples
+│   └── resources/         # Additional context
+├── code-review/
+│   ├── SKILL.md
+│   ├── examples/
+│   └── templates/
+├── data-analysis/
+│   ├── SKILL.md
+│   ├── examples/
+│   └── schemas/
+└── email-composer/
+    ├── SKILL.md
+    ├── examples/
+    └── templates/`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from pathlib import Path
+from dataclasses import dataclass
+import yaml
+
+@dataclass
+class SkillMetadata:
+    name: str
+    description: str
+    triggers: list[str]
+    tools_required: list[str]
+
+def discover_skills(skills_dir: Path) -> dict[str, SkillMetadata]:
+    """Scan filesystem to discover available skills."""
+    skills = {}
+
+    for skill_path in skills_dir.iterdir():
+        if not skill_path.is_dir():
+            continue
+
+        skill_file = skill_path / "SKILL.md"
+        if not skill_file.exists():
+            continue
+
+        # Parse SKILL.md frontmatter
+        content = skill_file.read_text()
+        metadata = parse_skill_frontmatter(content)
+
+        skills[skill_path.name] = SkillMetadata(
+            name=metadata.get("name", skill_path.name),
+            description=metadata.get("description", ""),
+            triggers=metadata.get("triggers", []),
+            tools_required=metadata.get("tools", [])
+        )
+
+    return skills
+
+def parse_skill_frontmatter(content: str) -> dict:
+    """Extract YAML frontmatter from SKILL.md."""
+    if not content.startswith("---"):
+        return {}
+
+    end_idx = content.find("---", 3)
+    if end_idx == -1:
+        return {}
+
+    frontmatter = content[3:end_idx].strip()
+    return yaml.safe_load(frontmatter)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using System.IO;
+using YamlDotNet.Serialization;
+
+public record SkillMetadata(
+    string Name,
+    string Description,
+    List<string> Triggers,
+    List<string> ToolsRequired
+);
+
+public class SkillDiscoveryService
+{
+    private readonly string _skillsDirectory;
+    private readonly IDeserializer _yamlDeserializer;
+
+    public SkillDiscoveryService(string skillsDirectory)
+    {
+        _skillsDirectory = skillsDirectory;
+        _yamlDeserializer = new DeserializerBuilder().Build();
+    }
+
+    public Dictionary<string, SkillMetadata> DiscoverSkills()
+    {
+        var skills = new Dictionary<string, SkillMetadata>();
+
+        foreach (var skillDir in Directory.GetDirectories(_skillsDirectory))
+        {
+            var skillFile = Path.Combine(skillDir, "SKILL.md");
+            if (!File.Exists(skillFile))
+                continue;
+
+            var content = File.ReadAllText(skillFile);
+            var metadata = ParseSkillFrontmatter(content);
+            var skillName = Path.GetFileName(skillDir);
+
+            skills[skillName] = new SkillMetadata(
+                Name: metadata.GetValueOrDefault("name", skillName),
+                Description: metadata.GetValueOrDefault("description", ""),
+                Triggers: metadata.GetValueOrDefault("triggers", new List<string>()),
+                ToolsRequired: metadata.GetValueOrDefault("tools", new List<string>())
+            );
+        }
+
+        return skills;
+    }
+
+    private Dictionary<string, dynamic> ParseSkillFrontmatter(string content)
+    {
+        if (!content.StartsWith("---"))
+            return new Dictionary<string, dynamic>();
+
+        var endIdx = content.IndexOf("---", 3);
+        if (endIdx == -1)
+            return new Dictionary<string, dynamic>();
+
+        var frontmatter = content.Substring(3, endIdx - 3).Trim();
+        return _yamlDeserializer.Deserialize<Dictionary<string, dynamic>>(frontmatter);
+    }
+}`,
+  },
+];
+
+const skillMdExample = [
+  {
+    language: 'yaml',
+    label: 'SKILL.md Format',
+    code: `---
+name: web-search
+description: Search the web for current information and facts
+version: 1.0.0
+author: agent-team
+
+# Triggers help the agent decide when to use this skill
+triggers:
+  - "search for"
+  - "find information about"
+  - "what is the latest"
+  - "current news on"
+  - "look up"
+
+# Tools this skill requires
+tools:
+  - web_search
+  - url_fetch
+  - extract_content
+
+# Token cost estimate (for prioritization)
+token_estimate: 1200
+
+# Categories for organization
+categories:
+  - research
+  - information-retrieval
+---
+
+# Web Search Skill
+
+## Purpose
+Use this skill when the user needs current, real-time information
+that may not be in your training data.
+
+## When to Use
+- Questions about recent events (after your knowledge cutoff)
+- Fact-checking claims that need verification
+- Finding specific data points (prices, statistics, etc.)
+- Research tasks requiring multiple sources
+
+## When NOT to Use
+- Questions you can answer from training data
+- Hypothetical or opinion-based questions
+- Creative writing tasks
+
+## Instructions
+1. Formulate a clear search query
+2. Execute the web search tool
+3. Evaluate result relevance (discard low-quality sources)
+4. Fetch full content from top 2-3 results
+5. Synthesize information with citations
+
+## Example Interaction
+User: "What's the current price of Bitcoin?"
+Agent: [Uses web_search with query "bitcoin price USD current"]
+Agent: [Fetches top result, extracts price data]
+Response: "As of [timestamp], Bitcoin is trading at $XX,XXX USD."`,
+  },
+  {
+    language: 'yaml',
+    label: 'Code Review Skill',
+    code: `---
+name: code-review
+description: Review code for bugs, security issues, and improvements
+version: 2.1.0
+
+triggers:
+  - "review this code"
+  - "check for bugs"
+  - "security audit"
+  - "improve this function"
+
+tools:
+  - read_file
+  - ast_parse
+  - static_analysis
+
+token_estimate: 2500
+
+categories:
+  - development
+  - security
+---
+
+# Code Review Skill
+
+## Purpose
+Provide thorough code reviews focusing on correctness,
+security, performance, and maintainability.
+
+## Review Checklist
+1. **Correctness**: Does the code do what it's supposed to?
+2. **Security**: Are there injection, XSS, or auth issues?
+3. **Performance**: Any obvious bottlenecks or N+1 queries?
+4. **Readability**: Is the code self-documenting?
+5. **Testing**: Are edge cases covered?
+
+## Output Format
+\`\`\`
+## Summary
+[One-line summary of code quality]
+
+## Issues Found
+- [SEVERITY] file:line - Description
+
+## Recommendations
+- [Priority] Suggestion for improvement
+\`\`\`
+
+## Language-Specific Checks
+### Python
+- Type hints present and correct
+- No mutable default arguments
+- Context managers for resources
+
+### JavaScript
+- No \`var\` (use \`const\`/\`let\`)
+- Proper async/await error handling
+- No prototype pollution risks`,
+  },
+];
+
+const progressiveDisclosureExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Three-stage progressive disclosure
+
+# Stage 1: Metadata only (minimal tokens)
+function getSkillList():
+    skills = []
+    for skillDir in listDirectory("skills/"):
+        metadata = parseYamlFrontmatter(skillDir + "/SKILL.md")
+        skills.append({
+            name: metadata.name,
+            description: metadata.description,  # Short summary
+            triggers: metadata.triggers
+        })
+    return skills  # ~50-100 tokens per skill
+
+# Stage 2: Full instructions (on-demand)
+function loadSkillInstructions(skillName):
+    skillFile = "skills/" + skillName + "/SKILL.md"
+    return parseMarkdownBody(skillFile)  # ~500-1000 tokens
+
+# Stage 3: Examples and resources (if needed)
+function loadSkillResources(skillName):
+    examplesDir = "skills/" + skillName + "/examples/"
+    resources = []
+    for file in listDirectory(examplesDir):
+        resources.append(readFile(examplesDir + file))
+    return resources  # Variable, loaded only when needed
+
+# Agent workflow
+function handleRequest(userQuery):
+    # Stage 1: Quick scan with metadata only
+    skillList = getSkillList()
+    selectedSkill = llm.selectBestSkill(userQuery, skillList)
+
+    if selectedSkill:
+        # Stage 2: Load full instructions
+        instructions = loadSkillInstructions(selectedSkill)
+
+        # Stage 3: Load examples only if complex task
+        if taskIsComplex(userQuery):
+            examples = loadSkillResources(selectedSkill)
+            context = instructions + examples
+        else:
+            context = instructions
+
+        return executeWithContext(userQuery, context)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+class DisclosureLevel(Enum):
+    METADATA = 1    # Name, description, triggers (~50 tokens)
+    INSTRUCTIONS = 2 # Full SKILL.md body (~500-1000 tokens)
+    RESOURCES = 3    # Examples, templates (~variable)
+
+@dataclass
+class SkillContext:
+    name: str
+    level: DisclosureLevel
+    content: str
+    token_count: int
+
+class ProgressiveSkillLoader:
+    def __init__(self, skills_dir: Path):
+        self.skills_dir = skills_dir
+        self._metadata_cache: dict[str, dict] = {}
+
+    def get_skill_list(self) -> list[dict]:
+        """Stage 1: Return minimal metadata for all skills."""
+        skills = []
+        for skill_path in self.skills_dir.iterdir():
+            if not skill_path.is_dir():
+                continue
+
+            metadata = self._load_metadata(skill_path.name)
+            skills.append({
+                "name": metadata["name"],
+                "description": metadata["description"][:100],  # Truncate
+                "triggers": metadata.get("triggers", [])[:5]   # Limit
+            })
+        return skills  # Minimal token footprint
+
+    def load_instructions(self, skill_name: str) -> SkillContext:
+        """Stage 2: Load full instructions on demand."""
+        skill_file = self.skills_dir / skill_name / "SKILL.md"
+        content = skill_file.read_text()
+
+        # Extract body after frontmatter
+        body = self._extract_body(content)
+
+        return SkillContext(
+            name=skill_name,
+            level=DisclosureLevel.INSTRUCTIONS,
+            content=body,
+            token_count=self._estimate_tokens(body)
+        )
+
+    def load_resources(self, skill_name: str) -> SkillContext:
+        """Stage 3: Load examples and additional resources."""
+        examples_dir = self.skills_dir / skill_name / "examples"
+
+        resources = []
+        if examples_dir.exists():
+            for example_file in examples_dir.iterdir():
+                resources.append(example_file.read_text())
+
+        combined = "\\n---\\n".join(resources)
+
+        return SkillContext(
+            name=skill_name,
+            level=DisclosureLevel.RESOURCES,
+            content=combined,
+            token_count=self._estimate_tokens(combined)
+        )
+
+    def _load_metadata(self, skill_name: str) -> dict:
+        if skill_name not in self._metadata_cache:
+            skill_file = self.skills_dir / skill_name / "SKILL.md"
+            content = skill_file.read_text()
+            self._metadata_cache[skill_name] = parse_frontmatter(content)
+        return self._metadata_cache[skill_name]
+
+# Usage in agent
+class SkillAwareAgent:
+    def __init__(self, loader: ProgressiveSkillLoader):
+        self.loader = loader
+
+    def process(self, query: str) -> str:
+        # Stage 1: Select skill from metadata
+        skill_list = self.loader.get_skill_list()
+        selected = self.llm.select_skill(query, skill_list)
+
+        if not selected:
+            return self.llm.respond_without_skill(query)
+
+        # Stage 2: Load instructions
+        context = self.loader.load_instructions(selected)
+
+        # Stage 3: Load examples for complex tasks
+        if self.is_complex_task(query):
+            resources = self.loader.load_resources(selected)
+            context.content += "\\n\\n" + resources.content
+
+        return self.llm.respond_with_context(query, context.content)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public enum DisclosureLevel
+{
+    Metadata = 1,     // ~50 tokens per skill
+    Instructions = 2, // ~500-1000 tokens
+    Resources = 3     // Variable
+}
+
+public record SkillContext(
+    string Name,
+    DisclosureLevel Level,
+    string Content,
+    int TokenCount
+);
+
+public class ProgressiveSkillLoader
+{
+    private readonly string _skillsDir;
+    private readonly Dictionary<string, Dictionary<string, object>> _metadataCache = new();
+
+    public ProgressiveSkillLoader(string skillsDir)
+    {
+        _skillsDir = skillsDir;
+    }
+
+    /// <summary>
+    /// Stage 1: Get minimal metadata for skill selection.
+    /// </summary>
+    public List<SkillSummary> GetSkillList()
+    {
+        var skills = new List<SkillSummary>();
+
+        foreach (var skillDir in Directory.GetDirectories(_skillsDir))
+        {
+            var skillName = Path.GetFileName(skillDir);
+            var metadata = LoadMetadata(skillName);
+
+            skills.Add(new SkillSummary(
+                Name: metadata.GetValueOrDefault("name", skillName)?.ToString() ?? skillName,
+                Description: TruncateString(
+                    metadata.GetValueOrDefault("description", "")?.ToString() ?? "",
+                    100
+                ),
+                Triggers: GetTriggers(metadata).Take(5).ToList()
+            ));
+        }
+
+        return skills;
+    }
+
+    /// <summary>
+    /// Stage 2: Load full instructions for selected skill.
+    /// </summary>
+    public SkillContext LoadInstructions(string skillName)
+    {
+        var skillFile = Path.Combine(_skillsDir, skillName, "SKILL.md");
+        var content = File.ReadAllText(skillFile);
+        var body = ExtractBody(content);
+
+        return new SkillContext(
+            Name: skillName,
+            Level: DisclosureLevel.Instructions,
+            Content: body,
+            TokenCount: EstimateTokens(body)
+        );
+    }
+
+    /// <summary>
+    /// Stage 3: Load examples and additional resources.
+    /// </summary>
+    public SkillContext LoadResources(string skillName)
+    {
+        var examplesDir = Path.Combine(_skillsDir, skillName, "examples");
+        var resources = new List<string>();
+
+        if (Directory.Exists(examplesDir))
+        {
+            foreach (var file in Directory.GetFiles(examplesDir))
+            {
+                resources.Add(File.ReadAllText(file));
+            }
+        }
+
+        var combined = string.Join("\\n---\\n", resources);
+
+        return new SkillContext(
+            Name: skillName,
+            Level: DisclosureLevel.Resources,
+            Content: combined,
+            TokenCount: EstimateTokens(combined)
+        );
+    }
+}
+
+// Agent usage
+public class SkillAwareAgent
+{
+    private readonly ProgressiveSkillLoader _loader;
+    private readonly ILanguageModel _llm;
+
+    public async Task<string> ProcessAsync(string query)
+    {
+        // Stage 1: Quick skill selection
+        var skillList = _loader.GetSkillList();
+        var selected = await _llm.SelectSkillAsync(query, skillList);
+
+        if (selected == null)
+            return await _llm.RespondAsync(query);
+
+        // Stage 2: Load instructions
+        var context = _loader.LoadInstructions(selected);
+
+        // Stage 3: Load examples if needed
+        if (IsComplexTask(query))
+        {
+            var resources = _loader.LoadResources(selected);
+            context = context with {
+                Content = context.Content + "\\n\\n" + resources.Content
+            };
+        }
+
+        return await _llm.RespondWithContextAsync(query, context.Content);
+    }
+}`,
+  },
+];
+
+const vectorDbExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Vector database approach for skill discovery
+
+function indexSkills(skills):
+    for skill in skills:
+        # Create embedding from skill description + triggers
+        text = skill.name + ": " + skill.description
+        text += " Triggers: " + join(skill.triggers, ", ")
+
+        embedding = embedModel.encode(text)
+
+        vectorDb.upsert(
+            id: skill.name,
+            vector: embedding,
+            metadata: {
+                name: skill.name,
+                description: skill.description,
+                tools: skill.tools,
+                token_estimate: skill.tokenEstimate
+            }
+        )
+
+function findRelevantSkills(query, topK = 3):
+    queryEmbedding = embedModel.encode(query)
+
+    results = vectorDb.search(
+        vector: queryEmbedding,
+        topK: topK,
+        threshold: 0.7  # Minimum similarity
+    )
+
+    return results.map(r => r.metadata)
+
+# Hybrid approach: Vector + keyword fallback
+function findSkillsHybrid(query):
+    # Try vector search first
+    vectorResults = findRelevantSkills(query, topK = 5)
+
+    if vectorResults.isEmpty() or vectorResults[0].score < 0.75:
+        # Fall back to keyword matching
+        keywordResults = keywordSearch(query)
+        return mergeResults(vectorResults, keywordResults)
+
+    return vectorResults`,
+  },
+  {
+    language: 'python',
+    label: 'Python (Chroma)',
+    code: `import chromadb
+from chromadb.utils import embedding_functions
+from dataclasses import dataclass
+
+@dataclass
+class SkillMatch:
+    name: str
+    description: str
+    score: float
+    tools: list[str]
+
+class VectorSkillDiscovery:
+    def __init__(self, persist_dir: str = "./skill_vectors"):
+        self.client = chromadb.PersistentClient(path=persist_dir)
+
+        # Use sentence-transformers for embeddings
+        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+
+        self.collection = self.client.get_or_create_collection(
+            name="skills",
+            embedding_function=self.embedding_fn,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def index_skill(self, skill: dict) -> None:
+        """Add or update a skill in the vector database."""
+        # Create rich text representation for embedding
+        text = f"{skill['name']}: {skill['description']}"
+        if skill.get('triggers'):
+            text += f" Triggers: {', '.join(skill['triggers'])}"
+
+        self.collection.upsert(
+            ids=[skill['name']],
+            documents=[text],
+            metadatas=[{
+                "name": skill['name'],
+                "description": skill['description'],
+                "tools": ",".join(skill.get('tools', [])),
+                "token_estimate": skill.get('token_estimate', 0)
+            }]
+        )
+
+    def find_skills(
+        self,
+        query: str,
+        top_k: int = 3,
+        min_score: float = 0.5
+    ) -> list[SkillMatch]:
+        """Find most relevant skills for a query."""
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=top_k,
+            include=["documents", "metadatas", "distances"]
+        )
+
+        matches = []
+        for i, distance in enumerate(results['distances'][0]):
+            # Convert distance to similarity score
+            score = 1 - distance
+
+            if score < min_score:
+                continue
+
+            metadata = results['metadatas'][0][i]
+            matches.append(SkillMatch(
+                name=metadata['name'],
+                description=metadata['description'],
+                score=score,
+                tools=metadata['tools'].split(',') if metadata['tools'] else []
+            ))
+
+        return matches
+
+    def reindex_all(self, skills_dir: Path) -> int:
+        """Reindex all skills from filesystem."""
+        count = 0
+        for skill_path in skills_dir.iterdir():
+            if not skill_path.is_dir():
+                continue
+
+            skill_file = skill_path / "SKILL.md"
+            if not skill_file.exists():
+                continue
+
+            metadata = parse_skill_frontmatter(skill_file.read_text())
+            metadata['name'] = skill_path.name
+            self.index_skill(metadata)
+            count += 1
+
+        return count
+
+# Usage
+discovery = VectorSkillDiscovery()
+discovery.reindex_all(Path("./skills"))
+
+# At runtime
+matches = discovery.find_skills("help me analyze this CSV data")
+# Returns: [SkillMatch(name='data-analysis', score=0.89, ...)]`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Qdrant)',
+    code: `using Qdrant.Client;
+using Qdrant.Client.Grpc;
+using Microsoft.ML.OnnxRuntime;
+
+public record SkillMatch(
+    string Name,
+    string Description,
+    float Score,
+    List<string> Tools
+);
+
+public class VectorSkillDiscovery
+{
+    private readonly QdrantClient _qdrant;
+    private readonly EmbeddingModel _embedder;
+    private const string CollectionName = "skills";
+
+    public VectorSkillDiscovery(string qdrantUrl = "http://localhost:6334")
+    {
+        _qdrant = new QdrantClient(qdrantUrl);
+        _embedder = new EmbeddingModel("all-MiniLM-L6-v2.onnx");
+
+        EnsureCollectionExists().Wait();
+    }
+
+    private async Task EnsureCollectionExists()
+    {
+        var collections = await _qdrant.ListCollectionsAsync();
+        if (!collections.Contains(CollectionName))
+        {
+            await _qdrant.CreateCollectionAsync(
+                CollectionName,
+                new VectorParams { Size = 384, Distance = Distance.Cosine }
+            );
+        }
+    }
+
+    public async Task IndexSkillAsync(Dictionary<string, object> skill)
+    {
+        var name = skill["name"].ToString()!;
+        var description = skill["description"].ToString()!;
+        var triggers = skill.GetValueOrDefault("triggers") as List<string> ?? new();
+
+        // Create text for embedding
+        var text = $"{name}: {description} Triggers: {string.Join(", ", triggers)}";
+        var embedding = _embedder.Encode(text);
+
+        var point = new PointStruct
+        {
+            Id = new PointId { Uuid = Guid.NewGuid().ToString() },
+            Vectors = embedding,
+            Payload = {
+                ["name"] = name,
+                ["description"] = description,
+                ["tools"] = string.Join(",", skill.GetValueOrDefault("tools") as List<string> ?? new()),
+                ["token_estimate"] = (long)(skill.GetValueOrDefault("token_estimate") ?? 0)
+            }
+        };
+
+        await _qdrant.UpsertAsync(CollectionName, new[] { point });
+    }
+
+    public async Task<List<SkillMatch>> FindSkillsAsync(
+        string query,
+        int topK = 3,
+        float minScore = 0.5f)
+    {
+        var queryEmbedding = _embedder.Encode(query);
+
+        var results = await _qdrant.SearchAsync(
+            CollectionName,
+            queryEmbedding,
+            limit: (ulong)topK,
+            scoreThreshold: minScore
+        );
+
+        return results.Select(r => new SkillMatch(
+            Name: r.Payload["name"].StringValue,
+            Description: r.Payload["description"].StringValue,
+            Score: r.Score,
+            Tools: r.Payload["tools"].StringValue
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .ToList()
+        )).ToList();
+    }
+}
+
+// Hybrid discovery combining vector + keyword
+public class HybridSkillDiscovery
+{
+    private readonly VectorSkillDiscovery _vectorSearch;
+    private readonly KeywordSkillDiscovery _keywordSearch;
+
+    public async Task<List<SkillMatch>> FindSkillsAsync(string query)
+    {
+        // Try vector search first
+        var vectorResults = await _vectorSearch.FindSkillsAsync(query, topK: 5);
+
+        // If low confidence, supplement with keyword search
+        if (!vectorResults.Any() || vectorResults[0].Score < 0.75f)
+        {
+            var keywordResults = _keywordSearch.Search(query);
+            return MergeResults(vectorResults, keywordResults);
+        }
+
+        return vectorResults;
+    }
+
+    private List<SkillMatch> MergeResults(
+        List<SkillMatch> vector,
+        List<SkillMatch> keyword)
+    {
+        // Reciprocal rank fusion
+        var scores = new Dictionary<string, float>();
+
+        for (int i = 0; i < vector.Count; i++)
+            scores[vector[i].Name] = scores.GetValueOrDefault(vector[i].Name) + 1f / (i + 1);
+
+        for (int i = 0; i < keyword.Count; i++)
+            scores[keyword[i].Name] = scores.GetValueOrDefault(keyword[i].Name) + 1f / (i + 1);
+
+        return scores
+            .OrderByDescending(kv => kv.Value)
+            .Take(5)
+            .Select(kv => vector.Concat(keyword).First(m => m.Name == kv.Key))
+            .ToList();
+    }
+}`,
+  },
+];
+
+const tokenSavingsExample = [
+  {
+    language: 'pseudo',
+    label: 'Comparison',
+    code: `# Traditional approach: All tools in context
+# 50 tools × 3000 tokens/tool = 150,000 tokens per request
+
+# Skills Pattern: Progressive disclosure
+# Stage 1: Metadata only
+#   50 skills × 50 tokens = 2,500 tokens
+#
+# Stage 2: Selected skill instructions
+#   1 skill × 1,000 tokens = 1,000 tokens
+#
+# Stage 3: Examples (if needed)
+#   1 skill × 2,000 tokens = 2,000 tokens
+#
+# Total: 2,500 + 1,000 + 2,000 = 5,500 tokens
+#
+# Savings: 150,000 - 5,500 = 144,500 tokens (96% reduction)
+
+# Even better with vector search:
+# Skip Stage 1 entirely - query embeddings directly
+# Stage 2 + 3 only: 3,000 tokens
+#
+# Savings: 150,000 - 3,000 = 147,000 tokens (98% reduction)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `def calculate_token_savings(
+    num_skills: int,
+    avg_tool_tokens: int = 3000,
+    metadata_tokens: int = 50,
+    instruction_tokens: int = 1000,
+    example_tokens: int = 2000
+) -> dict:
+    """Calculate token savings from skills pattern."""
+
+    # Traditional approach
+    traditional = num_skills * avg_tool_tokens
+
+    # Skills pattern with progressive disclosure
+    stage1_metadata = num_skills * metadata_tokens
+    stage2_instructions = instruction_tokens  # Only selected skill
+    stage3_examples = example_tokens  # Only if needed
+
+    # Most requests only need stages 1 + 2
+    typical_request = stage1_metadata + stage2_instructions
+    complex_request = typical_request + stage3_examples
+
+    # Vector search approach (skip metadata scan)
+    vector_approach = stage2_instructions + stage3_examples
+
+    return {
+        "traditional_tokens": traditional,
+        "progressive_typical": typical_request,
+        "progressive_complex": complex_request,
+        "vector_search": vector_approach,
+        "savings_typical": f"{(1 - typical_request/traditional) * 100:.1f}%",
+        "savings_vector": f"{(1 - vector_approach/traditional) * 100:.1f}%"
+    }
+
+# Example with 50 skills
+result = calculate_token_savings(num_skills=50)
+print(result)
+# {
+#     "traditional_tokens": 150000,
+#     "progressive_typical": 3500,    # Metadata + instructions
+#     "progressive_complex": 5500,    # + examples
+#     "vector_search": 3000,          # Instructions + examples
+#     "savings_typical": "97.7%",
+#     "savings_vector": "98.0%"
+# }`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public record TokenSavingsReport(
+    int TraditionalTokens,
+    int ProgressiveTypical,
+    int ProgressiveComplex,
+    int VectorSearch,
+    string SavingsTypical,
+    string SavingsVector
+);
+
+public static class TokenCalculator
+{
+    public static TokenSavingsReport CalculateSavings(
+        int numSkills,
+        int avgToolTokens = 3000,
+        int metadataTokens = 50,
+        int instructionTokens = 1000,
+        int exampleTokens = 2000)
+    {
+        // Traditional: all tools in context
+        var traditional = numSkills * avgToolTokens;
+
+        // Progressive disclosure
+        var stage1 = numSkills * metadataTokens;
+        var stage2 = instructionTokens;
+        var stage3 = exampleTokens;
+
+        var typical = stage1 + stage2;
+        var complex = typical + stage3;
+
+        // Vector search (skip metadata scan)
+        var vector = stage2 + stage3;
+
+        return new TokenSavingsReport(
+            TraditionalTokens: traditional,
+            ProgressiveTypical: typical,
+            ProgressiveComplex: complex,
+            VectorSearch: vector,
+            SavingsTypical: $"{(1 - (double)typical / traditional) * 100:F1}%",
+            SavingsVector: $"{(1 - (double)vector / traditional) * 100:F1}%"
+        );
+    }
+}
+
+// Usage
+var report = TokenCalculator.CalculateSavings(numSkills: 50);
+Console.WriteLine($"Traditional: {report.TraditionalTokens:N0} tokens");
+Console.WriteLine($"Progressive: {report.ProgressiveTypical:N0} tokens");
+Console.WriteLine($"Savings: {report.SavingsTypical}");`,
+  },
+];
+
+const evaluationExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Skill discovery evaluation metrics
+
+function evaluateSkillDiscovery(testCases, discoverySystem):
+    metrics = {
+        precision_at_1: [],
+        precision_at_3: [],
+        recall_at_3: [],
+        latency: [],
+        false_positives: 0,
+        false_negatives: 0
+    }
+
+    for testCase in testCases:
+        query = testCase.query
+        expectedSkills = testCase.relevantSkills
+
+        startTime = now()
+        results = discoverySystem.findSkills(query, topK = 3)
+        metrics.latency.append(now() - startTime)
+
+        # Precision@1: Is the top result correct?
+        if results[0].name in expectedSkills:
+            metrics.precision_at_1.append(1)
+        else:
+            metrics.precision_at_1.append(0)
+            metrics.false_positives += 1
+
+        # Precision@3: How many of top 3 are relevant?
+        relevant_in_top3 = count(r for r in results[:3] if r.name in expectedSkills)
+        metrics.precision_at_3.append(relevant_in_top3 / 3)
+
+        # Recall@3: Did we find all relevant skills?
+        metrics.recall_at_3.append(relevant_in_top3 / len(expectedSkills))
+
+        # False negatives: relevant skills not in top 3
+        metrics.false_negatives += len(expectedSkills) - relevant_in_top3
+
+    return {
+        avg_precision_at_1: mean(metrics.precision_at_1),
+        avg_precision_at_3: mean(metrics.precision_at_3),
+        avg_recall_at_3: mean(metrics.recall_at_3),
+        avg_latency_ms: mean(metrics.latency) * 1000,
+        total_false_positives: metrics.false_positives,
+        total_false_negatives: metrics.false_negatives
+    }`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from typing import Protocol
+import time
+
+@dataclass
+class TestCase:
+    query: str
+    relevant_skills: set[str]
+
+@dataclass
+class EvaluationResult:
+    precision_at_1: float
+    precision_at_3: float
+    recall_at_3: float
+    avg_latency_ms: float
+    mrr: float  # Mean Reciprocal Rank
+
+class SkillDiscovery(Protocol):
+    def find_skills(self, query: str, top_k: int) -> list[SkillMatch]: ...
+
+def evaluate_skill_discovery(
+    test_cases: list[TestCase],
+    discovery: SkillDiscovery
+) -> EvaluationResult:
+    """Evaluate skill discovery accuracy and performance."""
+
+    p1_scores, p3_scores, recall_scores = [], [], []
+    latencies, reciprocal_ranks = [], []
+
+    for case in test_cases:
+        # Measure latency
+        start = time.perf_counter()
+        results = discovery.find_skills(case.query, top_k=3)
+        latencies.append((time.perf_counter() - start) * 1000)
+
+        result_names = [r.name for r in results]
+
+        # Precision@1
+        p1_scores.append(1.0 if result_names[0] in case.relevant_skills else 0.0)
+
+        # Precision@3
+        hits = sum(1 for r in result_names[:3] if r in case.relevant_skills)
+        p3_scores.append(hits / 3)
+
+        # Recall@3
+        recall_scores.append(hits / len(case.relevant_skills))
+
+        # Mean Reciprocal Rank
+        for i, name in enumerate(result_names):
+            if name in case.relevant_skills:
+                reciprocal_ranks.append(1.0 / (i + 1))
+                break
+        else:
+            reciprocal_ranks.append(0.0)
+
+    return EvaluationResult(
+        precision_at_1=sum(p1_scores) / len(p1_scores),
+        precision_at_3=sum(p3_scores) / len(p3_scores),
+        recall_at_3=sum(recall_scores) / len(recall_scores),
+        avg_latency_ms=sum(latencies) / len(latencies),
+        mrr=sum(reciprocal_ranks) / len(reciprocal_ranks)
+    )
+
+# Example test suite
+test_cases = [
+    TestCase(
+        query="search the web for recent news about AI",
+        relevant_skills={"web-search", "news-aggregator"}
+    ),
+    TestCase(
+        query="review this Python code for bugs",
+        relevant_skills={"code-review"}
+    ),
+    TestCase(
+        query="analyze this CSV and create a chart",
+        relevant_skills={"data-analysis", "visualization"}
+    ),
+]
+
+# Run evaluation
+results = evaluate_skill_discovery(test_cases, vector_discovery)
+print(f"P@1: {results.precision_at_1:.2%}")
+print(f"MRR: {results.mrr:.3f}")
+print(f"Latency: {results.avg_latency_ms:.1f}ms")`,
+  },
+];
+---
+
+<BaseLayout
+  title="Skills Pattern"
+  description="Anthropic's approach to scalable tool management using filesystem-based tool discovery with massive token savings"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Skills Pattern
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        A filesystem-based approach to tool management that achieves 98%+ token savings while maintaining accurate tool selection. Pioneered by Anthropic for Claude Code.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Problem: Context Bloat from Tools
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Traditional function calling requires sending all tool definitions with every request. This creates a critical scaling problem:
+      </p>
+
+      <div class="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg mb-6 font-mono text-sm">
+        <div class="text-slate-600 dark:text-slate-400">50 tools x 3,000 tokens/tool = <span class="text-red-600 dark:text-red-400 font-bold">150,000 tokens/request</span></div>
+      </div>
+
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Skills Pattern solves this by treating tools as <strong>files on disk</strong> that are loaded on-demand, rather than static definitions passed with every API call.
+      </p>
+
+      <Callout type="info" title="Key Insight">
+        Instead of stuffing all tool definitions into context, give the agent access to a <code>skills/</code> directory. The agent reads skill files as needed, just like a developer reads documentation.
+      </Callout>
+    </section>
+
+    <!-- Three Pillars Diagram -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Three Pillars of the Skills Pattern
+      </h2>
+
+      <Diagram title="Skills Pattern Architecture">
+{`┌─────────────────────────────────────────────────────────────┐
+│                     Skills Pattern                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. FILESYSTEM AS TOOL STORAGE                              │
+│     skills/                                                 │
+│     ├── web-search/SKILL.md                                 │
+│     ├── code-review/SKILL.md                                │
+│     └── data-analysis/SKILL.md                              │
+│                                                             │
+│  2. PROGRESSIVE DISCLOSURE                                  │
+│     ┌──────────┐   ┌───────────────┐   ┌──────────────┐    │
+│     │ Metadata │ → │ Instructions  │ → │  Examples    │    │
+│     │ ~50 tok  │   │ ~1000 tok     │   │ ~2000 tok    │    │
+│     └──────────┘   └───────────────┘   └──────────────┘    │
+│         ↑                  ↑                  ↑             │
+│      Always            On select          If complex        │
+│                                                             │
+│  3. DATABASE-BACKED DISCOVERY (Optional)                    │
+│     ┌─────────────┐                                         │
+│     │ Vector DB   │  ← Embed skill descriptions             │
+│     │ (Chroma,    │  ← Semantic search for relevance        │
+│     │  Qdrant)    │  ← Skip metadata scanning               │
+│     └─────────────┘                                         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+    </section>
+
+    <!-- Pillar 1: Filesystem as Tool Storage -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        1. Filesystem as Tool Storage
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Skills are organized as directories, each containing a <code>SKILL.md</code> file with metadata and instructions. The agent can list, read, and navigate these files using standard filesystem tools.
+      </p>
+
+      <CodeBlock tabs={filesystemStructureExample} title="Skill Directory Structure" />
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          SKILL.md Format
+        </h3>
+        <p class="text-slate-600 dark:text-slate-300 mb-4">
+          Each skill's <code>SKILL.md</code> file contains YAML frontmatter (metadata) and markdown body (instructions):
+        </p>
+        <CodeBlock tabs={skillMdExample} title="Example SKILL.md Files" />
+      </div>
+
+      <Callout type="tip" title="Best Practice">
+        Include <strong>triggers</strong> in your skill metadata. These are phrases that help the agent quickly match user requests to relevant skills without reading the full instructions.
+      </Callout>
+    </section>
+
+    <!-- Pillar 2: Progressive Disclosure -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        2. Progressive Disclosure
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Not all skill information is needed for every request. Progressive disclosure loads context in stages:
+      </p>
+
+      <Table caption="Three stages of progressive skill loading">
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Content</th>
+            <th>Tokens</th>
+            <th>When Loaded</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>1. Metadata</strong></td>
+            <td>Name, description, triggers</td>
+            <td>~50/skill</td>
+            <td>Always (for selection)</td>
+          </tr>
+          <tr>
+            <td><strong>2. Instructions</strong></td>
+            <td>Full SKILL.md body</td>
+            <td>~500-1000</td>
+            <td>After skill selected</td>
+          </tr>
+          <tr>
+            <td><strong>3. Resources</strong></td>
+            <td>Examples, templates, schemas</td>
+            <td>Variable</td>
+            <td>Only for complex tasks</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={progressiveDisclosureExample} title="Progressive Disclosure Implementation" />
+      </div>
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          Token Savings Analysis
+        </h3>
+        <CodeBlock tabs={tokenSavingsExample} title="Calculating Token Savings" />
+      </div>
+
+      <Callout type="warning" title="Trade-off">
+        Progressive disclosure adds latency (extra LLM calls for skill selection). For time-critical applications, consider pre-loading frequently-used skills or using vector search for instant matching.
+      </Callout>
+    </section>
+
+    <!-- Pillar 3: Database-Backed Discovery -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        3. Database-Backed Tool Discovery
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        For large skill libraries (50+), scanning metadata files becomes slow. Vector databases enable instant semantic search:
+      </p>
+
+      <Diagram title="Vector-Based Skill Discovery">
+{`User Query: "help me analyze this spreadsheet"
+                    │
+                    ▼
+            ┌───────────────┐
+            │ Embed Query   │
+            │ (384-dim vec) │
+            └───────────────┘
+                    │
+                    ▼
+      ┌─────────────────────────┐
+      │     Vector Database     │
+      │  ┌─────────────────┐   │
+      │  │ data-analysis   │●──┼── 0.92 similarity
+      │  │ visualization   │●──┼── 0.78 similarity
+      │  │ web-search      │●──┼── 0.31 similarity
+      │  │ code-review     │●──┼── 0.22 similarity
+      │  └─────────────────┘   │
+      └─────────────────────────┘
+                    │
+                    ▼
+        Top match: data-analysis
+        Load: skills/data-analysis/SKILL.md`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={vectorDbExample} title="Vector Database Implementation" />
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Discovery Approaches Compared
+      </h3>
+      <Table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Pros</th>
+            <th>Cons</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Keyword/Trigger</strong></td>
+            <td>Simple, fast, no dependencies</td>
+            <td>Misses synonyms, brittle</td>
+            <td>&lt;20 skills</td>
+          </tr>
+          <tr>
+            <td><strong>LLM Selection</strong></td>
+            <td>Understands intent</td>
+            <td>Extra API call, latency</td>
+            <td>20-50 skills</td>
+          </tr>
+          <tr>
+            <td><strong>Vector Search</strong></td>
+            <td>Semantic matching, fast</td>
+            <td>Requires embedding model</td>
+            <td>50+ skills</td>
+          </tr>
+          <tr>
+            <td><strong>Hybrid</strong></td>
+            <td>Best accuracy</td>
+            <td>Most complex</td>
+            <td>Production systems</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Measuring skill discovery quality requires testing both accuracy and efficiency:
+      </p>
+
+      <Table caption="Key metrics for skill discovery evaluation">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Precision@1</strong></td>
+            <td>Is the top result the right skill?</td>
+            <td>&gt;90%</td>
+          </tr>
+          <tr>
+            <td><strong>Precision@3</strong></td>
+            <td>How many of top 3 are relevant?</td>
+            <td>&gt;80%</td>
+          </tr>
+          <tr>
+            <td><strong>Mean Reciprocal Rank</strong></td>
+            <td>How high is the correct skill ranked?</td>
+            <td>&gt;0.85</td>
+          </tr>
+          <tr>
+            <td><strong>Latency</strong></td>
+            <td>Time to find relevant skill(s)</td>
+            <td>&lt;50ms</td>
+          </tr>
+          <tr>
+            <td><strong>False Positive Rate</strong></td>
+            <td>Skills selected but not relevant</td>
+            <td>&lt;5%</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={evaluationExample} title="Skill Discovery Evaluation" />
+      </div>
+    </section>
+
+    <!-- Real-World Example -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Real-World Example: Claude Code
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Anthropic's Claude Code uses a variant of the Skills Pattern to manage its extensive toolset:
+      </p>
+
+      <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-3">How Claude Code Uses Skills</h3>
+        <ul class="space-y-2 text-slate-600 dark:text-slate-300">
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500">1.</span>
+            <span>Skills are stored as markdown files in a <code>.claude/skills/</code> directory</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500">2.</span>
+            <span>The agent can <code>list</code>, <code>read</code>, and <code>search</code> skill files</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500">3.</span>
+            <span>Skills include triggers, instructions, and examples</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-primary-500">4.</span>
+            <span>New skills can be added by users without redeploying</span>
+          </li>
+        </ul>
+      </div>
+
+      <Callout type="info" title="User-Extensible Skills">
+        A key benefit of filesystem-based skills: users can add custom skills by creating new <code>SKILL.md</code> files. No code changes or redeployment required.
+      </Callout>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Overly Generic Triggers">
+          Triggers like "help me" or "do this" match everything. Use specific action verbs and domain terms.
+        </Callout>
+
+        <Callout type="danger" title="Missing Negative Examples">
+          Skills should document when NOT to use them. This prevents false matches on similar-sounding queries.
+        </Callout>
+
+        <Callout type="warning" title="Stale Embeddings">
+          When using vector search, remember to re-embed skills after updates. Implement a hash-based change detection.
+        </Callout>
+
+        <Callout type="warning" title="Too Many Small Skills">
+          Prefer fewer, well-documented skills over many tiny ones. Each skill selection adds cognitive load for the agent.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Implementation Checklist -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Implementation Checklist
+      </h2>
+
+      <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+        <ol class="space-y-3 text-slate-700 dark:text-slate-300">
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">1</span>
+            <span>Create <code>skills/</code> directory structure with <code>SKILL.md</code> files</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">2</span>
+            <span>Define YAML schema for skill metadata (name, description, triggers, tools)</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">3</span>
+            <span>Implement skill discovery (start with keyword, upgrade to vector as needed)</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">4</span>
+            <span>Add progressive loading: metadata → instructions → examples</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">5</span>
+            <span>Create test cases with ground truth skill mappings</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">6</span>
+            <span>Measure token savings and discovery accuracy</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The foundation that skills extend and optimize
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Skills pattern is a form of context selection
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-bloat/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Bloat</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The problem that skills pattern solves
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Skills can be learned and stored in long-term memory
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

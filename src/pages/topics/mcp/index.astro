@@ -1,0 +1,1343 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const mcpOverviewExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# MCP Architecture Overview
+
+# SERVER: Exposes tools and resources
+class MCPServer:
+    name: "github-server"
+    version: "1.0.0"
+
+    # Tools the server provides
+    tools: [
+        { name: "search_repos", description: "Search GitHub repositories" },
+        { name: "get_file", description: "Get file contents from repo" },
+        { name: "create_issue", description: "Create a new issue" }
+    ]
+
+    # Resources the server exposes
+    resources: [
+        { uri: "github://repos/{owner}/{repo}", description: "Repository info" },
+        { uri: "github://issues/{owner}/{repo}", description: "Issue list" }
+    ]
+
+    # Handle tool invocation
+    function handleToolCall(toolName, arguments):
+        switch toolName:
+            case "search_repos":
+                return githubAPI.searchRepos(arguments.query)
+            case "get_file":
+                return githubAPI.getFile(arguments.repo, arguments.path)
+            # ...
+
+# CLIENT: Connects to servers and routes requests
+class MCPClient:
+    servers: Map<string, MCPServer>
+
+    function connect(serverConfig):
+        server = spawn(serverConfig.command, serverConfig.args)
+        capabilities = server.initialize()
+        servers.set(serverConfig.name, server)
+        return capabilities
+
+    function callTool(serverName, toolName, arguments):
+        server = servers.get(serverName)
+        return server.tools.call(toolName, arguments)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from mcp.server import Server, NotificationOptions
+from mcp.server.models import InitializationOptions
+from mcp.types import Tool, TextContent, Resource
+import mcp.server.stdio
+
+# Create an MCP server
+server = Server("github-server")
+
+# Define available tools
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    return [
+        Tool(
+            name="search_repos",
+            description="Search GitHub repositories by query",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_file",
+            description="Get file contents from a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "path": {"type": "string"}
+                },
+                "required": ["owner", "repo", "path"]
+            }
+        ),
+        Tool(
+            name="create_issue",
+            description="Create a new issue in a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "title": {"type": "string"},
+                    "body": {"type": "string"}
+                },
+                "required": ["owner", "repo", "title"]
+            }
+        )
+    ]
+
+# Handle tool calls
+@server.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    if name == "search_repos":
+        results = await github_api.search_repos(arguments["query"])
+        return [TextContent(type="text", text=json.dumps(results))]
+
+    elif name == "get_file":
+        content = await github_api.get_file(
+            arguments["owner"],
+            arguments["repo"],
+            arguments["path"]
+        )
+        return [TextContent(type="text", text=content)]
+
+    elif name == "create_issue":
+        issue = await github_api.create_issue(
+            arguments["owner"],
+            arguments["repo"],
+            arguments["title"],
+            arguments.get("body", "")
+        )
+        return [TextContent(type="text", text=f"Created issue #{issue.number}")]
+
+    raise ValueError(f"Unknown tool: {name}")
+
+# Define available resources
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    return [
+        Resource(
+            uri="github://repos/{owner}/{repo}",
+            name="Repository Information",
+            description="Get metadata about a GitHub repository",
+            mimeType="application/json"
+        )
+    ]
+
+# Run the server
+async def main():
+    async with mcp.server.stdio.stdio_server() as (read, write):
+        await server.run(
+            read,
+            write,
+            InitializationOptions(
+                server_name="github-server",
+                server_version="1.0.0"
+            )
+        )
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+using ModelContextProtocol;
+using ModelContextProtocol.Server;
+
+// Define an MCP server
+public class GitHubMcpServer : McpServer
+{
+    private readonly IGitHubClient _github;
+
+    public GitHubMcpServer(IGitHubClient github)
+    {
+        _github = github;
+    }
+
+    public override ServerInfo GetServerInfo() => new()
+    {
+        Name = "github-server",
+        Version = "1.0.0"
+    };
+
+    public override IEnumerable<Tool> ListTools()
+    {
+        yield return new Tool
+        {
+            Name = "search_repos",
+            Description = "Search GitHub repositories by query",
+            InputSchema = new JsonSchema
+            {
+                Type = "object",
+                Properties = new Dictionary<string, JsonSchema>
+                {
+                    ["query"] = new() { Type = "string", Description = "Search query" },
+                    ["limit"] = new() { Type = "integer", Default = 10 }
+                },
+                Required = new[] { "query" }
+            }
+        };
+
+        yield return new Tool
+        {
+            Name = "get_file",
+            Description = "Get file contents from a repository",
+            InputSchema = new JsonSchema
+            {
+                Type = "object",
+                Properties = new Dictionary<string, JsonSchema>
+                {
+                    ["owner"] = new() { Type = "string" },
+                    ["repo"] = new() { Type = "string" },
+                    ["path"] = new() { Type = "string" }
+                },
+                Required = new[] { "owner", "repo", "path" }
+            }
+        };
+    }
+
+    public override async Task<ToolResult> CallToolAsync(
+        string name,
+        JsonElement arguments,
+        CancellationToken ct = default)
+    {
+        return name switch
+        {
+            "search_repos" => await SearchReposAsync(arguments, ct),
+            "get_file" => await GetFileAsync(arguments, ct),
+            "create_issue" => await CreateIssueAsync(arguments, ct),
+            _ => throw new McpException($"Unknown tool: {name}")
+        };
+    }
+
+    private async Task<ToolResult> SearchReposAsync(
+        JsonElement args,
+        CancellationToken ct)
+    {
+        var query = args.GetProperty("query").GetString()!;
+        var limit = args.TryGetProperty("limit", out var l) ? l.GetInt32() : 10;
+
+        var results = await _github.SearchRepositoriesAsync(query, limit, ct);
+        return ToolResult.Success(JsonSerializer.Serialize(results));
+    }
+}
+
+// Run the server
+var builder = Host.CreateApplicationBuilder(args);
+builder.Services.AddMcpServer<GitHubMcpServer>();
+
+var host = builder.Build();
+await host.RunAsync();`,
+  },
+];
+
+const clientExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# MCP Client connecting to multiple servers
+
+class MCPClient:
+    servers: Map<string, ServerConnection>
+
+    function initialize(configPath):
+        config = loadConfig(configPath)
+
+        for serverConfig in config.mcpServers:
+            # Spawn server process
+            process = spawn(
+                command: serverConfig.command,
+                args: serverConfig.args,
+                env: serverConfig.env
+            )
+
+            # Initialize connection
+            connection = connect(process.stdin, process.stdout)
+
+            # Exchange capabilities
+            capabilities = connection.initialize({
+                clientInfo: { name: "my-agent", version: "1.0" },
+                capabilities: {
+                    tools: {},
+                    resources: {},
+                    prompts: {}
+                }
+            })
+
+            # Store server reference
+            servers.set(serverConfig.name, {
+                connection: connection,
+                capabilities: capabilities,
+                tools: capabilities.tools
+            })
+
+    function listAllTools():
+        allTools = []
+        for name, server in servers:
+            for tool in server.tools:
+                allTools.append({
+                    server: name,
+                    tool: tool
+                })
+        return allTools
+
+    function callTool(serverName, toolName, arguments):
+        server = servers.get(serverName)
+        result = server.connection.callTool(toolName, arguments)
+        return result`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import Tool
+
+class MCPClient:
+    def __init__(self):
+        self.servers: dict[str, ClientSession] = {}
+
+    async def connect_server(
+        self,
+        name: str,
+        command: str,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None
+    ) -> list[Tool]:
+        """Connect to an MCP server and return its tools."""
+        server_params = StdioServerParameters(
+            command=command,
+            args=args or [],
+            env=env
+        )
+
+        # Create connection
+        stdio_transport = await stdio_client(server_params)
+        read, write = stdio_transport
+
+        session = ClientSession(read, write)
+        await session.initialize()
+
+        # Get server capabilities
+        tools_response = await session.list_tools()
+
+        self.servers[name] = session
+        return tools_response.tools
+
+    async def call_tool(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: dict
+    ) -> str:
+        """Call a tool on a specific server."""
+        session = self.servers.get(server_name)
+        if not session:
+            raise ValueError(f"Server not connected: {server_name}")
+
+        result = await session.call_tool(tool_name, arguments)
+        return result.content[0].text
+
+    async def disconnect_all(self):
+        """Disconnect from all servers."""
+        for session in self.servers.values():
+            await session.close()
+        self.servers.clear()
+
+# Usage
+async def main():
+    client = MCPClient()
+
+    # Connect to multiple servers
+    github_tools = await client.connect_server(
+        name="github",
+        command="python",
+        args=["-m", "github_mcp_server"]
+    )
+    print(f"GitHub tools: {[t.name for t in github_tools]}")
+
+    slack_tools = await client.connect_server(
+        name="slack",
+        command="npx",
+        args=["-y", "@anthropic/slack-mcp-server"]
+    )
+    print(f"Slack tools: {[t.name for t in slack_tools]}")
+
+    # Use tools
+    repos = await client.call_tool(
+        "github",
+        "search_repos",
+        {"query": "langchain python"}
+    )
+    print(repos)
+
+    await client.disconnect_all()
+
+asyncio.run(main())`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using ModelContextProtocol.Client;
+using System.Diagnostics;
+
+public class McpClientManager : IAsyncDisposable
+{
+    private readonly Dictionary<string, McpClientSession> _servers = new();
+
+    public async Task<IReadOnlyList<Tool>> ConnectServerAsync(
+        string name,
+        string command,
+        string[]? args = null,
+        Dictionary<string, string>? env = null,
+        CancellationToken ct = default)
+    {
+        // Start server process
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = command,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        foreach (var arg in args ?? Array.Empty<string>())
+            startInfo.ArgumentList.Add(arg);
+
+        if (env != null)
+        {
+            foreach (var (key, value) in env)
+                startInfo.Environment[key] = value;
+        }
+
+        var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start server");
+
+        // Create MCP session
+        var session = new McpClientSession(
+            process.StandardInput.BaseStream,
+            process.StandardOutput.BaseStream
+        );
+
+        // Initialize and get capabilities
+        var initResult = await session.InitializeAsync(
+            new ClientInfo { Name = "my-agent", Version = "1.0" },
+            ct
+        );
+
+        var toolsResult = await session.ListToolsAsync(ct);
+
+        _servers[name] = session;
+        return toolsResult.Tools;
+    }
+
+    public async Task<string> CallToolAsync(
+        string serverName,
+        string toolName,
+        JsonElement arguments,
+        CancellationToken ct = default)
+    {
+        if (!_servers.TryGetValue(serverName, out var session))
+            throw new InvalidOperationException($"Server not connected: {serverName}");
+
+        var result = await session.CallToolAsync(toolName, arguments, ct);
+        return result.Content[0].Text;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var session in _servers.Values)
+        {
+            await session.DisposeAsync();
+        }
+        _servers.Clear();
+    }
+}
+
+// Usage
+await using var client = new McpClientManager();
+
+// Connect to servers
+var githubTools = await client.ConnectServerAsync(
+    "github",
+    "python",
+    new[] { "-m", "github_mcp_server" }
+);
+Console.WriteLine($"GitHub tools: {string.Join(", ", githubTools.Select(t => t.Name))}");
+
+// Call a tool
+var result = await client.CallToolAsync(
+    "github",
+    "search_repos",
+    JsonDocument.Parse("{\\"query\\": \\"blazor\\"}")
+        .RootElement
+);
+Console.WriteLine(result);`,
+  },
+];
+
+const configExample = [
+  {
+    language: 'json',
+    label: 'Configuration',
+    code: `{
+  "mcpServers": {
+    "github": {
+      "command": "python",
+      "args": ["-m", "github_mcp_server"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxx"
+      }
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/slack-mcp-server"],
+      "env": {
+        "SLACK_TOKEN": "xoxb-xxxx"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/filesystem-mcp-server", "/path/to/allowed/dir"]
+    },
+    "postgres": {
+      "command": "python",
+      "args": ["-m", "postgres_mcp_server"],
+      "env": {
+        "DATABASE_URL": "postgresql://user:pass@localhost/db"
+      }
+    }
+  }
+}`,
+  },
+  {
+    language: 'yaml',
+    label: 'Claude Desktop Config',
+    code: `# ~/.config/claude-desktop/config.json (macOS/Linux)
+# %APPDATA%\\Claude\\config.json (Windows)
+
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "~/data/test.db"]
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/brave-search-mcp-server"],
+      "env": {
+        "BRAVE_API_KEY": "YOUR_API_KEY"
+      }
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/memory-mcp-server"]
+    }
+  }
+}`,
+  },
+];
+
+const securityExample = [
+  {
+    language: 'pseudo',
+    label: 'Security Model',
+    code: `# MCP Security Considerations
+
+# 1. TRANSPORT ISOLATION
+# Servers run as separate processes
+# Communication via stdio (no network exposure)
+server = spawn("mcp-server", stdin=PIPE, stdout=PIPE)
+
+# 2. CAPABILITY NEGOTIATION
+# Client declares what it supports
+# Server only exposes agreed capabilities
+capabilities = server.initialize({
+    client: { name: "my-app", version: "1.0" },
+    capabilities: {
+        tools: { listChanged: true },
+        resources: { subscribe: false },
+        prompts: {}  # Not using prompts
+    }
+})
+
+# 3. ARGUMENT VALIDATION
+# Always validate before passing to tools
+function validateToolCall(toolName, arguments):
+    schema = getToolSchema(toolName)
+    if not validate(arguments, schema):
+        return Error("Invalid arguments")
+    # Additional domain-specific validation
+    if toolName == "delete_file" and arguments.path.startsWith("/"):
+        return Error("Absolute paths not allowed")
+
+# 4. RESOURCE SCOPING
+# Limit what servers can access
+server.config = {
+    allowedPaths: ["/home/user/projects"],
+    deniedPatterns: ["**/*.env", "**/secrets/*"],
+    maxTokensPerRequest: 10000
+}
+
+# 5. AUDIT LOGGING
+function callTool(server, tool, args):
+    log({
+        timestamp: now(),
+        server: server.name,
+        tool: tool,
+        arguments: sanitize(args),  # Remove secrets
+        user: getCurrentUser()
+    })
+    return server.callTool(tool, args)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from mcp.server import Server
+from mcp.types import Tool
+import os
+from pathlib import Path
+
+class SecureMcpServer(Server):
+    def __init__(self, allowed_paths: list[str]):
+        super().__init__("secure-server")
+        self.allowed_paths = [Path(p).resolve() for p in allowed_paths]
+        self.denied_patterns = ["*.env", "*.key", "secrets/*"]
+
+    def validate_path(self, path: str) -> Path:
+        """Ensure path is within allowed directories."""
+        resolved = Path(path).resolve()
+
+        # Check if within allowed paths
+        is_allowed = any(
+            resolved.is_relative_to(allowed)
+            for allowed in self.allowed_paths
+        )
+
+        if not is_allowed:
+            raise PermissionError(f"Path not allowed: {path}")
+
+        # Check denied patterns
+        for pattern in self.denied_patterns:
+            if resolved.match(pattern):
+                raise PermissionError(f"Access denied: {path}")
+
+        return resolved
+
+    @server.call_tool()
+    async def call_tool(self, name: str, arguments: dict):
+        # Validate all path arguments
+        if "path" in arguments:
+            arguments["path"] = str(self.validate_path(arguments["path"]))
+
+        if "paths" in arguments:
+            arguments["paths"] = [
+                str(self.validate_path(p))
+                for p in arguments["paths"]
+            ]
+
+        # Proceed with validated arguments
+        return await self._execute_tool(name, arguments)
+
+# Environment-based configuration
+server = SecureMcpServer(
+    allowed_paths=os.environ.get("MCP_ALLOWED_PATHS", "").split(":"),
+)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public class SecureMcpServer : McpServer
+{
+    private readonly string[] _allowedPaths;
+    private readonly string[] _deniedPatterns = { "*.env", "*.key", "secrets/*" };
+    private readonly ILogger _logger;
+
+    public SecureMcpServer(string[] allowedPaths, ILogger logger)
+    {
+        _allowedPaths = allowedPaths
+            .Select(p => Path.GetFullPath(p))
+            .ToArray();
+        _logger = logger;
+    }
+
+    private string ValidatePath(string path)
+    {
+        var resolved = Path.GetFullPath(path);
+
+        // Check if within allowed paths
+        var isAllowed = _allowedPaths.Any(allowed =>
+            resolved.StartsWith(allowed, StringComparison.OrdinalIgnoreCase));
+
+        if (!isAllowed)
+            throw new UnauthorizedAccessException($"Path not allowed: {path}");
+
+        // Check denied patterns
+        foreach (var pattern in _deniedPatterns)
+        {
+            if (FileSystemName.MatchesSimpleExpression(pattern, resolved))
+                throw new UnauthorizedAccessException($"Access denied: {path}");
+        }
+
+        return resolved;
+    }
+
+    public override async Task<ToolResult> CallToolAsync(
+        string name,
+        JsonElement arguments,
+        CancellationToken ct = default)
+    {
+        // Audit log
+        _logger.LogInformation(
+            "Tool call: {Tool} with args: {Args}",
+            name,
+            SanitizeForLog(arguments)
+        );
+
+        // Validate paths in arguments
+        var validatedArgs = ValidateArguments(arguments);
+
+        try
+        {
+            return await ExecuteToolAsync(name, validatedArgs, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Tool {Tool} failed", name);
+            throw;
+        }
+    }
+
+    private string SanitizeForLog(JsonElement args)
+    {
+        // Remove sensitive fields from logs
+        var doc = JsonDocument.Parse(args.GetRawText());
+        var sanitized = new Dictionary<string, object>();
+
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.Name.Contains("token", StringComparison.OrdinalIgnoreCase) ||
+                prop.Name.Contains("password", StringComparison.OrdinalIgnoreCase) ||
+                prop.Name.Contains("secret", StringComparison.OrdinalIgnoreCase))
+            {
+                sanitized[prop.Name] = "[REDACTED]";
+            }
+            else
+            {
+                sanitized[prop.Name] = prop.Value.ToString();
+            }
+        }
+
+        return JsonSerializer.Serialize(sanitized);
+    }
+}`,
+  },
+];
+
+const resourcesExample = [
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from mcp.server import Server
+from mcp.types import Resource, ResourceContents, TextResourceContents
+
+server = Server("data-server")
+
+# List available resources
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    return [
+        Resource(
+            uri="data://users",
+            name="User Directory",
+            description="List of all users in the system",
+            mimeType="application/json"
+        ),
+        Resource(
+            uri="data://users/{user_id}",
+            name="User Profile",
+            description="Detailed profile for a specific user",
+            mimeType="application/json"
+        ),
+        Resource(
+            uri="data://reports/{report_type}/{date}",
+            name="Reports",
+            description="Generated reports by type and date",
+            mimeType="application/json"
+        )
+    ]
+
+# Read a specific resource
+@server.read_resource()
+async def read_resource(uri: str) -> ResourceContents:
+    # Parse URI to extract resource type and parameters
+    parts = uri.replace("data://", "").split("/")
+
+    if parts[0] == "users":
+        if len(parts) == 1:
+            # List all users
+            users = await db.get_all_users()
+            return TextResourceContents(
+                uri=uri,
+                mimeType="application/json",
+                text=json.dumps(users)
+            )
+        else:
+            # Get specific user
+            user_id = parts[1]
+            user = await db.get_user(user_id)
+            return TextResourceContents(
+                uri=uri,
+                mimeType="application/json",
+                text=json.dumps(user)
+            )
+
+    elif parts[0] == "reports":
+        report_type = parts[1]
+        date = parts[2]
+        report = await generate_report(report_type, date)
+        return TextResourceContents(
+            uri=uri,
+            mimeType="application/json",
+            text=json.dumps(report)
+        )
+
+    raise ValueError(f"Unknown resource: {uri}")
+
+# Subscribe to resource changes (optional)
+@server.subscribe_resource()
+async def subscribe_resource(uri: str):
+    # Set up change notifications
+    async def on_change():
+        await server.notify_resource_updated(uri)
+
+    await db.watch(uri, on_change)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public class DataMcpServer : McpServer
+{
+    private readonly IDatabase _db;
+
+    public override IEnumerable<Resource> ListResources()
+    {
+        yield return new Resource
+        {
+            Uri = "data://users",
+            Name = "User Directory",
+            Description = "List of all users in the system",
+            MimeType = "application/json"
+        };
+
+        yield return new Resource
+        {
+            Uri = "data://users/{user_id}",
+            Name = "User Profile",
+            Description = "Detailed profile for a specific user",
+            MimeType = "application/json"
+        };
+
+        yield return new Resource
+        {
+            Uri = "data://reports/{report_type}/{date}",
+            Name = "Reports",
+            Description = "Generated reports by type and date",
+            MimeType = "application/json"
+        };
+    }
+
+    public override async Task<ResourceContents> ReadResourceAsync(
+        string uri,
+        CancellationToken ct = default)
+    {
+        var parts = uri.Replace("data://", "").Split('/');
+
+        if (parts[0] == "users")
+        {
+            if (parts.Length == 1)
+            {
+                var users = await _db.GetAllUsersAsync(ct);
+                return new TextResourceContents
+                {
+                    Uri = uri,
+                    MimeType = "application/json",
+                    Text = JsonSerializer.Serialize(users)
+                };
+            }
+            else
+            {
+                var userId = parts[1];
+                var user = await _db.GetUserAsync(userId, ct);
+                return new TextResourceContents
+                {
+                    Uri = uri,
+                    MimeType = "application/json",
+                    Text = JsonSerializer.Serialize(user)
+                };
+            }
+        }
+
+        if (parts[0] == "reports")
+        {
+            var reportType = parts[1];
+            var date = parts[2];
+            var report = await GenerateReportAsync(reportType, date, ct);
+            return new TextResourceContents
+            {
+                Uri = uri,
+                MimeType = "application/json",
+                Text = JsonSerializer.Serialize(report)
+            };
+        }
+
+        throw new McpException($"Unknown resource: {uri}");
+    }
+}`,
+  },
+];
+---
+
+<BaseLayout
+  title="Model Context Protocol (MCP)"
+  description="An open protocol for connecting AI agents with external tools, data sources, and services"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Model Context Protocol (MCP)
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        An open protocol for connecting AI assistants with external tools, data sources, and services. Created by Anthropic to standardize how LLMs interact with the outside world.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        What is MCP?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Model Context Protocol (MCP) is an open standard that defines how AI applications communicate with external tools and data sources. Think of it as a <strong>USB standard for AI</strong> &mdash; any MCP-compatible client can work with any MCP server.
+      </p>
+
+      <div class="grid sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Tools</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Functions the LLM can invoke (search, create, update, delete)</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Resources</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Data the LLM can read (files, database records, API responses)</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Prompts</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Pre-defined templates for common tasks</p>
+        </div>
+      </div>
+
+      <Callout type="info" title="Why MCP Matters">
+        Before MCP, every application needed custom integrations for each service. MCP provides a standard interface, allowing developers to build tools once and use them with any MCP-compatible AI assistant.
+      </Callout>
+    </section>
+
+    <!-- Architecture Diagram -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Architecture
+      </h2>
+
+      <Diagram title="MCP Architecture">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                        AI APPLICATION                            │
+│  (Claude Desktop, VS Code, Custom Agent)                        │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                      MCP CLIENT                            │ │
+│  │  • Discovers servers from config                           │ │
+│  │  • Manages connections                                     │ │
+│  │  • Routes tool calls to correct server                     │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└───────────────┬────────────────┬────────────────┬───────────────┘
+                │ stdio          │ stdio          │ stdio
+                ▼                ▼                ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│   MCP SERVER      │ │   MCP SERVER      │ │   MCP SERVER      │
+│   (GitHub)        │ │   (Slack)         │ │   (Database)      │
+│                   │ │                   │ │                   │
+│ Tools:            │ │ Tools:            │ │ Tools:            │
+│ • search_repos    │ │ • send_message    │ │ • query           │
+│ • get_file        │ │ • list_channels   │ │ • insert          │
+│ • create_issue    │ │ • search_messages │ │ • update          │
+│                   │ │                   │ │                   │
+│ Resources:        │ │ Resources:        │ │ Resources:        │
+│ • github://repos  │ │ • slack://users   │ │ • db://tables     │
+└───────────────────┘ └───────────────────┘ └───────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+    GitHub API           Slack API            PostgreSQL`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={mcpOverviewExample} title="MCP Server Implementation" />
+      </div>
+    </section>
+
+    <!-- Client Implementation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Building an MCP Client
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        An MCP client discovers and connects to servers, aggregates their tools, and routes requests:
+      </p>
+
+      <CodeBlock tabs={clientExample} title="MCP Client Implementation" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Configuration Format
+      </h3>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP servers are typically configured via JSON. Here's the standard format used by Claude Desktop and other clients:
+      </p>
+
+      <CodeBlock tabs={configExample} title="MCP Server Configuration" />
+    </section>
+
+    <!-- Resources -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Resources: Read-Only Data Access
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Resources provide a way for LLMs to read data without invoking tools. They use URI schemes for addressing:
+      </p>
+
+      <Table caption="Resource URI patterns">
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Example</th>
+            <th>Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>file://</code></td>
+            <td><code>file:///home/user/doc.md</code></td>
+            <td>Local filesystem access</td>
+          </tr>
+          <tr>
+            <td><code>github://</code></td>
+            <td><code>github://owner/repo/file.py</code></td>
+            <td>GitHub repository contents</td>
+          </tr>
+          <tr>
+            <td><code>db://</code></td>
+            <td><code>db://mydb/users/123</code></td>
+            <td>Database records</td>
+          </tr>
+          <tr>
+            <td><code>api://</code></td>
+            <td><code>api://weather/current/NYC</code></td>
+            <td>External API data</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={resourcesExample} title="Implementing Resources" />
+      </div>
+
+      <Callout type="tip" title="Resources vs Tools">
+        <strong>Resources</strong> are for reading data (GET operations). <strong>Tools</strong> are for actions that modify state (POST, PUT, DELETE). Use resources when the LLM just needs to reference data.
+      </Callout>
+    </section>
+
+    <!-- Security -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Security Considerations
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP's design includes several security layers. Understanding them is critical for safe deployments:
+      </p>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Protection</th>
+            <th>Implementation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Process Isolation</strong></td>
+            <td>Servers run in separate processes</td>
+            <td>stdio communication, no shared memory</td>
+          </tr>
+          <tr>
+            <td><strong>Capability Negotiation</strong></td>
+            <td>Explicit feature opt-in</td>
+            <td>Client declares supported features at init</td>
+          </tr>
+          <tr>
+            <td><strong>Argument Validation</strong></td>
+            <td>Type-safe tool inputs</td>
+            <td>JSON Schema validation before execution</td>
+          </tr>
+          <tr>
+            <td><strong>Path Scoping</strong></td>
+            <td>Limit filesystem access</td>
+            <td>Whitelist allowed directories</td>
+          </tr>
+          <tr>
+            <td><strong>Audit Logging</strong></td>
+            <td>Track all tool invocations</td>
+            <td>Log tool, args, user, timestamp</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={securityExample} title="Security Implementation" />
+      </div>
+
+      <div class="mt-6 space-y-4">
+        <Callout type="danger" title="Never Trust User Input">
+          Always validate and sanitize arguments before passing to external systems. MCP tools can be invoked with any arguments the LLM generates.
+        </Callout>
+
+        <Callout type="warning" title="Secret Management">
+          Store API keys and credentials in environment variables, not in config files. Use secret managers for production deployments.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Available Servers -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Available MCP Servers
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        A growing ecosystem of pre-built MCP servers is available:
+      </p>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Server</th>
+            <th>Tools Provided</th>
+            <th>Package</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Filesystem</strong></td>
+            <td>read, write, list, search files</td>
+            <td><code>@anthropic/filesystem-mcp-server</code></td>
+          </tr>
+          <tr>
+            <td><strong>GitHub</strong></td>
+            <td>repos, issues, PRs, code search</td>
+            <td><code>@anthropic/github-mcp-server</code></td>
+          </tr>
+          <tr>
+            <td><strong>Slack</strong></td>
+            <td>messages, channels, users</td>
+            <td><code>@anthropic/slack-mcp-server</code></td>
+          </tr>
+          <tr>
+            <td><strong>PostgreSQL</strong></td>
+            <td>query, schema inspection</td>
+            <td><code>mcp-server-postgres</code></td>
+          </tr>
+          <tr>
+            <td><strong>SQLite</strong></td>
+            <td>query, schema, modifications</td>
+            <td><code>mcp-server-sqlite</code></td>
+          </tr>
+          <tr>
+            <td><strong>Brave Search</strong></td>
+            <td>web search, news search</td>
+            <td><code>@anthropic/brave-search-mcp-server</code></td>
+          </tr>
+          <tr>
+            <td><strong>Memory</strong></td>
+            <td>persistent key-value storage</td>
+            <td><code>@anthropic/memory-mcp-server</code></td>
+          </tr>
+          <tr>
+            <td><strong>Puppeteer</strong></td>
+            <td>browser automation</td>
+            <td><code>@anthropic/puppeteer-mcp-server</code></td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="info" title="Community Servers">
+        The MCP ecosystem is growing rapidly. Check <a href="https://github.com/modelcontextprotocol" class="text-primary-600 dark:text-primary-400 hover:underline">github.com/modelcontextprotocol</a> for the latest servers.
+      </Callout>
+    </section>
+
+    <!-- Integration with Claude -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Using MCP with Claude
+      </h2>
+
+      <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-3">Setup Steps</h3>
+        <ol class="space-y-3 text-slate-700 dark:text-slate-300">
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">1</span>
+            <span>Install Claude Desktop from <a href="https://claude.ai/download" class="text-primary-600 dark:text-primary-400 hover:underline">claude.ai/download</a></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">2</span>
+            <span>Create config file at <code>~/.config/claude-desktop/config.json</code> (macOS/Linux) or <code>%APPDATA%\Claude\config.json</code> (Windows)</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">3</span>
+            <span>Add MCP server configurations (see examples above)</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">4</span>
+            <span>Restart Claude Desktop to load servers</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">5</span>
+            <span>Tools appear in the tools menu (hammer icon)</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Comparison with Other Approaches -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        MCP vs Other Approaches
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Pros</th>
+            <th>Cons</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>MCP</strong></td>
+            <td>Standardized, composable, secure isolation</td>
+            <td>Requires server implementation</td>
+          </tr>
+          <tr>
+            <td><strong>Direct API calls</strong></td>
+            <td>Simple for single integrations</td>
+            <td>Custom code per service, no standard</td>
+          </tr>
+          <tr>
+            <td><strong>LangChain Tools</strong></td>
+            <td>Rich ecosystem, Python-native</td>
+            <td>Python only, no process isolation</td>
+          </tr>
+          <tr>
+            <td><strong>OpenAI Plugins</strong></td>
+            <td>OpenAPI-based, easy to build</td>
+            <td>OpenAI-specific, limited capabilities</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Foundation for MCP tool invocation
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/skills-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Skills Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Alternative approach to tool management
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/a2a/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Agent2Agent Protocol</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Google's protocol for agent-to-agent communication
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            MCP memory servers for persistent context
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

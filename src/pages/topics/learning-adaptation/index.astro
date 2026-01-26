@@ -1,0 +1,1545 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const tokenSpaceLearningExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Learning in Token Space: No weight updates, only context manipulation
+
+class TokenSpaceLearner:
+    trajectoryStore: VectorDB  # Stores successful task completions
+    fewShotSelector: EmbeddingModel
+
+    function learn(task, trajectory, outcome):
+        if outcome.success:
+            # Store successful trajectory for future reference
+            embedding = embed(task.description)
+            trajectoryStore.store({
+                task_embedding: embedding,
+                task_description: task.description,
+                trajectory: trajectory,  # Steps taken
+                outcome: outcome,
+                timestamp: now()
+            })
+
+    function recall(newTask, k = 3):
+        # Find similar past tasks
+        embedding = embed(newTask.description)
+        similar = trajectoryStore.search(embedding, topK = k)
+
+        # Format as few-shot examples
+        examples = []
+        for item in similar:
+            examples.append({
+                task: item.task_description,
+                solution: formatTrajectory(item.trajectory)
+            })
+
+        return examples
+
+    function execute(task):
+        # Retrieve relevant past experiences
+        examples = recall(task)
+
+        # Build prompt with dynamic few-shot examples
+        prompt = buildPrompt(
+            systemMessage: "You are a helpful assistant...",
+            fewShotExamples: examples,  # Learning injected here
+            currentTask: task
+        )
+
+        # Execute with learned context
+        trajectory = agent.run(prompt)
+        outcome = evaluate(trajectory)
+
+        # Learn from this execution
+        learn(task, trajectory, outcome)
+
+        return outcome`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `import chromadb
+from dataclasses import dataclass
+from typing import Optional
+import json
+
+@dataclass
+class Trajectory:
+    task: str
+    steps: list[dict]  # {thought, action, observation}
+    outcome: dict
+    success: bool
+
+class TokenSpaceLearner:
+    """Learn from experience without updating model weights."""
+
+    def __init__(self, collection_name: str = "trajectories"):
+        self.client = chromadb.PersistentClient(path="./learning_db")
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def store_trajectory(self, trajectory: Trajectory) -> None:
+        """Store a successful trajectory for future reference."""
+        if not trajectory.success:
+            return  # Only learn from successes
+
+        # Create searchable representation
+        doc = f"Task: {trajectory.task}\\n"
+        doc += f"Approach: {self._summarize_approach(trajectory.steps)}"
+
+        self.collection.add(
+            ids=[f"traj_{hash(trajectory.task)}_{len(self.collection.get()['ids'])}"],
+            documents=[doc],
+            metadatas=[{
+                "task": trajectory.task,
+                "steps": json.dumps(trajectory.steps),
+                "outcome": json.dumps(trajectory.outcome),
+                "success": trajectory.success
+            }]
+        )
+
+    def recall_similar(
+        self,
+        task: str,
+        k: int = 3,
+        min_similarity: float = 0.5
+    ) -> list[Trajectory]:
+        """Retrieve trajectories from similar past tasks."""
+        results = self.collection.query(
+            query_texts=[task],
+            n_results=k,
+            include=["metadatas", "distances"]
+        )
+
+        trajectories = []
+        for i, distance in enumerate(results['distances'][0]):
+            similarity = 1 - distance
+            if similarity < min_similarity:
+                continue
+
+            metadata = results['metadatas'][0][i]
+            trajectories.append(Trajectory(
+                task=metadata['task'],
+                steps=json.loads(metadata['steps']),
+                outcome=json.loads(metadata['outcome']),
+                success=metadata['success']
+            ))
+
+        return trajectories
+
+    def build_few_shot_prompt(
+        self,
+        task: str,
+        system_message: str,
+        k: int = 3
+    ) -> list[dict]:
+        """Build a prompt with dynamic few-shot examples."""
+        examples = self.recall_similar(task, k=k)
+
+        messages = [{"role": "system", "content": system_message}]
+
+        # Add retrieved examples as conversation turns
+        for ex in examples:
+            messages.append({
+                "role": "user",
+                "content": f"Task: {ex.task}"
+            })
+            messages.append({
+                "role": "assistant",
+                "content": self._format_trajectory(ex.steps)
+            })
+
+        # Add current task
+        messages.append({
+            "role": "user",
+            "content": f"Task: {task}"
+        })
+
+        return messages
+
+    def _summarize_approach(self, steps: list[dict]) -> str:
+        """Create a brief summary of the approach taken."""
+        actions = [s.get('action', '') for s in steps]
+        return " -> ".join(actions[:5])
+
+    def _format_trajectory(self, steps: list[dict]) -> str:
+        """Format trajectory steps for few-shot example."""
+        formatted = []
+        for step in steps:
+            formatted.append(f"Thought: {step.get('thought', '')}")
+            formatted.append(f"Action: {step.get('action', '')}")
+            if 'observation' in step:
+                formatted.append(f"Observation: {step['observation']}")
+        return "\\n".join(formatted)
+
+# Usage
+learner = TokenSpaceLearner()
+
+# After successful task completion
+learner.store_trajectory(Trajectory(
+    task="Parse the JSON file and extract all email addresses",
+    steps=[
+        {"thought": "Need to read the file first", "action": "read_file('data.json')"},
+        {"thought": "Parse JSON and find emails", "action": "extract_emails(data)"},
+    ],
+    outcome={"emails_found": 15},
+    success=True
+))
+
+# When handling a new similar task
+prompt = learner.build_few_shot_prompt(
+    task="Extract phone numbers from the CSV file",
+    system_message="You are a data extraction assistant."
+)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Qdrant.Client;
+using System.Text.Json;
+
+public record Trajectory(
+    string Task,
+    List<TrajectoryStep> Steps,
+    Dictionary<string, object> Outcome,
+    bool Success
+);
+
+public record TrajectoryStep(
+    string Thought,
+    string Action,
+    string? Observation = null
+);
+
+public class TokenSpaceLearner
+{
+    private readonly QdrantClient _qdrant;
+    private readonly EmbeddingModel _embedder;
+    private const string CollectionName = "trajectories";
+
+    public TokenSpaceLearner(string qdrantUrl = "http://localhost:6334")
+    {
+        _qdrant = new QdrantClient(qdrantUrl);
+        _embedder = new EmbeddingModel();
+        EnsureCollectionExists().Wait();
+    }
+
+    public async Task StoreTrajectoryAsync(
+        Trajectory trajectory,
+        CancellationToken ct = default)
+    {
+        if (!trajectory.Success)
+            return; // Only learn from successes
+
+        var doc = $"Task: {trajectory.Task}\\n";
+        doc += $"Approach: {SummarizeApproach(trajectory.Steps)}";
+
+        var embedding = _embedder.Encode(doc);
+
+        var point = new PointStruct
+        {
+            Id = new PointId { Uuid = Guid.NewGuid().ToString() },
+            Vectors = embedding,
+            Payload = {
+                ["task"] = trajectory.Task,
+                ["steps"] = JsonSerializer.Serialize(trajectory.Steps),
+                ["outcome"] = JsonSerializer.Serialize(trajectory.Outcome),
+                ["success"] = trajectory.Success
+            }
+        };
+
+        await _qdrant.UpsertAsync(CollectionName, new[] { point }, ct);
+    }
+
+    public async Task<List<Trajectory>> RecallSimilarAsync(
+        string task,
+        int k = 3,
+        float minSimilarity = 0.5f,
+        CancellationToken ct = default)
+    {
+        var embedding = _embedder.Encode(task);
+
+        var results = await _qdrant.SearchAsync(
+            CollectionName,
+            embedding,
+            limit: (ulong)k,
+            scoreThreshold: minSimilarity,
+            ct: ct
+        );
+
+        return results.Select(r => new Trajectory(
+            Task: r.Payload["task"].StringValue,
+            Steps: JsonSerializer.Deserialize<List<TrajectoryStep>>(
+                r.Payload["steps"].StringValue
+            )!,
+            Outcome: JsonSerializer.Deserialize<Dictionary<string, object>>(
+                r.Payload["outcome"].StringValue
+            )!,
+            Success: r.Payload["success"].BoolValue
+        )).ToList();
+    }
+
+    public async Task<List<ChatMessage>> BuildFewShotPromptAsync(
+        string task,
+        string systemMessage,
+        int k = 3,
+        CancellationToken ct = default)
+    {
+        var examples = await RecallSimilarAsync(task, k, ct: ct);
+
+        var messages = new List<ChatMessage>
+        {
+            new("system", systemMessage)
+        };
+
+        foreach (var ex in examples)
+        {
+            messages.Add(new("user", $"Task: {ex.Task}"));
+            messages.Add(new("assistant", FormatTrajectory(ex.Steps)));
+        }
+
+        messages.Add(new("user", $"Task: {task}"));
+
+        return messages;
+    }
+
+    private string SummarizeApproach(List<TrajectoryStep> steps) =>
+        string.Join(" -> ", steps.Take(5).Select(s => s.Action));
+
+    private string FormatTrajectory(List<TrajectoryStep> steps) =>
+        string.Join("\\n", steps.SelectMany(s => new[]
+        {
+            $"Thought: {s.Thought}",
+            $"Action: {s.Action}",
+            s.Observation != null ? $"Observation: {s.Observation}" : null
+        }.Where(x => x != null)));
+}`,
+  },
+];
+
+const reflexionExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Reflexion: Self-reflection for iterative improvement
+
+class ReflexionAgent:
+    shortTermMemory: []  # Current task context
+    longTermMemory: []   # Persistent reflections
+
+    function solve(task, maxAttempts = 3):
+        for attempt in range(maxAttempts):
+            # Generate trajectory (attempt to solve)
+            trajectory = actor.generate(
+                task: task,
+                reflections: longTermMemory,  # Include past learnings
+                previousAttempt: shortTermMemory
+            )
+
+            # Evaluate the trajectory
+            evaluation = evaluator.assess(task, trajectory)
+
+            if evaluation.success:
+                # Success! Store positive reflection
+                reflection = reflector.generate(
+                    task: task,
+                    trajectory: trajectory,
+                    outcome: "SUCCESS",
+                    learnings: "This approach worked because..."
+                )
+                longTermMemory.append(reflection)
+                return trajectory
+
+            else:
+                # Failure - generate reflection
+                reflection = reflector.generate(
+                    task: task,
+                    trajectory: trajectory,
+                    outcome: "FAILURE",
+                    errors: evaluation.errors,
+                    learnings: "This failed because... Next time I should..."
+                )
+
+                # Store for next attempt
+                shortTermMemory.append({
+                    attempt: attempt,
+                    trajectory: trajectory,
+                    reflection: reflection
+                })
+
+        # Max attempts reached
+        return bestAttempt(shortTermMemory)
+
+# Reflector generates structured self-critique
+function generateReflection(task, trajectory, outcome, errors):
+    prompt = """
+    Task: {task}
+
+    Your approach:
+    {trajectory}
+
+    Outcome: {outcome}
+    Errors encountered: {errors}
+
+    Generate a reflection with:
+    1. What went wrong?
+    2. Why did it go wrong?
+    3. What should I do differently next time?
+    4. Specific actionable improvements
+    """
+
+    return llm.generate(prompt)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass, field
+from typing import Optional
+from openai import OpenAI
+
+@dataclass
+class Reflection:
+    task: str
+    attempt: int
+    trajectory: str
+    outcome: str
+    what_went_wrong: str
+    why_it_failed: str
+    improvements: list[str]
+
+@dataclass
+class ReflexionAgent:
+    """Agent that learns from self-reflection on failures."""
+
+    client: OpenAI = field(default_factory=OpenAI)
+    model: str = "gpt-4"
+    short_term_memory: list[Reflection] = field(default_factory=list)
+    long_term_memory: list[Reflection] = field(default_factory=list)
+
+    def solve(
+        self,
+        task: str,
+        max_attempts: int = 3,
+        evaluator: callable = None
+    ) -> tuple[str, bool]:
+        """Attempt to solve task with reflection on failures."""
+
+        self.short_term_memory = []  # Reset for new task
+
+        for attempt in range(max_attempts):
+            # Build prompt with reflections
+            trajectory = self._generate_trajectory(task, attempt)
+
+            # Evaluate
+            success, errors = evaluator(trajectory) if evaluator else (False, [])
+
+            if success:
+                # Store successful reflection
+                reflection = self._generate_reflection(
+                    task, attempt, trajectory, "SUCCESS", []
+                )
+                self.long_term_memory.append(reflection)
+                return trajectory, True
+
+            # Generate reflection on failure
+            reflection = self._generate_reflection(
+                task, attempt, trajectory, "FAILURE", errors
+            )
+            self.short_term_memory.append(reflection)
+
+        # Return best attempt
+        return self._select_best_attempt(), False
+
+    def _generate_trajectory(self, task: str, attempt: int) -> str:
+        """Generate a solution attempt."""
+        messages = [
+            {"role": "system", "content": self._build_system_prompt()},
+        ]
+
+        # Add long-term reflections (learnings from past tasks)
+        if self.long_term_memory:
+            learnings = self._format_learnings(self.long_term_memory[-5:])
+            messages.append({
+                "role": "system",
+                "content": f"Learnings from past tasks:\\n{learnings}"
+            })
+
+        # Add short-term reflections (previous attempts on this task)
+        if self.short_term_memory:
+            reflections = self._format_reflections(self.short_term_memory)
+            messages.append({
+                "role": "user",
+                "content": f"Previous attempts and reflections:\\n{reflections}"
+            })
+
+        messages.append({"role": "user", "content": f"Task: {task}"})
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages
+        )
+        return response.choices[0].message.content
+
+    def _generate_reflection(
+        self,
+        task: str,
+        attempt: int,
+        trajectory: str,
+        outcome: str,
+        errors: list[str]
+    ) -> Reflection:
+        """Generate structured reflection on attempt."""
+        prompt = f"""Analyze this attempt and generate a reflection.
+
+Task: {task}
+
+Attempt #{attempt + 1}:
+{trajectory}
+
+Outcome: {outcome}
+Errors: {', '.join(errors) if errors else 'None'}
+
+Provide reflection in this JSON format:
+{{
+    "what_went_wrong": "...",
+    "why_it_failed": "...",
+    "improvements": ["specific improvement 1", "specific improvement 2"]
+}}"""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+
+        data = json.loads(response.choices[0].message.content)
+
+        return Reflection(
+            task=task,
+            attempt=attempt,
+            trajectory=trajectory,
+            outcome=outcome,
+            what_went_wrong=data.get("what_went_wrong", ""),
+            why_it_failed=data.get("why_it_failed", ""),
+            improvements=data.get("improvements", [])
+        )
+
+    def _format_reflections(self, reflections: list[Reflection]) -> str:
+        """Format reflections for prompt."""
+        formatted = []
+        for r in reflections:
+            formatted.append(f"""
+Attempt {r.attempt + 1}:
+- What went wrong: {r.what_went_wrong}
+- Why: {r.why_it_failed}
+- Improvements to try: {', '.join(r.improvements)}
+""")
+        return "\\n".join(formatted)
+
+# Usage
+agent = ReflexionAgent()
+
+def code_evaluator(trajectory: str) -> tuple[bool, list[str]]:
+    # Run generated code, check for errors
+    try:
+        exec(trajectory)
+        return True, []
+    except Exception as e:
+        return False, [str(e)]
+
+solution, success = agent.solve(
+    task="Write a function to find the nth Fibonacci number",
+    evaluator=code_evaluator
+)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using OpenAI;
+using System.Text.Json;
+
+public record Reflection(
+    string Task,
+    int Attempt,
+    string Trajectory,
+    string Outcome,
+    string WhatWentWrong,
+    string WhyItFailed,
+    List<string> Improvements
+);
+
+public class ReflexionAgent
+{
+    private readonly OpenAIClient _client;
+    private readonly string _model;
+    private List<Reflection> _shortTermMemory = new();
+    private readonly List<Reflection> _longTermMemory = new();
+
+    public ReflexionAgent(string apiKey, string model = "gpt-4")
+    {
+        _client = new OpenAIClient(apiKey);
+        _model = model;
+    }
+
+    public async Task<(string Solution, bool Success)> SolveAsync(
+        string task,
+        Func<string, (bool Success, List<string> Errors)> evaluator,
+        int maxAttempts = 3,
+        CancellationToken ct = default)
+    {
+        _shortTermMemory = new List<Reflection>();
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var trajectory = await GenerateTrajectoryAsync(task, attempt, ct);
+
+            var (success, errors) = evaluator(trajectory);
+
+            if (success)
+            {
+                var reflection = await GenerateReflectionAsync(
+                    task, attempt, trajectory, "SUCCESS", new(), ct
+                );
+                _longTermMemory.Add(reflection);
+                return (trajectory, true);
+            }
+
+            var failureReflection = await GenerateReflectionAsync(
+                task, attempt, trajectory, "FAILURE", errors, ct
+            );
+            _shortTermMemory.Add(failureReflection);
+        }
+
+        return (SelectBestAttempt(), false);
+    }
+
+    private async Task<string> GenerateTrajectoryAsync(
+        string task,
+        int attempt,
+        CancellationToken ct)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new("system", BuildSystemPrompt())
+        };
+
+        if (_longTermMemory.Count > 0)
+        {
+            var learnings = FormatLearnings(_longTermMemory.TakeLast(5));
+            messages.Add(new("system", $"Learnings from past tasks:\\n{learnings}"));
+        }
+
+        if (_shortTermMemory.Count > 0)
+        {
+            var reflections = FormatReflections(_shortTermMemory);
+            messages.Add(new("user",
+                $"Previous attempts and reflections:\\n{reflections}"));
+        }
+
+        messages.Add(new("user", $"Task: {task}"));
+
+        var response = await _client.ChatCompletions.CreateAsync(
+            new ChatCompletionsOptions(_model, messages),
+            ct
+        );
+
+        return response.Choices[0].Message.Content;
+    }
+
+    private async Task<Reflection> GenerateReflectionAsync(
+        string task,
+        int attempt,
+        string trajectory,
+        string outcome,
+        List<string> errors,
+        CancellationToken ct)
+    {
+        var prompt = $@"Analyze this attempt and generate a reflection.
+
+Task: {task}
+
+Attempt #{attempt + 1}:
+{trajectory}
+
+Outcome: {outcome}
+Errors: {string.Join(", ", errors)}
+
+Provide reflection in JSON format:
+{{
+    ""what_went_wrong"": ""..."",
+    ""why_it_failed"": ""..."",
+    ""improvements"": [""improvement 1"", ""improvement 2""]
+}}";
+
+        var response = await _client.ChatCompletions.CreateAsync(
+            new ChatCompletionsOptions(_model, new[]
+            {
+                new ChatMessage("user", prompt)
+            })
+            {
+                ResponseFormat = ChatCompletionsResponseFormat.JsonObject
+            },
+            ct
+        );
+
+        var data = JsonDocument.Parse(response.Choices[0].Message.Content);
+        var root = data.RootElement;
+
+        return new Reflection(
+            Task: task,
+            Attempt: attempt,
+            Trajectory: trajectory,
+            Outcome: outcome,
+            WhatWentWrong: root.GetProperty("what_went_wrong").GetString() ?? "",
+            WhyItFailed: root.GetProperty("why_it_failed").GetString() ?? "",
+            Improvements: root.GetProperty("improvements")
+                .EnumerateArray()
+                .Select(e => e.GetString()!)
+                .ToList()
+        );
+    }
+
+    private string FormatReflections(IEnumerable<Reflection> reflections) =>
+        string.Join("\\n", reflections.Select(r => $@"
+Attempt {r.Attempt + 1}:
+- What went wrong: {r.WhatWentWrong}
+- Why: {r.WhyItFailed}
+- Improvements: {string.Join(", ", r.Improvements)}"));
+}`,
+  },
+];
+
+const selfEvolvingExample = [
+  {
+    language: 'pseudo',
+    label: 'Conceptual Overview',
+    code: `# Self-Evolving Agents: Agents that improve their own code/prompts
+
+# WARNING: This is an active research area with safety concerns.
+# These patterns are experimental and should be used with caution.
+
+# Pattern 1: Self-Critique Agent (SCA)
+# Agent generates, critiques, and revises its own outputs
+class SelfCritiqueAgent:
+    function generate(task):
+        # Initial generation
+        output = llm.generate(task)
+
+        # Self-critique loop
+        for i in range(maxRevisions):
+            critique = llm.generate(
+                "Critique this output for errors, improvements: " + output
+            )
+
+            if critique.noIssuesFound:
+                break
+
+            # Revise based on critique
+            output = llm.generate(
+                "Original: " + output +
+                "Critique: " + critique +
+                "Improved version:"
+            )
+
+        return output
+
+# Pattern 2: Prompt Evolution
+# Agent evolves its own system prompt based on performance
+class PromptEvolver:
+    currentPrompt: string
+    performanceHistory: []
+
+    function evolve(tasks, evaluator):
+        for task in tasks:
+            # Execute with current prompt
+            result = agent.run(currentPrompt, task)
+            score = evaluator(result)
+            performanceHistory.append({ prompt: currentPrompt, score: score })
+
+        # Generate improved prompt based on performance
+        lowScoreTasks = filter(performanceHistory, score < threshold)
+
+        newPrompt = llm.generate(
+            "Current prompt: " + currentPrompt +
+            "Failed on these tasks: " + lowScoreTasks +
+            "Generate an improved prompt that would handle these cases better."
+        )
+
+        # A/B test new prompt
+        if evaluate(newPrompt) > evaluate(currentPrompt):
+            currentPrompt = newPrompt
+
+# Pattern 3: Tool/Skill Generation
+# Agent creates new tools when existing ones are insufficient
+class ToolGenerator:
+    function handleTask(task):
+        # Try existing tools
+        result = agent.run(task, availableTools)
+
+        if result.success:
+            return result
+
+        if result.error == "NO_SUITABLE_TOOL":
+            # Generate a new tool
+            newTool = llm.generate(
+                "Task that failed: " + task +
+                "Available tools: " + availableTools +
+                "Generate a new tool (name, description, implementation) " +
+                "that would help solve this task."
+            )
+
+            # Validate and sandbox the new tool
+            if validateTool(newTool) and sandboxTest(newTool):
+                availableTools.append(newTool)
+                return agent.run(task, availableTools)
+
+        return result`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from typing import Callable
+import ast
+
+@dataclass
+class EvolutionResult:
+    original: str
+    evolved: str
+    improvement_score: float
+    changes_made: list[str]
+
+class SelfCritiqueAgent:
+    """Agent that critiques and revises its own outputs."""
+
+    def __init__(self, client, model: str = "gpt-4"):
+        self.client = client
+        self.model = model
+
+    def generate_with_critique(
+        self,
+        task: str,
+        max_revisions: int = 3
+    ) -> tuple[str, list[str]]:
+        """Generate output with self-critique loop."""
+
+        critiques = []
+        output = self._generate(task)
+
+        for _ in range(max_revisions):
+            # Self-critique
+            critique = self._critique(task, output)
+            critiques.append(critique)
+
+            if "no issues found" in critique.lower():
+                break
+
+            # Revise based on critique
+            output = self._revise(task, output, critique)
+
+        return output, critiques
+
+    def _generate(self, task: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": task}]
+        )
+        return response.choices[0].message.content
+
+    def _critique(self, task: str, output: str) -> str:
+        prompt = f"""Review this output for the given task.
+
+Task: {task}
+
+Output:
+{output}
+
+Identify any:
+1. Errors or inaccuracies
+2. Missing information
+3. Areas for improvement
+4. Logical inconsistencies
+
+If the output is satisfactory, respond with "No issues found."
+Otherwise, list specific issues."""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+
+    def _revise(self, task: str, output: str, critique: str) -> str:
+        prompt = f"""Revise this output based on the critique.
+
+Task: {task}
+
+Original output:
+{output}
+
+Critique:
+{critique}
+
+Provide an improved version that addresses all the issues."""
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+
+
+class PromptEvolver:
+    """Evolves system prompts based on performance."""
+
+    def __init__(self, client, initial_prompt: str):
+        self.client = client
+        self.current_prompt = initial_prompt
+        self.history: list[dict] = []
+
+    def evolve(
+        self,
+        test_cases: list[tuple[str, str]],  # (input, expected_output)
+        evaluator: Callable[[str, str], float],
+        generations: int = 5
+    ) -> EvolutionResult:
+        """Evolve prompt over multiple generations."""
+
+        original_prompt = self.current_prompt
+        original_score = self._evaluate_prompt(test_cases, evaluator)
+
+        for gen in range(generations):
+            # Find failure cases
+            failures = self._identify_failures(test_cases, evaluator)
+
+            if not failures:
+                break  # Perfect score
+
+            # Generate improved prompt
+            new_prompt = self._generate_improved_prompt(failures)
+
+            # Evaluate new prompt
+            new_score = self._evaluate_prompt(
+                test_cases, evaluator, new_prompt
+            )
+
+            # Keep if better
+            if new_score > self._evaluate_prompt(test_cases, evaluator):
+                self.current_prompt = new_prompt
+                self.history.append({
+                    "generation": gen,
+                    "score": new_score,
+                    "prompt": new_prompt
+                })
+
+        final_score = self._evaluate_prompt(test_cases, evaluator)
+
+        return EvolutionResult(
+            original=original_prompt,
+            evolved=self.current_prompt,
+            improvement_score=final_score - original_score,
+            changes_made=[h["prompt"][:100] for h in self.history]
+        )
+
+    def _generate_improved_prompt(self, failures: list[dict]) -> str:
+        failure_summary = "\\n".join([
+            f"Input: {f['input']}\\nExpected: {f['expected']}\\nGot: {f['actual']}"
+            for f in failures[:5]
+        ])
+
+        prompt = f"""Current system prompt:
+{self.current_prompt}
+
+This prompt failed on these cases:
+{failure_summary}
+
+Generate an improved system prompt that would handle these cases correctly.
+Keep the same general purpose but add specific instructions to address the failures."""
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content
+
+
+class SafeToolGenerator:
+    """Generate new tools with safety constraints."""
+
+    FORBIDDEN_MODULES = {'os', 'subprocess', 'sys', 'importlib', 'eval', 'exec'}
+
+    def __init__(self, client):
+        self.client = client
+        self.generated_tools: dict[str, Callable] = {}
+
+    def generate_tool(
+        self,
+        task_description: str,
+        existing_tools: list[str]
+    ) -> dict | None:
+        """Generate a new tool for a task."""
+
+        prompt = f"""Generate a Python function to help with this task:
+{task_description}
+
+Existing tools: {', '.join(existing_tools)}
+
+Requirements:
+1. Pure function (no side effects)
+2. No file system access
+3. No network calls
+4. No imports except: math, json, re, datetime
+5. Include docstring and type hints
+
+Return as JSON:
+{{
+    "name": "function_name",
+    "description": "what it does",
+    "code": "def function_name(...):\\n    ..."
+}}"""
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+
+        tool_spec = json.loads(response.choices[0].message.content)
+
+        # Validate safety
+        if not self._is_safe(tool_spec["code"]):
+            return None
+
+        # Test in sandbox
+        if not self._sandbox_test(tool_spec):
+            return None
+
+        return tool_spec
+
+    def _is_safe(self, code: str) -> bool:
+        """Check if code is safe to execute."""
+        try:
+            tree = ast.parse(code)
+
+            for node in ast.walk(tree):
+                # Check for forbidden imports
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name.split('.')[0] in self.FORBIDDEN_MODULES:
+                            return False
+
+                if isinstance(node, ast.ImportFrom):
+                    if node.module and node.module.split('.')[0] in self.FORBIDDEN_MODULES:
+                        return False
+
+                # Check for eval/exec calls
+                if isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Name):
+                        if node.func.id in ('eval', 'exec', 'compile'):
+                            return False
+
+            return True
+
+        except SyntaxError:
+            return False`,
+  },
+];
+---
+
+<BaseLayout
+  title="Learning & Adaptation"
+  description="How AI agents learn from experience without weight updates: token-space learning, reflexion, and self-evolving patterns"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Learning & Adaptation
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        How AI agents improve over time without retraining: learning in token space, reflexion patterns, and emerging self-evolving architectures.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Learning Challenge
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Traditional ML models learn by updating weights during training. But production LLM agents can't retrain on every interaction. How can they improve?
+      </p>
+
+      <div class="grid sm:grid-cols-3 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Token Space Learning</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Store successful trajectories and inject them as few-shot examples</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Reflexion</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Self-critique and iterative improvement on failures</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Self-Evolution</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Agents that modify their own prompts, tools, or code</p>
+        </div>
+      </div>
+
+      <Callout type="info" title="No Weight Updates">
+        All these techniques work at inference time by manipulating context, not by changing model weights. This makes them practical for deployed systems.
+      </Callout>
+    </section>
+
+    <!-- Learning Spectrum Diagram -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Learning Spectrum
+      </h2>
+
+      <Diagram title="Agent Learning Approaches">
+{`Safety/Control ◄──────────────────────────────────────► Autonomy/Risk
+
+┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│   STATIC        │   TOKEN SPACE   │   REFLEXION     │  SELF-EVOLVING  │
+│   PROMPTS       │   LEARNING      │                 │                 │
+├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
+│                 │                 │                 │                 │
+│ Fixed system    │ Dynamic few-    │ Self-critique   │ Prompt/code     │
+│ prompt, no      │ shot examples   │ and iterative   │ modification    │
+│ adaptation      │ from trajectory │ improvement     │ by agent        │
+│                 │ storage         │                 │                 │
+│                 │                 │                 │                 │
+│ • Predictable   │ • Learns from   │ • Improves on   │ • Autonomous    │
+│ • Consistent    │   successes     │   failures      │   improvement   │
+│ • No learning   │ • Safe (read-   │ • Multi-attempt │ • Risky if      │
+│                 │   only context) │   solving       │   unsupervised  │
+│                 │                 │                 │                 │
+└─────────────────┴─────────────────┴─────────────────┴─────────────────┘
+
+       ▲                  ▲                  ▲                  ▲
+       │                  │                  │                  │
+  Most systems       Production         Research          Experimental
+  today              ready              interest          (safety concerns)`}
+      </Diagram>
+    </section>
+
+    <!-- Section 1: Token Space Learning -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        1. Learning in Token Space
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The simplest form of agent learning: store successful task completions and retrieve them as few-shot examples for similar future tasks.
+      </p>
+
+      <Diagram title="Token Space Learning Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                        NEW TASK                                  │
+│                    "Parse this JSON"                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │   EMBED TASK    │
+                    │   DESCRIPTION   │
+                    └─────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     TRAJECTORY STORE                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Task: "Parse XML file"          Similarity: 0.72       │   │
+│  │  Steps: read_file → parse → extract                     │   │
+│  ├─────────────────────────────────────────────────────────┤   │
+│  │  Task: "Extract data from JSON"  Similarity: 0.91  ◄───┼───│
+│  │  Steps: read_file → json.loads → filter_keys            │   │
+│  ├─────────────────────────────────────────────────────────┤   │
+│  │  Task: "Convert CSV to dict"     Similarity: 0.68       │   │
+│  │  Steps: read_file → csv.reader → to_dict                │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DYNAMIC PROMPT                                │
+│  System: You are a data processing assistant...                 │
+│                                                                  │
+│  Example 1: (from trajectory store)                              │
+│  User: Extract data from JSON                                    │
+│  Assistant: read_file → json.loads → filter_keys                 │
+│                                                                  │
+│  Current task:                                                   │
+│  User: Parse this JSON                                           │
+└─────────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={tokenSpaceLearningExample} title="Token Space Learning Implementation" />
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Key Benefits
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Benefit</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>No retraining</strong></td>
+            <td>Learning happens through context, not weight updates</td>
+          </tr>
+          <tr>
+            <td><strong>Immediate</strong></td>
+            <td>New experiences are available for the next request</td>
+          </tr>
+          <tr>
+            <td><strong>Interpretable</strong></td>
+            <td>You can inspect what examples were retrieved</td>
+          </tr>
+          <tr>
+            <td><strong>Safe</strong></td>
+            <td>Read-only operation; can't corrupt the model</td>
+          </tr>
+          <tr>
+            <td><strong>Domain-specific</strong></td>
+            <td>Naturally adapts to your specific use cases</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="tip" title="Quality Over Quantity">
+        Store only high-quality successful trajectories. A few excellent examples are better than many mediocre ones.
+      </Callout>
+    </section>
+
+    <!-- Section 2: Reflexion -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        2. Reflexion
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Reflexion (Shinn et al., 2023) enables agents to learn from failures through self-reflection. Instead of giving up after an error, the agent analyzes what went wrong and tries again.
+      </p>
+
+      <Diagram title="Reflexion Loop">
+{`                    ┌─────────────┐
+                    │    TASK     │
+                    └──────┬──────┘
+                           │
+           ┌───────────────┼───────────────┐
+           │               ▼               │
+           │      ┌───────────────┐        │
+           │      │    ACTOR      │        │
+           │      │  (Generate    │        │
+           │      │   Trajectory) │        │
+           │      └───────┬───────┘        │
+           │              │                │
+           │              ▼                │
+           │      ┌───────────────┐        │
+           │      │   EVALUATOR   │        │
+           │      │  (Check if    │        │
+           │      │   Correct)    │        │
+           │      └───────┬───────┘        │
+           │              │                │
+           │      ┌───────┴───────┐        │
+           │      │               │        │
+           │   Success         Failure     │
+           │      │               │        │
+           │      ▼               ▼        │
+           │   ┌─────┐     ┌───────────┐   │
+           │   │DONE │     │ REFLECTOR │   │
+           │   └─────┘     │           │   │
+           │               │ "What went│   │
+           │               │  wrong?"  │   │
+           │               │ "Why?"    │   │
+           │               │ "How to   │   │
+           │               │  fix?"    │   │
+           │               └─────┬─────┘   │
+           │                     │         │
+           │                     ▼         │
+           │              ┌───────────┐    │
+           │              │  MEMORY   │    │
+           │              │(Reflections)   │
+           │              └─────┬─────┘    │
+           │                    │          │
+           └────────────────────┘          │
+                    (retry with            │
+                     reflections)          │
+                                           │
+           ┌───────────────────────────────┘
+           │
+           ▼
+    ┌─────────────┐
+    │ LONG-TERM   │
+    │ MEMORY      │
+    │ (Learnings) │
+    └─────────────┘`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={reflexionExample} title="Reflexion Implementation" />
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Reflection Structure
+      </h3>
+
+      <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg font-mono text-sm">
+        <p class="text-slate-600 dark:text-slate-400 mb-2">A good reflection includes:</p>
+        <ul class="space-y-1 text-slate-700 dark:text-slate-300">
+          <li><strong>What went wrong?</strong> - Specific error or failure mode</li>
+          <li><strong>Why did it fail?</strong> - Root cause analysis</li>
+          <li><strong>What should I try next?</strong> - Concrete alternative approach</li>
+          <li><strong>What did I learn?</strong> - Generalizable insight</li>
+        </ul>
+      </div>
+
+      <Callout type="warning" title="Reflection Quality">
+        Poor reflections (vague, non-actionable) can actually hurt performance. The reflector model must generate specific, actionable insights.
+      </Callout>
+    </section>
+
+    <!-- Section 3: Self-Evolving Agents -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        3. Self-Evolving Agents
+      </h2>
+
+      <Callout type="danger" title="Experimental & Safety-Critical">
+        Self-evolving agents modify their own behavior. This is an active research area with significant safety considerations. Use with extreme caution in production.
+      </Callout>
+
+      <p class="text-slate-600 dark:text-slate-300 mb-4 mt-4">
+        The most advanced (and risky) form of agent learning: agents that modify their own prompts, generate new tools, or even write new code.
+      </p>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+        Research Directions
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>What Evolves</th>
+            <th>Safety Level</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Self-Critique (SCA)</strong></td>
+            <td>Output quality through revision</td>
+            <td>Safe (no persistent changes)</td>
+          </tr>
+          <tr>
+            <td><strong>Prompt Evolution</strong></td>
+            <td>System prompts based on performance</td>
+            <td>Moderate (prompts can drift)</td>
+          </tr>
+          <tr>
+            <td><strong>Tool Generation</strong></td>
+            <td>New tools/functions</td>
+            <td>Risky (code execution)</td>
+          </tr>
+          <tr>
+            <td><strong>Architecture Evolution</strong></td>
+            <td>Agent structure itself</td>
+            <td>Highly experimental</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={selfEvolvingExample} title="Self-Evolving Patterns" />
+      </div>
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Safety Considerations
+      </h3>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Sandbox All Generated Code">
+          Never execute LLM-generated code without sandboxing. Use restricted execution environments with no filesystem or network access.
+        </Callout>
+
+        <Callout type="warning" title="Version Control Prompts">
+          If evolving prompts, keep a history. Prompt drift can lead to unexpected behavior over time.
+        </Callout>
+
+        <Callout type="warning" title="Human-in-the-Loop">
+          For any persistent changes (new tools, modified prompts), require human approval before deployment.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+
+      <Table caption="Metrics for evaluating agent learning">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>Applies To</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Learning Curve</strong></td>
+            <td>Performance improvement over tasks</td>
+            <td>All approaches</td>
+          </tr>
+          <tr>
+            <td><strong>Sample Efficiency</strong></td>
+            <td>Tasks needed to reach performance level</td>
+            <td>Token space, Reflexion</td>
+          </tr>
+          <tr>
+            <td><strong>Reflection Quality</strong></td>
+            <td>Actionability of generated reflections</td>
+            <td>Reflexion</td>
+          </tr>
+          <tr>
+            <td><strong>Retry Reduction</strong></td>
+            <td>Fewer attempts needed over time</td>
+            <td>Reflexion</td>
+          </tr>
+          <tr>
+            <td><strong>Transfer Learning</strong></td>
+            <td>Performance on related but new tasks</td>
+            <td>All approaches</td>
+          </tr>
+          <tr>
+            <td><strong>Stability</strong></td>
+            <td>Variance in performance over time</td>
+            <td>Self-evolving</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Comparison -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Choosing an Approach
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Factor</th>
+            <th>Token Space</th>
+            <th>Reflexion</th>
+            <th>Self-Evolving</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Complexity</strong></td>
+            <td>Low</td>
+            <td>Medium</td>
+            <td>High</td>
+          </tr>
+          <tr>
+            <td><strong>Safety</strong></td>
+            <td>High</td>
+            <td>High</td>
+            <td>Low</td>
+          </tr>
+          <tr>
+            <td><strong>Latency Impact</strong></td>
+            <td>Minimal</td>
+            <td>2-3x per task</td>
+            <td>Variable</td>
+          </tr>
+          <tr>
+            <td><strong>Best For</strong></td>
+            <td>Routine tasks</td>
+            <td>Complex reasoning</td>
+            <td>Research</td>
+          </tr>
+          <tr>
+            <td><strong>Production Ready</strong></td>
+            <td>Yes</td>
+            <td>Yes (with limits)</td>
+            <td>No</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="tip" title="Start Simple">
+        Begin with token space learning. It's safe, effective, and easy to implement. Add reflexion for tasks that frequently fail. Reserve self-evolution for research.
+      </Callout>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            How agents store and retrieve past experiences
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/react-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">ReAct Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The reasoning loop that generates trajectories
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Managing the context where learning happens
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/skills-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Skills Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Skills can be learned and stored for future use
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
