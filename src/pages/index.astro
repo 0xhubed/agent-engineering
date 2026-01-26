@@ -1,0 +1,276 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import Callout from '../components/Callout.astro';
+
+const topics = [
+  {
+    title: 'Agentic Loops',
+    description: 'Understand the fundamental loop pattern that powers AI agents: observe, think, act, repeat.',
+    href: '/agent-patterns/topics/agentic-loops/',
+    icon: '🔄',
+  },
+  {
+    title: 'Tool Use',
+    description: 'Learn how agents extend their capabilities by calling external tools and APIs.',
+    href: '/agent-patterns/topics/tool-use/',
+    icon: '🔧',
+  },
+  {
+    title: 'Memory Systems',
+    description: 'Explore how agents maintain context and learn from past interactions.',
+    href: '/agent-patterns/topics/memory/',
+    icon: '🧠',
+  },
+  {
+    title: 'Multi-Agent Systems',
+    description: 'Discover patterns for coordinating multiple specialized agents.',
+    href: '/agent-patterns/topics/multi-agent/',
+    icon: '👥',
+  },
+  {
+    title: 'Planning & Reasoning',
+    description: 'Study how agents break down complex tasks and reason about solutions.',
+    href: '/agent-patterns/topics/planning/',
+    icon: '🎯',
+  },
+  {
+    title: 'Safety & Guardrails',
+    description: 'Implement safeguards to ensure agents behave safely and predictably.',
+    href: '/agent-patterns/topics/safety/',
+    icon: '🛡️',
+  },
+];
+
+const sampleCode = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function agentLoop(task):
+    context = initializeContext(task)
+
+    while not task.isComplete():
+        observation = perceive(context)
+        thought = reason(observation)
+        action = decide(thought)
+        result = execute(action)
+        context = update(context, result)
+
+    return context.result`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `def agent_loop(task: Task) -> Result:
+    context = initialize_context(task)
+
+    while not task.is_complete():
+        observation = perceive(context)
+        thought = reason(observation)
+        action = decide(thought)
+        result = execute(action)
+        context = update(context, result)
+
+    return context.result`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public Result AgentLoop(Task task)
+{
+    var context = InitializeContext(task);
+
+    while (!task.IsComplete())
+    {
+        var observation = Perceive(context);
+        var thought = Reason(observation);
+        var action = Decide(thought);
+        var result = Execute(action);
+        context = Update(context, result);
+    }
+
+    return context.Result;
+}`,
+  },
+];
+---
+
+<BaseLayout title="Home">
+  <!-- Hero Section -->
+  <section class="bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-900 py-16 sm:py-24">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto">
+        <h1 class="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-6">
+          AI Agents Learning Hub
+        </h1>
+        <p class="text-lg sm:text-xl text-slate-600 dark:text-slate-300 mb-8">
+          A comprehensive resource for understanding AI agent architectures, design patterns, and implementation strategies. From basic loops to advanced multi-agent systems.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+          <a
+            href="/agent-patterns/topics/"
+            class="inline-flex items-center justify-center px-6 py-3 rounded-lg bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors"
+          >
+            Explore Topics
+            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </a>
+          <a
+            href="/agent-patterns/benchmarks/"
+            class="inline-flex items-center justify-center px-6 py-3 rounded-lg border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            View Benchmarks
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Code Example Preview -->
+  <section class="py-16 bg-white dark:bg-slate-900">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-8">
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-4">
+          Code Examples in Multiple Languages
+        </h2>
+        <p class="text-slate-600 dark:text-slate-300">
+          Every pattern is explained with implementations in pseudo-code, Python, and C#.
+        </p>
+      </div>
+      <CodeBlock tabs={sampleCode} title="The Basic Agent Loop" />
+      <Callout type="tip" title="Interactive Examples">
+        Click the tabs above to switch between different language implementations. All code examples include copy buttons for easy use.
+      </Callout>
+    </div>
+  </section>
+
+  <!-- Topics Grid -->
+  <section class="py-16 bg-slate-50 dark:bg-slate-800/50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center mb-12">
+        <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-4">
+          Core Topics
+        </h2>
+        <p class="text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
+          Master the fundamental concepts and patterns that power modern AI agents.
+        </p>
+      </div>
+      <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {topics.map((topic) => (
+          <a
+            href={topic.href}
+            class="group block p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-lg transition-all"
+          >
+            <div class="text-3xl mb-4">{topic.icon}</div>
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+              {topic.title}
+            </h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              {topic.description}
+            </p>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Benchmarks Preview -->
+  <section class="py-16 bg-white dark:bg-slate-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-12 items-center">
+        <div>
+          <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-4">
+            Agent Benchmarks
+          </h2>
+          <p class="text-slate-600 dark:text-slate-300 mb-6">
+            Understand how different agent architectures are evaluated. We cover industry-standard benchmarks including:
+          </p>
+          <ul class="space-y-3">
+            <li class="flex items-start gap-3">
+              <svg class="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-slate-700 dark:text-slate-300">
+                <strong>SWE-bench</strong> - Software engineering task completion
+              </span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-slate-700 dark:text-slate-300">
+                <strong>WebArena</strong> - Web browsing and interaction tasks
+              </span>
+            </li>
+            <li class="flex items-start gap-3">
+              <svg class="w-5 h-5 text-primary-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+              </svg>
+              <span class="text-slate-700 dark:text-slate-300">
+                <strong>GAIA</strong> - General AI assistant capabilities
+              </span>
+            </li>
+          </ul>
+          <a
+            href="/agent-patterns/benchmarks/"
+            class="inline-flex items-center mt-6 text-primary-600 dark:text-primary-400 font-medium hover:text-primary-700 dark:hover:text-primary-300"
+          >
+            Explore all benchmarks
+            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+          </a>
+        </div>
+        <div class="bg-slate-100 dark:bg-slate-800 rounded-xl p-6 lg:p-8">
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-300">SWE-bench Verified</span>
+              <span class="text-sm text-slate-500 dark:text-slate-400">Top agents: 50%+</span>
+            </div>
+            <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div class="h-full bg-primary-500 rounded-full" style="width: 55%"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-300">WebArena</span>
+              <span class="text-sm text-slate-500 dark:text-slate-400">Top agents: 35%+</span>
+            </div>
+            <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div class="h-full bg-primary-500 rounded-full" style="width: 38%"></div>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-slate-700 dark:text-slate-300">GAIA Level 1</span>
+              <span class="text-sm text-slate-500 dark:text-slate-400">Top agents: 70%+</span>
+            </div>
+            <div class="h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <div class="h-full bg-primary-500 rounded-full" style="width: 72%"></div>
+            </div>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-4 italic">
+            *Approximate scores for leading agent systems
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Resources CTA -->
+  <section class="py-16 bg-slate-50 dark:bg-slate-800/50">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <h2 class="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white mb-4">
+        Additional Resources
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-8 max-w-2xl mx-auto">
+        Dive deeper with curated papers, frameworks, and tools for building AI agents.
+      </p>
+      <div class="flex flex-wrap gap-4 justify-center">
+        <a
+          href="/agent-patterns/resources/"
+          class="inline-flex items-center px-6 py-3 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-medium hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors"
+        >
+          Browse Resources
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

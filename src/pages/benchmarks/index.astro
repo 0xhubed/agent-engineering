@@ -1,0 +1,90 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Callout from '../../components/Callout.astro';
+
+const benchmarks = [
+  {
+    name: 'SWE-bench',
+    description: 'Evaluates agents on real-world software engineering tasks from GitHub issues.',
+    category: 'Software Engineering',
+    metrics: ['Task completion rate', 'Code quality', 'Test pass rate'],
+  },
+  {
+    name: 'SWE-bench Verified',
+    description: 'A curated subset of SWE-bench with human-verified solutions.',
+    category: 'Software Engineering',
+    metrics: ['Verified task completion', 'Solution correctness'],
+  },
+  {
+    name: 'WebArena',
+    description: 'Tests agents on complex web browsing and interaction tasks.',
+    category: 'Web Navigation',
+    metrics: ['Task success rate', 'Action efficiency'],
+  },
+  {
+    name: 'GAIA',
+    description: 'General AI Assistant benchmark across three difficulty levels.',
+    category: 'General Assistant',
+    metrics: ['Level 1/2/3 accuracy', 'Reasoning quality'],
+  },
+  {
+    name: 'HumanEval',
+    description: 'Code generation benchmark measuring functional correctness.',
+    category: 'Code Generation',
+    metrics: ['Pass@1', 'Pass@10', 'Pass@100'],
+  },
+  {
+    name: 'AgentBench',
+    description: 'Multi-dimensional evaluation across 8 distinct environments.',
+    category: 'Multi-Environment',
+    metrics: ['Environment-specific scores', 'Overall capability'],
+  },
+];
+---
+
+<BaseLayout title="Benchmarks">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-12">
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Agent Benchmarks
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
+        Understand how AI agents are evaluated. These benchmarks measure different aspects of agent capabilities from code generation to web navigation.
+      </p>
+    </div>
+
+    <Callout type="info" title="Benchmark Coverage">
+      Detailed analysis and comparison of each benchmark will be added in future updates. This page provides an overview of the major evaluation frameworks.
+    </Callout>
+
+    <div class="mt-8 space-y-6">
+      {benchmarks.map((benchmark) => (
+        <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
+            <div>
+              <h3 class="text-xl font-semibold text-slate-900 dark:text-white">
+                {benchmark.name}
+              </h3>
+              <span class="inline-block mt-1 px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
+                {benchmark.category}
+              </span>
+            </div>
+          </div>
+          <p class="text-slate-600 dark:text-slate-400 mb-4">
+            {benchmark.description}
+          </p>
+          <div>
+            <h4 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Key Metrics:</h4>
+            <div class="flex flex-wrap gap-2">
+              {benchmark.metrics.map((metric) => (
+                <span class="px-2 py-1 text-xs bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 rounded">
+                  {metric}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</BaseLayout>

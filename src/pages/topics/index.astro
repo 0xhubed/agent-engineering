@@ -1,0 +1,73 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+const topics = [
+  {
+    title: 'Agentic Loops',
+    description: 'Understand the fundamental loop pattern that powers AI agents: observe, think, act, repeat.',
+    href: '/agent-patterns/topics/agentic-loops/',
+    status: 'coming-soon',
+  },
+  {
+    title: 'Tool Use',
+    description: 'Learn how agents extend their capabilities by calling external tools and APIs.',
+    href: '/agent-patterns/topics/tool-use/',
+    status: 'coming-soon',
+  },
+  {
+    title: 'Memory Systems',
+    description: 'Explore how agents maintain context and learn from past interactions.',
+    href: '/agent-patterns/topics/memory/',
+    status: 'coming-soon',
+  },
+  {
+    title: 'Multi-Agent Systems',
+    description: 'Discover patterns for coordinating multiple specialized agents.',
+    href: '/agent-patterns/topics/multi-agent/',
+    status: 'coming-soon',
+  },
+  {
+    title: 'Planning & Reasoning',
+    description: 'Study how agents break down complex tasks and reason about solutions.',
+    href: '/agent-patterns/topics/planning/',
+    status: 'coming-soon',
+  },
+  {
+    title: 'Safety & Guardrails',
+    description: 'Implement safeguards to ensure agents behave safely and predictably.',
+    href: '/agent-patterns/topics/safety/',
+    status: 'coming-soon',
+  },
+];
+---
+
+<BaseLayout title="Topics">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-12">
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Topics
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
+        Explore the core concepts and patterns that power modern AI agents. Each topic includes explanations, code examples, and practical guidance.
+      </p>
+    </div>
+
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {topics.map((topic) => (
+        <div class="relative p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          {topic.status === 'coming-soon' && (
+            <span class="absolute top-4 right-4 px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">
+              Coming Soon
+            </span>
+          )}
+          <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+            {topic.title}
+          </h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            {topic.description}
+          </p>
+        </div>
+      ))}
+    </div>
+  </div>
+</BaseLayout>

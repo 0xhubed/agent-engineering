@@ -1,0 +1,160 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Callout from '../../components/Callout.astro';
+
+const papers = [
+  {
+    title: 'ReAct: Synergizing Reasoning and Acting in Language Models',
+    authors: 'Yao et al.',
+    year: 2023,
+    description: 'Introduces the ReAct paradigm combining reasoning traces with actions.',
+  },
+  {
+    title: 'Toolformer: Language Models Can Teach Themselves to Use Tools',
+    authors: 'Schick et al.',
+    year: 2023,
+    description: 'Demonstrates self-supervised tool use learning in LLMs.',
+  },
+  {
+    title: 'Voyager: An Open-Ended Embodied Agent with LLMs',
+    authors: 'Wang et al.',
+    year: 2023,
+    description: 'Presents a lifelong learning agent in Minecraft.',
+  },
+  {
+    title: 'AutoGPT: An Autonomous GPT-4 Experiment',
+    authors: 'Significant Gravitas',
+    year: 2023,
+    description: 'Open-source autonomous agent framework.',
+  },
+];
+
+const frameworks = [
+  {
+    name: 'LangChain',
+    description: 'Framework for developing applications powered by language models.',
+    url: 'https://langchain.com',
+  },
+  {
+    name: 'LangGraph',
+    description: 'Library for building stateful, multi-actor applications with LLMs.',
+    url: 'https://langchain.com/langgraph',
+  },
+  {
+    name: 'AutoGen',
+    description: 'Microsoft framework for multi-agent conversations.',
+    url: 'https://microsoft.github.io/autogen/',
+  },
+  {
+    name: 'CrewAI',
+    description: 'Framework for orchestrating role-playing AI agents.',
+    url: 'https://crewai.com',
+  },
+];
+
+const tools = [
+  {
+    name: 'Claude Code',
+    description: 'Anthropic CLI tool for AI-assisted software development.',
+    category: 'Development',
+  },
+  {
+    name: 'Cursor',
+    description: 'AI-first code editor with integrated agent capabilities.',
+    category: 'Development',
+  },
+  {
+    name: 'GitHub Copilot',
+    description: 'AI pair programmer for code suggestions and completions.',
+    category: 'Development',
+  },
+];
+---
+
+<BaseLayout title="Resources">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <div class="mb-12">
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Resources
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
+        Curated papers, frameworks, and tools for learning about and building AI agents.
+      </p>
+    </div>
+
+    <!-- Papers Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Key Papers
+      </h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {papers.map((paper) => (
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">
+              {paper.title}
+            </h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
+              {paper.authors} ({paper.year})
+            </p>
+            <p class="text-sm text-slate-600 dark:text-slate-300">
+              {paper.description}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Frameworks Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Frameworks
+      </h2>
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {frameworks.map((framework) => (
+          <a
+            href={framework.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
+          >
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
+              {framework.name}
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+            </h3>
+            <p class="text-sm text-slate-600 dark:text-slate-300">
+              {framework.description}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
+
+    <!-- Tools Section -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
+        Tools
+      </h2>
+      <div class="grid gap-4 sm:grid-cols-3">
+        {tools.map((tool) => (
+          <div class="p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+            <span class="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded mb-2">
+              {tool.category}
+            </span>
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">
+              {tool.name}
+            </h3>
+            <p class="text-sm text-slate-600 dark:text-slate-300">
+              {tool.description}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <Callout type="tip" title="Contribute">
+      Know of a resource that should be included? This list will be expanded over time with community contributions.
+    </Callout>
+  </div>
+</BaseLayout>
