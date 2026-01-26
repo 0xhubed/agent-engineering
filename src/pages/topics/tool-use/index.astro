@@ -1,0 +1,752 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const basicToolExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function executeWithTools(userRequest, tools):
+    # Format tools for the model
+    toolDefinitions = formatToolDefinitions(tools)
+
+    # Send request with tool definitions
+    response = llm.generate(
+        messages: [userRequest],
+        tools: toolDefinitions
+    )
+
+    # Check if model wants to call a tool
+    if response.hasToolCall:
+        toolName = response.toolCall.name
+        toolArgs = response.toolCall.arguments
+
+        # Execute the tool
+        result = tools[toolName].execute(toolArgs)
+
+        # Send result back to model for final response
+        return llm.generate(
+            messages: [userRequest, response, toolResult(result)]
+        )
+
+    return response.content`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from openai import OpenAI
+
+client = OpenAI()
+
+# Define tools with JSON schema
+tools = [{
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Get current weather for a location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {
+                    "type": "string",
+                    "description": "City name, e.g. 'San Francisco'"
+                },
+                "unit": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "default": "celsius"
+                }
+            },
+            "required": ["location"]
+        }
+    }
+}]
+
+def execute_with_tools(user_message: str) -> str:
+    messages = [{"role": "user", "content": user_message}]
+
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=messages,
+        tools=tools
+    )
+
+    if response.choices[0].message.tool_calls:
+        tool_call = response.choices[0].message.tool_calls[0]
+
+        # Execute the tool (implementation specific)
+        result = call_weather_api(
+            **json.loads(tool_call.function.arguments)
+        )
+
+        # Add tool result and get final response
+        messages.append(response.choices[0].message)
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": json.dumps(result)
+        })
+
+        final = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+        return final.choices[0].message.content
+
+    return response.choices[0].message.content`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+using System.ComponentModel;
+
+// Define tool as a method with attributes
+[Description("Get current weather for a location")]
+static WeatherResult GetWeather(
+    [Description("City name")] string location,
+    [Description("Temperature unit")] string unit = "celsius")
+{
+    // Implementation specific
+    return weatherService.GetCurrent(location, unit);
+}
+
+// Create chat client with tools
+var client = new ChatClientBuilder(
+    new AzureOpenAIChatClient(endpoint, credential, "gpt-4"))
+    .UseFunctionInvocation()
+    .Build();
+
+// Register tools
+var options = new ChatOptions
+{
+    Tools = [AIFunctionFactory.Create(GetWeather)]
+};
+
+// Execute with automatic tool invocation
+var response = await client.GetResponseAsync(
+    "What's the weather in Tokyo?",
+    options
+);
+
+Console.WriteLine(response.Text);`,
+  },
+];
+
+const parallelToolExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function executeParallelTools(userRequest, tools):
+    response = llm.generate(
+        messages: [userRequest],
+        tools: tools,
+        parallelToolCalls: true
+    )
+
+    if response.hasMultipleToolCalls:
+        # Execute all tool calls concurrently
+        results = parallel.map(response.toolCalls, (call) =>
+            tools[call.name].execute(call.arguments)
+        )
+
+        # Collect all results
+        toolResults = zip(response.toolCalls, results)
+
+        return llm.generate(
+            messages: [userRequest, response, ...toolResults]
+        )
+
+    return response.content`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `import asyncio
+from openai import AsyncOpenAI
+
+client = AsyncOpenAI()
+
+async def execute_tools_parallel(tool_calls: list) -> list:
+    """Execute multiple tool calls concurrently."""
+    async def execute_one(tool_call):
+        func_name = tool_call.function.name
+        args = json.loads(tool_call.function.arguments)
+
+        # Route to appropriate tool
+        if func_name == "get_weather":
+            return await get_weather_async(**args)
+        elif func_name == "search_web":
+            return await search_web_async(**args)
+        # ... more tools
+
+    # Execute all tools concurrently
+    results = await asyncio.gather(
+        *[execute_one(tc) for tc in tool_calls]
+    )
+    return results
+
+async def agent_with_parallel_tools(query: str) -> str:
+    messages = [{"role": "user", "content": query}]
+
+    response = await client.chat.completions.create(
+        model="gpt-4",
+        messages=messages,
+        tools=tools,
+        parallel_tool_calls=True  # Enable parallel calls
+    )
+
+    assistant_msg = response.choices[0].message
+
+    if assistant_msg.tool_calls:
+        # Execute all tools in parallel
+        results = await execute_tools_parallel(
+            assistant_msg.tool_calls
+        )
+
+        # Add results to conversation
+        messages.append(assistant_msg)
+        for tool_call, result in zip(
+            assistant_msg.tool_calls, results
+        ):
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": json.dumps(result)
+            })
+
+        # Get final response
+        final = await client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+        return final.choices[0].message.content
+
+    return assistant_msg.content`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+
+// Multiple tools registered
+var tools = new List<AITool>
+{
+    AIFunctionFactory.Create(GetWeather),
+    AIFunctionFactory.Create(SearchWeb),
+    AIFunctionFactory.Create(GetStockPrice)
+};
+
+// Client with automatic parallel execution
+var client = new ChatClientBuilder(baseClient)
+    .UseFunctionInvocation(config =>
+    {
+        // Enable concurrent tool execution
+        config.MaximumConcurrentInvocations = 5;
+        config.RetryOnError = true;
+    })
+    .Build();
+
+var options = new ChatOptions { Tools = tools };
+
+// The framework handles parallel execution automatically
+var response = await client.GetResponseAsync(
+    "What's the weather in NYC and Tokyo, " +
+    "and what's Apple's stock price?",
+    options
+);`,
+  },
+];
+
+const errorHandlingExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function executeWithRetry(toolCall, maxRetries = 3):
+    for attempt in range(maxRetries):
+        try:
+            result = tools[toolCall.name].execute(toolCall.args)
+            return { success: true, data: result }
+        catch error:
+            if isRetryable(error) and attempt < maxRetries - 1:
+                wait(exponentialBackoff(attempt))
+                continue
+            else:
+                return {
+                    success: false,
+                    error: formatError(error)
+                }
+
+function agentLoop(userRequest):
+    while not complete:
+        response = llm.generate(messages, tools)
+
+        if response.hasToolCall:
+            result = executeWithRetry(response.toolCall)
+
+            if not result.success:
+                # Let the model know about the failure
+                messages.append(toolError(result.error))
+                # Model can try a different approach
+            else:
+                messages.append(toolResult(result.data))
+        else:
+            return response.content`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from tenacity import retry, stop_after_attempt, wait_exponential
+
+class ToolExecutor:
+    def __init__(self, tools: dict):
+        self.tools = tools
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10)
+    )
+    def execute_with_retry(self, name: str, args: dict):
+        """Execute tool with automatic retry on failure."""
+        tool = self.tools.get(name)
+        if not tool:
+            raise ToolNotFoundError(f"Unknown tool: {name}")
+        return tool(**args)
+
+    def safe_execute(self, tool_call) -> dict:
+        """Execute tool and return structured result."""
+        try:
+            result = self.execute_with_retry(
+                tool_call.function.name,
+                json.loads(tool_call.function.arguments)
+            )
+            return {
+                "tool_call_id": tool_call.id,
+                "role": "tool",
+                "content": json.dumps({
+                    "success": True,
+                    "data": result
+                })
+            }
+        except Exception as e:
+            return {
+                "tool_call_id": tool_call.id,
+                "role": "tool",
+                "content": json.dumps({
+                    "success": False,
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                })
+            }
+
+# Usage in agent loop
+executor = ToolExecutor(available_tools)
+
+while not task_complete:
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=messages,
+        tools=tool_definitions
+    )
+
+    if response.choices[0].message.tool_calls:
+        for tool_call in response.choices[0].message.tool_calls:
+            result = executor.safe_execute(tool_call)
+            messages.append(result)
+    else:
+        break`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Polly;
+using Microsoft.Extensions.AI;
+
+public class ResilientToolExecutor
+{
+    private readonly IAsyncPolicy _retryPolicy;
+
+    public ResilientToolExecutor()
+    {
+        _retryPolicy = Policy
+            .Handle<HttpRequestException>()
+            .Or<TimeoutException>()
+            .WaitAndRetryAsync(
+                3,
+                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+                onRetry: (exception, timeSpan, attempt, context) =>
+                {
+                    Console.WriteLine(
+                        $"Retry {attempt} after {timeSpan}: {exception.Message}"
+                    );
+                }
+            );
+    }
+
+    public async Task<ToolResult> ExecuteAsync(
+        string toolName,
+        JsonElement arguments)
+    {
+        try
+        {
+            var result = await _retryPolicy.ExecuteAsync(async () =>
+            {
+                return await InvokeToolAsync(toolName, arguments);
+            });
+
+            return new ToolResult
+            {
+                Success = true,
+                Data = result
+            };
+        }
+        catch (Exception ex)
+        {
+            return new ToolResult
+            {
+                Success = false,
+                Error = ex.Message,
+                ErrorType = ex.GetType().Name
+            };
+        }
+    }
+}
+
+// Configure chat client with resilient execution
+var client = new ChatClientBuilder(baseClient)
+    .UseFunctionInvocation(config =>
+    {
+        config.RetryOnError = true;
+        config.MaximumIterations = 10;
+    })
+    .Build();`,
+  },
+];
+---
+
+<BaseLayout
+  title="Tool Use & Function Calling"
+  description="Learn how AI agents extend their capabilities by calling external tools and APIs"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Tool Use & Function Calling
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        The bridge between language models and real-world actions. Tool use enables agents to interact with external systems, APIs, and databases.
+      </p>
+    </header>
+
+    <!-- Concept Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        What is Tool Use?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Tool use (also called function calling) allows language models to request the execution of external functions. Instead of just generating text, the model can:
+      </p>
+      <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-2 mb-6">
+        <li>Query databases and APIs</li>
+        <li>Perform calculations</li>
+        <li>Read and write files</li>
+        <li>Execute code</li>
+        <li>Interact with external services</li>
+      </ul>
+
+      <Callout type="info" title="Key Insight">
+        Tools transform LLMs from text generators into agents that can take action in the world. The model decides <em>when</em> to use a tool, <em>which</em> tool to use, and <em>what arguments</em> to pass.
+      </Callout>
+    </section>
+
+    <!-- How It Works -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        How Tool Calling Works
+      </h2>
+
+      <Diagram title="Tool Calling Flow">
+{`User Request
+     │
+     ▼
+┌─────────────────────────────────────┐
+│           Language Model            │
+│   (with tool definitions loaded)    │
+└─────────────────────────────────────┘
+     │
+     │ Model decides to call tool
+     ▼
+┌─────────────────────────────────────┐
+│         Tool Call Response          │
+│  { name: "get_weather",             │
+│    arguments: { "location": "NYC" } │
+│  }                                  │
+└─────────────────────────────────────┘
+     │
+     │ Application executes tool
+     ▼
+┌─────────────────────────────────────┐
+│          Tool Execution             │
+│   get_weather("NYC") → result       │
+└─────────────────────────────────────┘
+     │
+     │ Result sent back to model
+     ▼
+┌─────────────────────────────────────┐
+│           Language Model            │
+│    (generates final response)       │
+└─────────────────────────────────────┘
+     │
+     ▼
+Final Response to User`}
+      </Diagram>
+
+      <div class="mt-6">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          Basic Tool Execution
+        </h3>
+        <CodeBlock tabs={basicToolExample} title="Simple Tool Calling Pattern" />
+      </div>
+    </section>
+
+    <!-- Tool Definition Formats -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Tool Definition Formats
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Different LLM providers use slightly different formats for defining tools:
+      </p>
+
+      <Table caption="Tool definition formats vary by provider but share common elements">
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Format</th>
+            <th>Key Features</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenAI</td>
+            <td>JSON Schema</td>
+            <td>Parallel calls, strict mode, function descriptions</td>
+          </tr>
+          <tr>
+            <td>Anthropic</td>
+            <td>JSON Schema</td>
+            <td>Tool use blocks, detailed descriptions encouraged</td>
+          </tr>
+          <tr>
+            <td>Google</td>
+            <td>OpenAPI-style</td>
+            <td>Function declarations with protobuf types</td>
+          </tr>
+          <tr>
+            <td>Open Models</td>
+            <td>Varies</td>
+            <td>Often use Hermes or ChatML format</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="tip" title="Best Practice">
+        Write detailed tool descriptions. Models use these descriptions to decide when to call a tool. Include examples of valid inputs and explain edge cases.
+      </Callout>
+    </section>
+
+    <!-- Parallel Tool Calls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Parallel Tool Execution
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Modern LLMs can request multiple tool calls simultaneously, dramatically reducing latency for complex tasks:
+      </p>
+
+      <CodeBlock tabs={parallelToolExample} title="Executing Multiple Tools Concurrently" />
+
+      <Callout type="warning" title="Consideration">
+        Not all tool calls should be parallelized. If tools have dependencies (e.g., create record then update it), they must be executed sequentially.
+      </Callout>
+    </section>
+
+    <!-- Error Handling -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Error Handling & Retries
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Robust tool execution requires handling failures gracefully. The model should be informed of errors so it can try alternative approaches:
+      </p>
+
+      <CodeBlock tabs={errorHandlingExample} title="Resilient Tool Execution" />
+    </section>
+
+    <!-- Trade-offs -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Trade-offs & Approaches
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Pros</th>
+            <th>Cons</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Static tool list</strong></td>
+            <td>Simple, predictable, easy to test</td>
+            <td>Context bloat with many tools</td>
+          </tr>
+          <tr>
+            <td><strong>Dynamic discovery</strong></td>
+            <td>Scales to many tools</td>
+            <td>Additional latency, complexity</td>
+          </tr>
+          <tr>
+            <td><strong>Tool clustering</strong></td>
+            <td>Balance of both approaches</td>
+            <td>Routing logic complexity</td>
+          </tr>
+          <tr>
+            <td><strong>Skills pattern</strong></td>
+            <td>Massive token savings (98%+)</td>
+            <td>Requires filesystem access</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="info" title="Related Topic">
+        For large tool libraries (50+ tools), see the <a href="/agent-patterns/topics/skills-pattern/" class="text-primary-600 dark:text-primary-400 hover:underline">Skills Pattern</a> which can reduce context usage from 150K to 2K tokens.
+      </Callout>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Measuring tool use quality requires evaluating multiple dimensions:
+      </p>
+
+      <Table caption="Key metrics for evaluating tool calling capabilities">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>How to Calculate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Tool Selection Accuracy</strong></td>
+            <td>Did the model pick the right tool?</td>
+            <td>Compare selected tool vs ground truth</td>
+          </tr>
+          <tr>
+            <td><strong>Argument Accuracy</strong></td>
+            <td>Were the parameters correct?</td>
+            <td>Exact match or semantic similarity of args</td>
+          </tr>
+          <tr>
+            <td><strong>Unnecessary Calls</strong></td>
+            <td>Did model call tools when not needed?</td>
+            <td>Count tool calls for simple queries</td>
+          </tr>
+          <tr>
+            <td><strong>Latency Impact</strong></td>
+            <td>Time added by tool execution</td>
+            <td>End-to-end time minus model inference</td>
+          </tr>
+          <tr>
+            <td><strong>Error Recovery</strong></td>
+            <td>Can model handle tool failures?</td>
+            <td>Success rate after simulated failures</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          Evaluation Frameworks
+        </h3>
+        <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-1">
+          <li><strong>DeepEval</strong> - ToolCorrectnessMetric, ArgumentCorrectnessMetric</li>
+          <li><strong>ToolBench</strong> - Large-scale tool use benchmark</li>
+          <li><strong>API-Bank</strong> - API call evaluation dataset</li>
+          <li><strong>Custom datasets</strong> - Domain-specific tool calling tests</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Insufficient Tool Descriptions">
+          Vague descriptions lead to incorrect tool selection. Always include examples and edge cases in your tool definitions.
+        </Callout>
+
+        <Callout type="danger" title="Missing Error Information">
+          When a tool fails, send the error details back to the model. Without this, the model can't reason about what went wrong.
+        </Callout>
+
+        <Callout type="danger" title="Unbounded Tool Loops">
+          Always set a maximum iteration limit. Without it, agents can get stuck in infinite tool-calling loops.
+        </Callout>
+
+        <Callout type="warning" title="Security: Unvalidated Arguments">
+          Never pass tool arguments directly to system commands. Validate and sanitize all inputs to prevent injection attacks.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/react-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">ReAct Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Combine tool use with reasoning for more capable agents
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Store tool results for future reference and learning
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
