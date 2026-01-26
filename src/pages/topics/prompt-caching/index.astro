@@ -1,0 +1,1425 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const basicCachingExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Prompt caching works by reusing computed attention states
+
+# WITHOUT CACHING (every request computes full attention)
+function generateWithoutCache(systemPrompt, userMessage):
+    fullContext = systemPrompt + userMessage
+
+    # Compute attention for ALL tokens every time
+    # Cost: O(n²) where n = total tokens
+    kvStates = computeAttention(fullContext)
+
+    return generateFromStates(kvStates)
+
+# WITH CACHING (reuse attention for stable prefix)
+function generateWithCache(systemPrompt, userMessage):
+    cacheKey = hash(systemPrompt)
+
+    if cache.has(cacheKey):
+        # Reuse precomputed attention states
+        prefixStates = cache.get(cacheKey)
+        # Only compute attention for new tokens
+        newStates = computeIncrementalAttention(
+            prefixStates,
+            userMessage
+        )
+    else:
+        # First time: compute and cache
+        prefixStates = computeAttention(systemPrompt)
+        cache.set(cacheKey, prefixStates)
+        newStates = computeIncrementalAttention(
+            prefixStates,
+            userMessage
+        )
+
+    return generateFromStates(newStates)
+
+# Key insight: The "prefix" must be IDENTICAL for cache hit
+# Even a single character difference = cache miss`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from anthropic import Anthropic
+
+# Anthropic's prompt caching example
+# Uses special cache_control markers
+
+client = Anthropic()
+
+# System prompt designed for caching
+# Large, stable content that doesn't change
+SYSTEM_PROMPT = """You are an expert assistant for our
+e-commerce platform. Here is our complete product catalog:
+
+[... imagine 50,000 tokens of product data ...]
+
+Use this catalog to answer customer questions accurately.
+Always cite specific product IDs when making recommendations.
+"""
+
+def query_with_caching(user_question: str) -> str:
+    """Query with prompt caching enabled."""
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=[
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        messages=[
+            {"role": "user", "content": user_question}
+        ]
+    )
+
+    # Check cache performance
+    usage = response.usage
+    print(f"Input tokens: {usage.input_tokens}")
+    print(f"Cache read tokens: {usage.cache_read_input_tokens}")
+    print(f"Cache creation tokens: {usage.cache_creation_input_tokens}")
+
+    # First call: cache_creation_input_tokens = ~50,000
+    #             cache_read_input_tokens = 0
+    # Subsequent: cache_creation_input_tokens = 0
+    #             cache_read_input_tokens = ~50,000
+
+    return response.content[0].text
+
+# OpenAI approach (automatic, prefix-based)
+from openai import OpenAI
+
+openai_client = OpenAI()
+
+def query_with_openai_caching(user_question: str) -> str:
+    """OpenAI caches automatically based on prefix matching."""
+    # Same system prompt = cache hit
+    response = openai_client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "system",
+                "content": SYSTEM_PROMPT  # Must be identical
+            },
+            {
+                "role": "user",
+                "content": user_question
+            }
+        ]
+    )
+
+    # OpenAI reports cached tokens in usage
+    print(f"Cached tokens: {response.usage.prompt_tokens_details.cached_tokens}")
+
+    return response.choices[0].message.content`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Anthropic;
+using OpenAI;
+using OpenAI.Chat;
+
+// Anthropic approach with explicit cache control
+public class AnthropicCachingExample
+{
+    private readonly AnthropicClient _client;
+    private const string SystemPrompt = """
+        You are an expert assistant for our platform.
+        Here is our complete documentation:
+        [... large stable content ...]
+        """;
+
+    public async Task<string> QueryWithCachingAsync(string question)
+    {
+        var message = await _client.Messages.CreateAsync(
+            model: "claude-sonnet-4-20250514",
+            maxTokens: 1024,
+            system: new[]
+            {
+                new SystemMessage
+                {
+                    Text = SystemPrompt,
+                    CacheControl = new CacheControl { Type = "ephemeral" }
+                }
+            },
+            messages: new[]
+            {
+                new Message { Role = "user", Content = question }
+            }
+        );
+
+        // Log cache performance
+        Console.WriteLine($"Cache read: {message.Usage.CacheReadInputTokens}");
+        Console.WriteLine($"Cache created: {message.Usage.CacheCreationInputTokens}");
+
+        return message.Content[0].Text;
+    }
+}
+
+// OpenAI automatic prefix caching
+public class OpenAICachingExample
+{
+    private readonly ChatClient _client;
+    private const string SystemPrompt = """
+        You are an expert assistant for our platform.
+        Here is our complete documentation:
+        [... large stable content ...]
+        """;
+
+    public OpenAICachingExample(string apiKey)
+    {
+        _client = new ChatClient("gpt-4o", apiKey);
+    }
+
+    public async Task<string> QueryAsync(string question)
+    {
+        // OpenAI automatically caches matching prefixes
+        var messages = new List<ChatMessage>
+        {
+            ChatMessage.CreateSystemMessage(SystemPrompt),
+            ChatMessage.CreateUserMessage(question)
+        };
+
+        var response = await _client.CompleteChatAsync(messages);
+
+        // Check for cached tokens in usage
+        var usage = response.Value.Usage;
+        Console.WriteLine($"Input tokens: {usage.InputTokenCount}");
+        // Cached tokens reported in InputTokenDetails
+
+        return response.Value.Content[0].Text;
+    }
+}
+
+// Optimizing for cache hits
+public class CacheOptimizedAgent
+{
+    private readonly ChatClient _client;
+
+    // Keep system prompt EXACTLY the same across calls
+    private static readonly string _systemPrompt = BuildSystemPrompt();
+
+    private static string BuildSystemPrompt()
+    {
+        // Load once, reuse always
+        var docs = File.ReadAllText("documentation.txt");
+        var tools = File.ReadAllText("tool_definitions.json");
+
+        // Consistent ordering is crucial for cache hits
+        return $"""
+            # Documentation
+            {docs}
+
+            # Available Tools
+            {tools}
+
+            # Instructions
+            Help users with their questions using the above context.
+            """;
+    }
+
+    public async Task<string> ProcessAsync(
+        List<ChatMessage> conversationHistory,
+        string newMessage)
+    {
+        // Build messages with stable prefix
+        var messages = new List<ChatMessage>
+        {
+            // 1. System prompt (stable - cacheable)
+            ChatMessage.CreateSystemMessage(_systemPrompt)
+        };
+
+        // 2. Add conversation history
+        messages.AddRange(conversationHistory);
+
+        // 3. Add new message
+        messages.Add(ChatMessage.CreateUserMessage(newMessage));
+
+        var response = await _client.CompleteChatAsync(messages);
+        return response.Value.Content[0].Text;
+    }
+}`,
+  },
+];
+
+const multiTurnCachingExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Multi-turn conversation with optimal caching
+
+class CachedConversation:
+    def __init__(systemPrompt, tools):
+        self.systemPrompt = systemPrompt  # Large, stable
+        self.tools = tools                 # Tool definitions
+        self.messages = []                 # Conversation history
+
+    function addUserMessage(content):
+        self.messages.append({role: "user", content: content})
+
+    function addAssistantMessage(content):
+        self.messages.append({role: "assistant", content: content})
+
+    function getResponse():
+        # Structure for optimal caching:
+        # [CACHED PREFIX] | [DYNAMIC SUFFIX]
+        #
+        # Cached (stable across turns):
+        #   - System prompt
+        #   - Tool definitions
+        #
+        # Dynamic (changes each turn):
+        #   - Conversation history
+        #   - Current message
+
+        response = llm.generate(
+            system: [
+                {
+                    text: self.systemPrompt,
+                    cacheControl: "ephemeral"  # Mark for caching
+                },
+                {
+                    text: formatTools(self.tools),
+                    cacheControl: "ephemeral"
+                }
+            ],
+            messages: self.messages  # Dynamic part
+        )
+
+        self.addAssistantMessage(response.content)
+        return response
+
+# Cache behavior over conversation:
+#
+# Turn 1: Cache MISS (creates cache for system + tools)
+#         Cost: Full price for all tokens
+#
+# Turn 2: Cache HIT on system + tools
+#         Cost: Reduced for cached portion, full for new messages
+#
+# Turn 3+: Cache HIT continues
+#         Savings compound as prefix stays stable`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from anthropic import Anthropic
+from dataclasses import dataclass, field
+from typing import List, Dict
+
+@dataclass
+class CachedConversation:
+    """Multi-turn conversation optimized for prompt caching."""
+
+    client: Anthropic
+    system_prompt: str
+    tool_definitions: str
+    model: str = "claude-sonnet-4-20250514"
+    messages: List[Dict] = field(default_factory=list)
+    total_cache_reads: int = 0
+    total_cache_creates: int = 0
+
+    def chat(self, user_message: str) -> str:
+        """Send message and get response with caching."""
+        self.messages.append({
+            "role": "user",
+            "content": user_message
+        })
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2048,
+            system=[
+                # Large system prompt - cached
+                {
+                    "type": "text",
+                    "text": self.system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                },
+                # Tool definitions - cached
+                {
+                    "type": "text",
+                    "text": self.tool_definitions,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=self.messages
+        )
+
+        # Track cache performance
+        usage = response.usage
+        self.total_cache_reads += usage.cache_read_input_tokens
+        self.total_cache_creates += usage.cache_creation_input_tokens
+
+        assistant_message = response.content[0].text
+        self.messages.append({
+            "role": "assistant",
+            "content": assistant_message
+        })
+
+        return assistant_message
+
+    def get_cache_stats(self) -> dict:
+        """Get cumulative cache statistics."""
+        return {
+            "total_cache_reads": self.total_cache_reads,
+            "total_cache_creates": self.total_cache_creates,
+            "estimated_savings": self._calculate_savings()
+        }
+
+    def _calculate_savings(self) -> str:
+        """Estimate cost savings from caching."""
+        # Anthropic pricing: cached reads are 90% cheaper
+        if self.total_cache_reads == 0:
+            return "0%"
+
+        full_cost = self.total_cache_reads + self.total_cache_creates
+        actual_cost = (
+            self.total_cache_creates +
+            self.total_cache_reads * 0.1  # 90% discount
+        )
+        savings = (1 - actual_cost / full_cost) * 100
+        return f"{savings:.1f}%"
+
+
+# Usage example
+def demo_caching():
+    client = Anthropic()
+
+    # Load large context once
+    system_prompt = open("company_knowledge_base.txt").read()
+    tools = open("tool_definitions.json").read()
+
+    conv = CachedConversation(
+        client=client,
+        system_prompt=system_prompt,  # ~50K tokens
+        tool_definitions=tools         # ~5K tokens
+    )
+
+    # Turn 1: Cache created
+    print(conv.chat("What products do we offer?"))
+    print(f"Stats after turn 1: {conv.get_cache_stats()}")
+
+    # Turn 2: Cache hit on system + tools
+    print(conv.chat("Tell me more about the premium tier"))
+    print(f"Stats after turn 2: {conv.get_cache_stats()}")
+
+    # Turn 3+: Continued cache hits
+    print(conv.chat("How does pricing compare to competitors?"))
+    print(f"Stats after turn 3: {conv.get_cache_stats()}")
+
+    # Expected output:
+    # Stats after turn 1: {'total_cache_reads': 0, 'total_cache_creates': 55000, ...}
+    # Stats after turn 2: {'total_cache_reads': 55000, 'total_cache_creates': 55000, ...}
+    # Stats after turn 3: {'total_cache_reads': 110000, 'total_cache_creates': 55000, ...}`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Anthropic;
+
+public class CachedConversation
+{
+    private readonly AnthropicClient _client;
+    private readonly string _systemPrompt;
+    private readonly string _toolDefinitions;
+    private readonly List<Message> _messages = new();
+    private long _totalCacheReads = 0;
+    private long _totalCacheCreates = 0;
+
+    public CachedConversation(
+        AnthropicClient client,
+        string systemPrompt,
+        string toolDefinitions)
+    {
+        _client = client;
+        _systemPrompt = systemPrompt;
+        _toolDefinitions = toolDefinitions;
+    }
+
+    public async Task<string> ChatAsync(string userMessage)
+    {
+        _messages.Add(new Message
+        {
+            Role = "user",
+            Content = userMessage
+        });
+
+        var response = await _client.Messages.CreateAsync(
+            model: "claude-sonnet-4-20250514",
+            maxTokens: 2048,
+            system: new[]
+            {
+                // Cached: system prompt
+                new SystemMessage
+                {
+                    Text = _systemPrompt,
+                    CacheControl = new CacheControl { Type = "ephemeral" }
+                },
+                // Cached: tool definitions
+                new SystemMessage
+                {
+                    Text = _toolDefinitions,
+                    CacheControl = new CacheControl { Type = "ephemeral" }
+                }
+            },
+            messages: _messages.ToArray()
+        );
+
+        // Track cache performance
+        _totalCacheReads += response.Usage.CacheReadInputTokens;
+        _totalCacheCreates += response.Usage.CacheCreationInputTokens;
+
+        var assistantMessage = response.Content[0].Text;
+        _messages.Add(new Message
+        {
+            Role = "assistant",
+            Content = assistantMessage
+        });
+
+        return assistantMessage;
+    }
+
+    public CacheStats GetCacheStats()
+    {
+        var fullCost = _totalCacheReads + _totalCacheCreates;
+        var actualCost = _totalCacheCreates + _totalCacheReads * 0.1;
+        var savings = fullCost > 0
+            ? (1 - actualCost / fullCost) * 100
+            : 0;
+
+        return new CacheStats
+        {
+            TotalCacheReads = _totalCacheReads,
+            TotalCacheCreates = _totalCacheCreates,
+            EstimatedSavings = $"{savings:F1}%"
+        };
+    }
+}
+
+public record CacheStats
+{
+    public long TotalCacheReads { get; init; }
+    public long TotalCacheCreates { get; init; }
+    public string EstimatedSavings { get; init; }
+}
+
+// Usage
+public async Task DemoCachingAsync()
+{
+    var client = new AnthropicClient(apiKey);
+
+    var systemPrompt = await File.ReadAllTextAsync("knowledge_base.txt");
+    var tools = await File.ReadAllTextAsync("tools.json");
+
+    var conv = new CachedConversation(client, systemPrompt, tools);
+
+    // Turn 1: Cache created
+    Console.WriteLine(await conv.ChatAsync("What products do we offer?"));
+    Console.WriteLine($"Stats: {conv.GetCacheStats()}");
+
+    // Turn 2+: Cache hits
+    Console.WriteLine(await conv.ChatAsync("Tell me about premium"));
+    Console.WriteLine($"Stats: {conv.GetCacheStats()}");
+}`,
+  },
+];
+
+const optimizationExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Strategies for maximizing cache hit rate
+
+# Strategy 1: Consistent prompt ordering
+function buildOptimalPrompt(components):
+    # Order from most stable to least stable
+    # Cache prefix ends at first difference
+
+    prompt = []
+
+    # 1. Static instructions (never changes)
+    prompt.append(components.staticInstructions)
+
+    # 2. Reference data (changes rarely)
+    prompt.append(components.referenceData)
+
+    # 3. Tool definitions (changes occasionally)
+    prompt.append(components.toolDefinitions)
+
+    # 4. Session context (changes per session)
+    prompt.append(components.sessionContext)
+
+    # 5. Conversation history (changes per turn)
+    prompt.append(components.conversationHistory)
+
+    # 6. Current query (changes every request)
+    prompt.append(components.currentQuery)
+
+    return prompt
+
+# Strategy 2: Chunked caching for partial updates
+function buildChunkedPrompt(components):
+    # Separate cache breakpoints for different TTLs
+
+    return [
+        {
+            text: components.staticInstructions,
+            cacheControl: "persistent"  # Long TTL
+        },
+        {
+            text: components.referenceData,
+            cacheControl: "ephemeral"   # Session TTL
+        },
+        {
+            # No cache control = not cached
+            text: components.dynamicContent
+        }
+    ]
+
+# Strategy 3: Normalizing dynamic content
+function normalizeForCaching(content):
+    # Remove variation that breaks cache
+
+    # Bad: "Current time: 2024-01-15 14:32:05"
+    # Good: "Current date: 2024-01-15" (updated daily)
+
+    # Bad: "Request ID: abc123"
+    # Good: Move request ID to message, not system
+
+    # Bad: Random ordering of examples
+    # Good: Deterministic ordering
+
+    return removeUnnecessaryVariation(content)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass
+from typing import List, Optional
+import hashlib
+import json
+
+@dataclass
+class CacheOptimizedPromptBuilder:
+    """Build prompts optimized for cache hit rates."""
+
+    static_instructions: str
+    reference_data: str
+    tool_definitions: List[dict]
+
+    def build_system_content(
+        self,
+        session_context: Optional[str] = None
+    ) -> List[dict]:
+        """Build system content with optimal cache structure."""
+        content = []
+
+        # Layer 1: Static instructions (highest cache stability)
+        # This NEVER changes - maximum cache benefit
+        content.append({
+            "type": "text",
+            "text": self._normalize(self.static_instructions),
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 2: Reference data (changes rarely)
+        # Updated daily/weekly - still high cache benefit
+        content.append({
+            "type": "text",
+            "text": self._normalize(self.reference_data),
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 3: Tool definitions (normalized for consistency)
+        # Sort tools alphabetically for deterministic ordering
+        sorted_tools = sorted(
+            self.tool_definitions,
+            key=lambda t: t.get("name", "")
+        )
+        tools_text = json.dumps(sorted_tools, sort_keys=True)
+        content.append({
+            "type": "text",
+            "text": f"Available tools:\\n{tools_text}",
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 4: Session context (if any, no cache control)
+        # Changes per session - don't cache
+        if session_context:
+            content.append({
+                "type": "text",
+                "text": session_context
+                # No cache_control = not cached
+            })
+
+        return content
+
+    def _normalize(self, text: str) -> str:
+        """Normalize text to maximize cache hits."""
+        # Remove trailing whitespace that might vary
+        lines = [line.rstrip() for line in text.split('\\n')]
+
+        # Consistent line endings
+        normalized = '\\n'.join(lines)
+
+        # Remove any dynamic elements that shouldn't be there
+        # (timestamps, request IDs, etc.)
+        return normalized
+
+    def get_cache_key(self) -> str:
+        """Get a hash representing the cacheable prefix."""
+        # Useful for debugging cache behavior
+        cacheable = (
+            self._normalize(self.static_instructions) +
+            self._normalize(self.reference_data) +
+            json.dumps(sorted(
+                self.tool_definitions,
+                key=lambda t: t.get("name", "")
+            ), sort_keys=True)
+        )
+        return hashlib.sha256(cacheable.encode()).hexdigest()[:16]
+
+
+class DynamicContentIsolator:
+    """Isolate dynamic content to preserve cache prefix."""
+
+    @staticmethod
+    def separate_timestamp(message: str) -> tuple[str, dict]:
+        """Move timestamp from message to metadata."""
+        # Instead of: "As of 2024-01-15 14:32, the status is..."
+        # Use: "The current status is..." + metadata
+
+        import re
+        from datetime import datetime
+
+        # Extract and remove timestamps
+        timestamp_pattern = r'\\b\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2})?\\b'
+        timestamps = re.findall(timestamp_pattern, message)
+        clean_message = re.sub(timestamp_pattern, '[TIMESTAMP]', message)
+
+        metadata = {
+            "extracted_timestamps": timestamps,
+            "processed_at": datetime.now().isoformat()
+        }
+
+        return clean_message, metadata
+
+    @staticmethod
+    def deterministic_examples(
+        examples: List[dict],
+        max_examples: int = 5
+    ) -> List[dict]:
+        """Select examples deterministically for caching."""
+        # Bad: random.sample(examples, 5)
+        # Good: deterministic selection
+
+        # Sort by a stable key
+        sorted_examples = sorted(
+            examples,
+            key=lambda e: e.get("id", str(e))
+        )
+
+        # Take first N (or use content hash for variety)
+        return sorted_examples[:max_examples]
+
+
+# Usage example
+def create_cached_agent():
+    # Load stable content once
+    with open("instructions.md") as f:
+        instructions = f.read()
+
+    with open("knowledge_base.txt") as f:
+        knowledge = f.read()
+
+    with open("tools.json") as f:
+        tools = json.load(f)
+
+    builder = CacheOptimizedPromptBuilder(
+        static_instructions=instructions,
+        reference_data=knowledge,
+        tool_definitions=tools
+    )
+
+    print(f"Cache key: {builder.get_cache_key()}")
+
+    # Build system content for API call
+    system_content = builder.build_system_content(
+        session_context="User is a premium subscriber"
+    )
+
+    return system_content`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
+public class CacheOptimizedPromptBuilder
+{
+    private readonly string _staticInstructions;
+    private readonly string _referenceData;
+    private readonly List<ToolDefinition> _toolDefinitions;
+
+    public CacheOptimizedPromptBuilder(
+        string staticInstructions,
+        string referenceData,
+        List<ToolDefinition> toolDefinitions)
+    {
+        _staticInstructions = staticInstructions;
+        _referenceData = referenceData;
+        _toolDefinitions = toolDefinitions;
+    }
+
+    public List<SystemContent> BuildSystemContent(
+        string? sessionContext = null)
+    {
+        var content = new List<SystemContent>();
+
+        // Layer 1: Static instructions (highest stability)
+        content.Add(new SystemContent
+        {
+            Text = Normalize(_staticInstructions),
+            CacheControl = new CacheControl { Type = "ephemeral" }
+        });
+
+        // Layer 2: Reference data
+        content.Add(new SystemContent
+        {
+            Text = Normalize(_referenceData),
+            CacheControl = new CacheControl { Type = "ephemeral" }
+        });
+
+        // Layer 3: Tool definitions (sorted for consistency)
+        var sortedTools = _toolDefinitions
+            .OrderBy(t => t.Name)
+            .ToList();
+        var toolsJson = JsonSerializer.Serialize(sortedTools,
+            new JsonSerializerOptions { WriteIndented = false });
+
+        content.Add(new SystemContent
+        {
+            Text = $"Available tools:\\n{toolsJson}",
+            CacheControl = new CacheControl { Type = "ephemeral" }
+        });
+
+        // Layer 4: Session context (not cached)
+        if (!string.IsNullOrEmpty(sessionContext))
+        {
+            content.Add(new SystemContent
+            {
+                Text = sessionContext
+                // No CacheControl = not cached
+            });
+        }
+
+        return content;
+    }
+
+    private static string Normalize(string text)
+    {
+        var lines = text.Split('\\n')
+            .Select(line => line.TrimEnd());
+        return string.Join("\\n", lines);
+    }
+
+    public string GetCacheKey()
+    {
+        var sortedTools = _toolDefinitions
+            .OrderBy(t => t.Name)
+            .ToList();
+
+        var cacheable = Normalize(_staticInstructions) +
+                       Normalize(_referenceData) +
+                       JsonSerializer.Serialize(sortedTools);
+
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(cacheable));
+        return Convert.ToHexString(hash)[..16];
+    }
+}
+
+public static class DynamicContentIsolator
+{
+    public static (string CleanMessage, Dictionary<string, object> Metadata)
+        SeparateTimestamp(string message)
+    {
+        var timestampPattern = @"\\b\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2})?\\b";
+        var matches = Regex.Matches(message, timestampPattern);
+
+        var cleanMessage = Regex.Replace(
+            message, timestampPattern, "[TIMESTAMP]");
+
+        var metadata = new Dictionary<string, object>
+        {
+            ["extracted_timestamps"] = matches.Select(m => m.Value).ToList(),
+            ["processed_at"] = DateTime.UtcNow.ToString("O")
+        };
+
+        return (cleanMessage, metadata);
+    }
+
+    public static List<T> DeterministicExamples<T>(
+        List<T> examples,
+        Func<T, string> keySelector,
+        int maxExamples = 5)
+    {
+        // Deterministic selection for caching
+        return examples
+            .OrderBy(keySelector)
+            .Take(maxExamples)
+            .ToList();
+    }
+}
+
+public record SystemContent
+{
+    public string Text { get; init; } = "";
+    public CacheControl? CacheControl { get; init; }
+}
+
+public record CacheControl
+{
+    public string Type { get; init; } = "ephemeral";
+}
+
+public record ToolDefinition
+{
+    public string Name { get; init; } = "";
+    public string Description { get; init; } = "";
+}`,
+  },
+];
+---
+
+<BaseLayout
+  title="Prompt Caching / KV Cache"
+  description="Reduce costs and latency by caching attention computations across requests"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Prompt Caching / KV Cache
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        Dramatically reduce costs and latency by reusing computed attention states across requests with matching prefixes.
+      </p>
+    </header>
+
+    <!-- Concept Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        How KV Caching Works
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        During inference, transformer models compute Key and Value matrices for every token in the context. This is the most expensive part of processing. KV caching stores these matrices so they can be reused when the same prefix appears again.
+      </p>
+
+      <Diagram title="KV Cache Mechanism">
+{`WITHOUT CACHING                        WITH CACHING
+───────────────                        ────────────
+
+Request 1:                             Request 1:
+┌──────────────────────┐               ┌──────────────────────┐
+│ System: "You are..." │ ◄─ Compute   │ System: "You are..." │ ◄─ Compute
+│ User: "Hello"        │    K,V        │ User: "Hello"        │    K,V
+└──────────────────────┘               └──────────────────────┘
+                                                │
+                                                ▼
+                                       ┌──────────────────────┐
+                                       │      KV CACHE        │
+                                       │ Store K,V matrices   │
+                                       └──────────────────────┘
+
+Request 2:                             Request 2:
+┌──────────────────────┐               ┌──────────────────────┐
+│ System: "You are..." │ ◄─ Compute   │ System: "You are..." │ ◄─ Cache HIT!
+│ User: "Hi there"     │    K,V AGAIN  │ User: "Hi there"     │    (reuse K,V)
+└──────────────────────┘               └──────────────────────┘
+                                                │
+Cost: Full price                                ▼
+                                       Only compute K,V for "Hi there"
+                                       Cost: 90% reduction on cached portion`}
+      </Diagram>
+
+      <Callout type="info" title="Key Insight">
+        The cache is <em>prefix-based</em>. Every token must match exactly from the beginning. A single character difference at any point breaks the cache.
+      </Callout>
+    </section>
+
+    <!-- Provider Comparison -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Provider Implementations
+      </h2>
+
+      <Table caption="How different providers implement prompt caching">
+        <thead>
+          <tr>
+            <th>Provider</th>
+            <th>Mechanism</th>
+            <th>Discount</th>
+            <th>TTL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Anthropic</strong></td>
+            <td>Explicit cache_control markers</td>
+            <td>90% off cached reads</td>
+            <td>5 minutes (ephemeral)</td>
+          </tr>
+          <tr>
+            <td><strong>OpenAI</strong></td>
+            <td>Automatic prefix matching</td>
+            <td>50% off cached tokens</td>
+            <td>5-10 minutes</td>
+          </tr>
+          <tr>
+            <td><strong>Google</strong></td>
+            <td>Context caching API</td>
+            <td>Variable by model</td>
+            <td>Configurable</td>
+          </tr>
+          <tr>
+            <td><strong>Self-hosted</strong></td>
+            <td>vLLM/TGI prefix caching</td>
+            <td>N/A (latency benefit)</td>
+            <td>Memory-dependent</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          When to Use Explicit vs Automatic Caching
+        </h3>
+        <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-1">
+          <li><strong>Explicit (Anthropic)</strong>: More control, can cache specific sections, clear cost visibility</li>
+          <li><strong>Automatic (OpenAI)</strong>: No code changes needed, works transparently</li>
+          <li><strong>Either</strong>: Requires careful prompt structure for maximum benefit</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Cost/Latency Impact -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Impact: Cost and Latency
+      </h2>
+
+      <Diagram title="Cost and Latency Improvements">
+{`COST IMPACT (Example: 50K token system prompt)
+
+Without Caching:
+├── Request 1: 50,000 tokens × $0.003/1K = $0.15
+├── Request 2: 50,000 tokens × $0.003/1K = $0.15
+├── Request 3: 50,000 tokens × $0.003/1K = $0.15
+└── Total: $0.45
+
+With Caching (90% discount on cached):
+├── Request 1: 50,000 tokens × $0.003/1K = $0.15 (cache created)
+├── Request 2: 50,000 tokens × $0.0003/1K = $0.015 (cache hit)
+├── Request 3: 50,000 tokens × $0.0003/1K = $0.015 (cache hit)
+└── Total: $0.18 (60% savings)
+
+At scale (1000 requests):
+├── Without: $150.00
+├── With: $15.15
+└── Savings: $134.85 (90%)
+
+─────────────────────────────────────────────────────────
+
+LATENCY IMPACT
+
+Without Caching:
+Time to First Token (TTFT): ~2-3 seconds (compute all K,V)
+
+With Caching:
+Time to First Token (TTFT): ~0.3-0.5 seconds (only new tokens)
+
+Improvement: 70-85% reduction in TTFT`}
+      </Diagram>
+
+      <Table caption="Measured impact metrics by use case">
+        <thead>
+          <tr>
+            <th>Use Case</th>
+            <th>Cached Prefix Size</th>
+            <th>Cost Reduction</th>
+            <th>TTFT Reduction</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RAG with fixed docs</td>
+            <td>20-50K tokens</td>
+            <td>70-85%</td>
+            <td>60-80%</td>
+          </tr>
+          <tr>
+            <td>Agent with many tools</td>
+            <td>10-30K tokens</td>
+            <td>50-75%</td>
+            <td>50-70%</td>
+          </tr>
+          <tr>
+            <td>Multi-turn chat</td>
+            <td>5-15K tokens</td>
+            <td>40-60%</td>
+            <td>40-60%</td>
+          </tr>
+          <tr>
+            <td>Code assistant</td>
+            <td>30-100K tokens</td>
+            <td>80-90%</td>
+            <td>70-85%</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="tip" title="Maximum Benefit Scenarios">
+        Caching provides the most benefit when: (1) you have a large, stable system prompt, (2) you make many requests with the same prefix, and (3) requests happen within the cache TTL (typically 5 minutes).
+      </Callout>
+    </section>
+
+    <!-- Basic Implementation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Basic Implementation
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Here's how to implement prompt caching with different providers:
+      </p>
+
+      <CodeBlock tabs={basicCachingExample} title="Prompt Caching by Provider" />
+    </section>
+
+    <!-- Multi-turn Caching -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Multi-Turn Conversation Caching
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        In multi-turn conversations, the system prompt and tool definitions remain stable while the conversation history grows. Structure your requests to maximize cache hits:
+      </p>
+
+      <Diagram title="Multi-Turn Cache Structure">
+{`Turn 1:
+┌────────────────────────────────────────────────────┐
+│ [CACHE CREATED]                                    │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ System prompt (50K tokens)                   │  │
+│ │ Tool definitions (5K tokens)                 │  │
+│ └──────────────────────────────────────────────┘  │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ User: "Hello"                                │  │
+│ └──────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────┘
+
+Turn 2:
+┌────────────────────────────────────────────────────┐
+│ [CACHE HIT]                                        │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ System prompt (50K tokens) ✓ CACHED          │  │
+│ │ Tool definitions (5K tokens) ✓ CACHED        │  │
+│ └──────────────────────────────────────────────┘  │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ User: "Hello"                                │  │
+│ │ Assistant: "Hi! How can I help?"             │  │
+│ │ User: "What's the weather?"                  │  │
+│ └──────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────┘
+
+Cost breakdown:
+- Turn 1: 55K tokens at full price (cache creation)
+- Turn 2: 55K tokens at 90% discount + ~50 new tokens full price
+- Turn 3+: Same pattern, savings compound`}
+      </Diagram>
+
+      <CodeBlock tabs={multiTurnCachingExample} title="Multi-Turn Caching Implementation" />
+    </section>
+
+    <!-- Optimization Strategies -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Optimization Strategies
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Maximize cache hit rates by carefully structuring your prompts:
+      </p>
+
+      <Diagram title="Optimal Prompt Ordering for Caching">
+{`MOST STABLE (highest cache benefit)
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 1. Static Instructions                │ ← Never changes
+    │    "You are a helpful assistant..."   │
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 2. Reference Data / Knowledge Base    │ ← Changes rarely
+    │    Documentation, product catalog...  │    (daily/weekly)
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 3. Tool Definitions                   │ ← Changes occasionally
+    │    Sorted alphabetically for          │    (with deployments)
+    │    deterministic ordering             │
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 4. Session Context                    │ ← Changes per session
+    │    User preferences, auth info...     │    (no caching)
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 5. Conversation History               │ ← Changes per turn
+    │    Previous messages...               │    (no caching)
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 6. Current Query                      │ ← Changes every request
+    │    User's current message             │    (no caching)
+    └───────────────────────────────────────┘
+            │
+            ▼
+LEAST STABLE (no cache benefit)`}
+      </Diagram>
+
+      <CodeBlock tabs={optimizationExample} title="Cache Optimization Techniques" />
+
+      <Table caption="Common cache-breaking patterns and fixes">
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Problem</th>
+            <th>Fix</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Timestamps in prompt</td>
+            <td>Changes every second/minute</td>
+            <td>Move to metadata or round to day</td>
+          </tr>
+          <tr>
+            <td>Request IDs in system</td>
+            <td>Unique per request</td>
+            <td>Move to message, not system prompt</td>
+          </tr>
+          <tr>
+            <td>Random example order</td>
+            <td>Different each time</td>
+            <td>Sort deterministically</td>
+          </tr>
+          <tr>
+            <td>User name in system</td>
+            <td>Breaks cache per user</td>
+            <td>Move to conversation, after cache boundary</td>
+          </tr>
+          <tr>
+            <td>Inconsistent whitespace</td>
+            <td>Trailing spaces vary</td>
+            <td>Normalize with .strip()</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Monitoring and Evaluation
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Track cache performance to ensure you're getting the expected benefits:
+      </p>
+
+      <Table caption="Key metrics for cache performance">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Cache hit rate</strong></td>
+            <td>% of requests using cached prefix</td>
+            <td>&gt;90% for steady workloads</td>
+          </tr>
+          <tr>
+            <td><strong>Cached token ratio</strong></td>
+            <td>Cached tokens / total input tokens</td>
+            <td>Higher is better (varies by use case)</td>
+          </tr>
+          <tr>
+            <td><strong>TTFT improvement</strong></td>
+            <td>Latency reduction from caching</td>
+            <td>50-80% for large prefixes</td>
+          </tr>
+          <tr>
+            <td><strong>Cost savings</strong></td>
+            <td>Actual vs theoretical cost</td>
+            <td>Track against baseline</td>
+          </tr>
+          <tr>
+            <td><strong>Cache creation rate</strong></td>
+            <td>New caches created / total requests</td>
+            <td>&lt;10% indicates good stability</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          Debugging Cache Misses
+        </h3>
+        <pre class="text-sm text-slate-600 dark:text-slate-300 overflow-x-auto">
+{`# Anthropic: Check usage in response
+response.usage.cache_read_input_tokens    # Should be > 0 if cache hit
+response.usage.cache_creation_input_tokens # > 0 means cache was created
+
+# If cache_creation keeps happening on every request:
+# 1. Check for dynamic content in system prompt
+# 2. Verify exact byte-level match of cached content
+# 3. Ensure requests happen within TTL (5 min)
+
+# Compute cache key hash to verify stability
+import hashlib
+cache_key = hashlib.sha256(system_prompt.encode()).hexdigest()[:16]
+print(f"Cache key: {cache_key}")
+# If this changes between requests, you have a caching problem`}
+        </pre>
+      </div>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Dynamic Content in Cached Region">
+          Any dynamic content (timestamps, IDs, user names) in the cached portion will break the cache on every request. Audit your prompts carefully.
+        </Callout>
+
+        <Callout type="danger" title="Ignoring Cache TTL">
+          Caches expire (typically 5 minutes). If your traffic is sporadic, you may not get cache benefits. Consider batching requests or accepting cold starts.
+        </Callout>
+
+        <Callout type="warning" title="Inconsistent Ordering">
+          If tool definitions or examples appear in different orders, cache breaks. Always sort deterministically (alphabetically, by ID, etc.).
+        </Callout>
+
+        <Callout type="warning" title="Not Monitoring">
+          Without tracking cache metrics, you won't know if caching is working. Always log cache_read_input_tokens to verify hits.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Best Practices -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Best Practices Summary
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="tip" title="Front-Load Stable Content">
+          Put all stable content (system prompt, docs, tools) at the beginning. Cache benefit ends at the first byte of difference.
+        </Callout>
+
+        <Callout type="tip" title="Normalize Everything">
+          Strip whitespace, sort collections, use consistent formatting. Byte-level matching means even invisible differences break cache.
+        </Callout>
+
+        <Callout type="tip" title="Batch Similar Requests">
+          If you have multiple similar requests, send them close together in time to maximize cache hits before TTL expires.
+        </Callout>
+
+        <Callout type="tip" title="Monitor Continuously">
+          Log cache metrics on every request. Alert if hit rate drops significantly — it indicates prompt structure changed.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Structure prompts for caching and performance
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/context-bloat/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Bloat & Context Rot</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Managing large contexts effectively
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Cache tool definitions for cost savings
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Balance memory retrieval with caching
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
