@@ -5,40 +5,46 @@ import Callout from '../components/Callout.astro';
 
 const topics = [
   {
-    title: 'Agentic Loops',
-    description: 'Understand the fundamental loop pattern that powers AI agents: observe, think, act, repeat.',
-    href: '/agent-patterns/topics/agentic-loops/',
-    icon: '🔄',
-  },
-  {
-    title: 'Tool Use',
-    description: 'Learn how agents extend their capabilities by calling external tools and APIs.',
+    title: 'Tool Use & Function Calling',
+    description: 'Learn how agents extend their capabilities by calling external tools, APIs, and databases.',
     href: '/agent-patterns/topics/tool-use/',
     icon: '🔧',
+    available: true,
+  },
+  {
+    title: 'ReAct Pattern',
+    description: 'Master the Reasoning + Acting loop that powers agentic AI behavior.',
+    href: '/agent-patterns/topics/react-pattern/',
+    icon: '🔄',
+    available: true,
   },
   {
     title: 'Memory Systems',
     description: 'Explore how agents maintain context and learn from past interactions.',
     href: '/agent-patterns/topics/memory/',
     icon: '🧠',
+    available: true,
+  },
+  {
+    title: 'Context Engineering',
+    description: 'Optimize what goes into the context window for better performance.',
+    href: '/agent-patterns/topics/context-engineering/',
+    icon: '📐',
+    available: false,
   },
   {
     title: 'Multi-Agent Systems',
     description: 'Discover patterns for coordinating multiple specialized agents.',
     href: '/agent-patterns/topics/multi-agent/',
     icon: '👥',
-  },
-  {
-    title: 'Planning & Reasoning',
-    description: 'Study how agents break down complex tasks and reason about solutions.',
-    href: '/agent-patterns/topics/planning/',
-    icon: '🎯',
+    available: false,
   },
   {
     title: 'Safety & Guardrails',
     description: 'Implement safeguards to ensure agents behave safely and predictably.',
     href: '/agent-patterns/topics/safety/',
     icon: '🛡️',
+    available: false,
   },
 ];
 
@@ -158,18 +164,35 @@ const sampleCode = [
       </div>
       <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {topics.map((topic) => (
-          <a
-            href={topic.href}
-            class="group block p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-lg transition-all"
-          >
-            <div class="text-3xl mb-4">{topic.icon}</div>
-            <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-              {topic.title}
-            </h3>
-            <p class="text-sm text-slate-600 dark:text-slate-400">
-              {topic.description}
-            </p>
-          </a>
+          topic.available ? (
+            <a
+              href={topic.href}
+              class="group block p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-lg transition-all"
+            >
+              <div class="text-3xl mb-4">{topic.icon}</div>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                {topic.title}
+              </h3>
+              <p class="text-sm text-slate-600 dark:text-slate-400">
+                {topic.description}
+              </p>
+            </a>
+          ) : (
+            <div class="block p-6 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 opacity-60">
+              <div class="flex justify-between items-start mb-4">
+                <div class="text-3xl">{topic.icon}</div>
+                <span class="px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">
+                  Coming Soon
+                </span>
+              </div>
+              <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                {topic.title}
+              </h3>
+              <p class="text-sm text-slate-600 dark:text-slate-400">
+                {topic.description}
+              </p>
+            </div>
+          )
         ))}
       </div>
     </div>

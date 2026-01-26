@@ -1,0 +1,1243 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const memoryTypesExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `class AgentMemory:
+    # Working Memory: Current conversation context
+    workingMemory = []  # Lives in context window
+
+    # Short-term Memory: Current session facts
+    shortTermMemory = InMemoryStore()
+
+    # Long-term Memory: Persistent across sessions
+    longTermMemory = VectorDatabase()
+
+    # Episodic Memory: Specific past experiences
+    episodicMemory = IndexedExperienceStore()
+
+    function remember(information, memoryType):
+        if memoryType == "working":
+            workingMemory.append(information)
+        elif memoryType == "short_term":
+            shortTermMemory.store(information)
+        elif memoryType == "long_term":
+            embedding = embed(information)
+            longTermMemory.store(embedding, information)
+        elif memoryType == "episodic":
+            episode = createEpisode(information)
+            episodicMemory.index(episode)
+
+    function recall(query, memoryTypes = ["all"]):
+        results = []
+
+        if "working" in memoryTypes or "all" in memoryTypes:
+            results += searchWorkingMemory(query)
+
+        if "short_term" in memoryTypes or "all" in memoryTypes:
+            results += shortTermMemory.search(query)
+
+        if "long_term" in memoryTypes or "all" in memoryTypes:
+            embedding = embed(query)
+            results += longTermMemory.similaritySearch(embedding)
+
+        if "episodic" in memoryTypes or "all" in memoryTypes:
+            results += episodicMemory.searchRelevant(query)
+
+        return rankAndMerge(results)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass, field
+from typing import Optional
+import chromadb
+from datetime import datetime
+
+@dataclass
+class Memory:
+    content: str
+    memory_type: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    metadata: dict = field(default_factory=dict)
+
+class AgentMemorySystem:
+    def __init__(self, collection_name: str = "agent_memory"):
+        # Working memory: In context window
+        self.working_memory: list[dict] = []
+
+        # Short-term: In-memory for current session
+        self.short_term: list[Memory] = []
+
+        # Long-term: Persistent vector store
+        self.chroma = chromadb.Client()
+        self.long_term = self.chroma.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def add_to_working_memory(self, message: dict):
+        """Add message to current conversation context."""
+        self.working_memory.append(message)
+
+        # Summarize if context gets too long
+        if self._count_tokens(self.working_memory) > 6000:
+            self._compress_working_memory()
+
+    def store_short_term(self, content: str, metadata: dict = None):
+        """Store fact for current session."""
+        self.short_term.append(Memory(
+            content=content,
+            memory_type="short_term",
+            metadata=metadata or {}
+        ))
+
+    def store_long_term(
+        self,
+        content: str,
+        metadata: dict = None
+    ):
+        """Store in persistent vector database."""
+        self.long_term.add(
+            documents=[content],
+            metadatas=[metadata or {}],
+            ids=[f"mem_{datetime.now().timestamp()}"]
+        )
+
+    def recall(
+        self,
+        query: str,
+        n_results: int = 5,
+        include_working: bool = True
+    ) -> list[str]:
+        """Retrieve relevant memories."""
+        results = []
+
+        # Search long-term memory
+        long_term_results = self.long_term.query(
+            query_texts=[query],
+            n_results=n_results
+        )
+        results.extend(long_term_results["documents"][0])
+
+        # Search short-term memory
+        for mem in self.short_term:
+            if self._is_relevant(query, mem.content):
+                results.append(mem.content)
+
+        # Include recent working memory if requested
+        if include_working:
+            recent = self.working_memory[-5:]
+            for msg in recent:
+                if msg.get("role") == "assistant":
+                    results.append(msg.get("content", ""))
+
+        return results[:n_results]
+
+    def _compress_working_memory(self):
+        """Summarize old messages to save tokens."""
+        old_messages = self.working_memory[:-10]
+        recent_messages = self.working_memory[-10:]
+
+        summary = self._summarize(old_messages)
+        self.working_memory = [
+            {"role": "system", "content": f"Previous context: {summary}"}
+        ] + recent_messages`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.SemanticKernel.Memory;
+
+public class AgentMemorySystem
+{
+    private readonly List<ChatMessage> _workingMemory = new();
+    private readonly List<Memory> _shortTermMemory = new();
+    private readonly ISemanticTextMemory _longTermMemory;
+    private readonly string _collectionName;
+
+    public AgentMemorySystem(ISemanticTextMemory memory)
+    {
+        _longTermMemory = memory;
+        _collectionName = "agent_memories";
+    }
+
+    // Working Memory: Current conversation
+    public void AddToWorkingMemory(ChatMessage message)
+    {
+        _workingMemory.Add(message);
+
+        if (CountTokens(_workingMemory) > 6000)
+        {
+            CompressWorkingMemory();
+        }
+    }
+
+    // Short-term: Current session only
+    public void StoreShortTerm(string content, Dictionary<string, string>? metadata = null)
+    {
+        _shortTermMemory.Add(new Memory
+        {
+            Content = content,
+            Type = MemoryType.ShortTerm,
+            Timestamp = DateTime.UtcNow,
+            Metadata = metadata ?? new()
+        });
+    }
+
+    // Long-term: Persistent across sessions
+    public async Task StoreLongTermAsync(
+        string content,
+        string? id = null,
+        Dictionary<string, string>? metadata = null)
+    {
+        var memoryId = id ?? $"mem_{DateTime.UtcNow.Ticks}";
+
+        await _longTermMemory.SaveInformationAsync(
+            _collectionName,
+            content,
+            memoryId,
+            additionalMetadata: metadata?.ToString()
+        );
+    }
+
+    // Recall relevant memories
+    public async Task<List<string>> RecallAsync(
+        string query,
+        int limit = 5)
+    {
+        var results = new List<string>();
+
+        // Search long-term memory
+        await foreach (var memory in _longTermMemory.SearchAsync(
+            _collectionName,
+            query,
+            limit: limit))
+        {
+            results.Add(memory.Metadata.Text);
+        }
+
+        // Search short-term memory
+        foreach (var mem in _shortTermMemory
+            .Where(m => IsRelevant(query, m.Content))
+            .Take(limit))
+        {
+            results.Add(mem.Content);
+        }
+
+        return results.Take(limit).ToList();
+    }
+
+    private void CompressWorkingMemory()
+    {
+        var oldMessages = _workingMemory.Take(_workingMemory.Count - 10).ToList();
+        var recentMessages = _workingMemory.Skip(_workingMemory.Count - 10).ToList();
+
+        var summary = SummarizeMessages(oldMessages);
+        _workingMemory.Clear();
+        _workingMemory.Add(new ChatMessage(
+            ChatRole.System,
+            $"Previous context: {summary}"
+        ));
+        _workingMemory.AddRange(recentMessages);
+    }
+}`,
+  },
+];
+
+const summarizationExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `class ConversationSummarizer:
+    threshold = 4000  # tokens
+    summaryRatio = 0.3  # Compress to 30%
+
+    function maybeCompress(messages):
+        tokens = countTokens(messages)
+
+        if tokens < threshold:
+            return messages
+
+        # Split into chunks to summarize
+        toSummarize = messages[:-5]  # Keep recent 5
+        recent = messages[-5:]
+
+        # Generate summary
+        summary = llm.generate(
+            prompt: "Summarize this conversation concisely:",
+            content: toSummarize
+        )
+
+        # Return compressed version
+        return [
+            systemMessage(f"Summary of earlier conversation: {summary}"),
+            ...recent
+        ]
+
+    function progressiveSummarize(messages, levels = 3):
+        # Multi-level summarization for very long conversations
+        current = messages
+
+        for level in range(levels):
+            if countTokens(current) < threshold:
+                break
+
+            # Summarize in chunks
+            chunks = splitIntoChunks(current, chunkSize=10)
+            summaries = [summarize(chunk) for chunk in chunks]
+            current = summaries
+
+        return current`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from openai import OpenAI
+import tiktoken
+
+client = OpenAI()
+encoder = tiktoken.encoding_for_model("gpt-4")
+
+class ConversationSummarizer:
+    def __init__(
+        self,
+        threshold: int = 4000,
+        model: str = "gpt-4"
+    ):
+        self.threshold = threshold
+        self.model = model
+
+    def count_tokens(self, messages: list[dict]) -> int:
+        text = "\\n".join(m.get("content", "") for m in messages)
+        return len(encoder.encode(text))
+
+    def summarize(self, messages: list[dict]) -> str:
+        """Generate a summary of conversation messages."""
+        content = "\\n".join(
+            f"{m['role']}: {m['content']}" for m in messages
+        )
+
+        response = client.chat.completions.create(
+            model=self.model,
+            messages=[{
+                "role": "system",
+                "content": "Summarize this conversation concisely. "
+                          "Preserve key facts, decisions, and context."
+            }, {
+                "role": "user",
+                "content": content
+            }],
+            max_tokens=500
+        )
+
+        return response.choices[0].message.content
+
+    def compress_if_needed(
+        self,
+        messages: list[dict],
+        keep_recent: int = 5
+    ) -> list[dict]:
+        """Compress messages if over threshold."""
+        if self.count_tokens(messages) < self.threshold:
+            return messages
+
+        # Keep system message and recent messages
+        system_msgs = [m for m in messages if m["role"] == "system"]
+        other_msgs = [m for m in messages if m["role"] != "system"]
+
+        to_summarize = other_msgs[:-keep_recent]
+        recent = other_msgs[-keep_recent:]
+
+        if not to_summarize:
+            return messages
+
+        summary = self.summarize(to_summarize)
+
+        return system_msgs + [{
+            "role": "system",
+            "content": f"Summary of earlier conversation: {summary}"
+        }] + recent
+
+# Usage
+summarizer = ConversationSummarizer(threshold=4000)
+
+# In agent loop
+messages = summarizer.compress_if_needed(messages)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.ML.Tokenizers;
+
+public class ConversationSummarizer
+{
+    private readonly IChatClient _client;
+    private readonly Tokenizer _tokenizer;
+    private readonly int _threshold;
+
+    public ConversationSummarizer(
+        IChatClient client,
+        int threshold = 4000)
+    {
+        _client = client;
+        _threshold = threshold;
+        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+    }
+
+    public int CountTokens(IEnumerable<ChatMessage> messages)
+    {
+        var text = string.Join("\\n",
+            messages.Select(m => m.Text ?? ""));
+        return _tokenizer.CountTokens(text);
+    }
+
+    public async Task<string> SummarizeAsync(
+        IEnumerable<ChatMessage> messages)
+    {
+        var content = string.Join("\\n",
+            messages.Select(m => $"{m.Role}: {m.Text}"));
+
+        var response = await _client.GetResponseAsync(new[]
+        {
+            new ChatMessage(ChatRole.System,
+                "Summarize this conversation concisely. " +
+                "Preserve key facts, decisions, and context."),
+            new ChatMessage(ChatRole.User, content)
+        });
+
+        return response.Message.Text ?? "";
+    }
+
+    public async Task<List<ChatMessage>> CompressIfNeededAsync(
+        List<ChatMessage> messages,
+        int keepRecent = 5)
+    {
+        if (CountTokens(messages) < _threshold)
+            return messages;
+
+        var systemMsgs = messages
+            .Where(m => m.Role == ChatRole.System)
+            .ToList();
+        var otherMsgs = messages
+            .Where(m => m.Role != ChatRole.System)
+            .ToList();
+
+        var toSummarize = otherMsgs
+            .Take(otherMsgs.Count - keepRecent)
+            .ToList();
+        var recent = otherMsgs
+            .Skip(otherMsgs.Count - keepRecent)
+            .ToList();
+
+        if (toSummarize.Count == 0)
+            return messages;
+
+        var summary = await SummarizeAsync(toSummarize);
+
+        var result = new List<ChatMessage>(systemMsgs);
+        result.Add(new ChatMessage(ChatRole.System,
+            $"Summary of earlier conversation: {summary}"));
+        result.AddRange(recent);
+
+        return result;
+    }
+}`,
+  },
+];
+
+const episodicMemoryExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `class EpisodicMemory:
+    # Store complete interaction episodes for learning
+    episodes = []
+
+    function recordEpisode(task, trajectory, outcome):
+        episode = {
+            task: task,
+            trajectory: trajectory,  # Full action sequence
+            outcome: outcome,         # Success/failure + details
+            timestamp: now(),
+            embedding: embed(task + outcome)
+        }
+        episodes.append(episode)
+        persistToDatabase(episode)
+
+    function retrieveSimilarEpisodes(currentTask, k = 3):
+        # Find past experiences relevant to current task
+        taskEmbedding = embed(currentTask)
+
+        similar = vectorSearch(
+            episodes,
+            taskEmbedding,
+            topK = k
+        )
+
+        # Prioritize successful episodes
+        return sortBySuccess(similar)
+
+    function learnFromEpisode(episode):
+        if episode.outcome.success:
+            # Extract successful strategy
+            return {
+                type: "positive",
+                lesson: "When {task}, this approach worked: {summary}"
+            }
+        else:
+            # Learn from failure
+            return {
+                type: "negative",
+                lesson: "When {task}, avoid: {failureReason}"
+            }`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from dataclasses import dataclass, field
+from typing import Literal
+import chromadb
+from datetime import datetime
+import json
+
+@dataclass
+class Episode:
+    task: str
+    trajectory: list[dict]  # List of {thought, action, observation}
+    outcome: dict           # {success: bool, result: str, error: str?}
+    timestamp: datetime = field(default_factory=datetime.now)
+    lessons_learned: str = ""
+
+class EpisodicMemory:
+    def __init__(self, persist_path: str = "./episodic_memory"):
+        self.client = chromadb.PersistentClient(path=persist_path)
+        self.collection = self.client.get_or_create_collection(
+            name="episodes",
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def record_episode(
+        self,
+        task: str,
+        trajectory: list[dict],
+        outcome: dict
+    ) -> str:
+        """Record a complete interaction episode."""
+        episode_id = f"ep_{datetime.now().timestamp()}"
+
+        # Create searchable content
+        search_content = f"{task}\\n{outcome.get('result', '')}"
+
+        # Store with full metadata
+        self.collection.add(
+            ids=[episode_id],
+            documents=[search_content],
+            metadatas=[{
+                "task": task,
+                "trajectory": json.dumps(trajectory),
+                "outcome": json.dumps(outcome),
+                "success": outcome.get("success", False),
+                "timestamp": datetime.now().isoformat()
+            }]
+        )
+
+        return episode_id
+
+    def retrieve_similar(
+        self,
+        current_task: str,
+        k: int = 3,
+        success_only: bool = False
+    ) -> list[Episode]:
+        """Find similar past episodes."""
+        where_filter = {"success": True} if success_only else None
+
+        results = self.collection.query(
+            query_texts=[current_task],
+            n_results=k * 2,  # Get more, then filter
+            where=where_filter
+        )
+
+        episodes = []
+        for i, metadata in enumerate(results["metadatas"][0]):
+            episodes.append(Episode(
+                task=metadata["task"],
+                trajectory=json.loads(metadata["trajectory"]),
+                outcome=json.loads(metadata["outcome"]),
+                timestamp=datetime.fromisoformat(metadata["timestamp"])
+            ))
+
+        # Sort by success first, then recency
+        episodes.sort(
+            key=lambda e: (
+                not e.outcome.get("success"),
+                -e.timestamp.timestamp()
+            )
+        )
+
+        return episodes[:k]
+
+    def generate_few_shot_examples(
+        self,
+        current_task: str,
+        n_examples: int = 2
+    ) -> str:
+        """Generate few-shot examples from past successes."""
+        episodes = self.retrieve_similar(
+            current_task,
+            k=n_examples,
+            success_only=True
+        )
+
+        examples = []
+        for ep in episodes:
+            example = f"Task: {ep.task}\\n"
+            for step in ep.trajectory[-3:]:  # Last 3 steps
+                example += f"Thought: {step.get('thought', '')}\\n"
+                example += f"Action: {step.get('action', '')}\\n"
+            example += f"Result: {ep.outcome.get('result', '')}\\n"
+            examples.append(example)
+
+        return "\\n---\\n".join(examples)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `public class EpisodicMemory
+{
+    private readonly ISemanticTextMemory _memory;
+    private const string CollectionName = "episodes";
+
+    public record Episode(
+        string Task,
+        List<TrajectoryStep> Trajectory,
+        Outcome Outcome,
+        DateTime Timestamp
+    );
+
+    public record TrajectoryStep(
+        string Thought,
+        string Action,
+        string Observation
+    );
+
+    public record Outcome(
+        bool Success,
+        string Result,
+        string? Error = null
+    );
+
+    public EpisodicMemory(ISemanticTextMemory memory)
+    {
+        _memory = memory;
+    }
+
+    public async Task<string> RecordEpisodeAsync(
+        string task,
+        List<TrajectoryStep> trajectory,
+        Outcome outcome)
+    {
+        var episodeId = $"ep_{DateTime.UtcNow.Ticks}";
+
+        // Searchable content
+        var searchContent = $"{task}\\n{outcome.Result}";
+
+        // Full episode as metadata
+        var metadata = JsonSerializer.Serialize(new
+        {
+            Task = task,
+            Trajectory = trajectory,
+            Outcome = outcome,
+            Success = outcome.Success,
+            Timestamp = DateTime.UtcNow
+        });
+
+        await _memory.SaveInformationAsync(
+            CollectionName,
+            searchContent,
+            episodeId,
+            additionalMetadata: metadata
+        );
+
+        return episodeId;
+    }
+
+    public async Task<List<Episode>> RetrieveSimilarAsync(
+        string currentTask,
+        int k = 3,
+        bool successOnly = false)
+    {
+        var episodes = new List<Episode>();
+
+        await foreach (var memory in _memory.SearchAsync(
+            CollectionName,
+            currentTask,
+            limit: k * 2))
+        {
+            var data = JsonSerializer.Deserialize<EpisodeData>(
+                memory.Metadata.AdditionalMetadata ?? "{}");
+
+            if (successOnly && !data.Success)
+                continue;
+
+            episodes.Add(new Episode(
+                data.Task,
+                data.Trajectory,
+                data.Outcome,
+                data.Timestamp
+            ));
+
+            if (episodes.Count >= k)
+                break;
+        }
+
+        // Sort by success, then recency
+        return episodes
+            .OrderByDescending(e => e.Outcome.Success)
+            .ThenByDescending(e => e.Timestamp)
+            .Take(k)
+            .ToList();
+    }
+
+    public async Task<string> GenerateFewShotExamplesAsync(
+        string currentTask,
+        int nExamples = 2)
+    {
+        var episodes = await RetrieveSimilarAsync(
+            currentTask,
+            k: nExamples,
+            successOnly: true);
+
+        var examples = episodes.Select(ep =>
+        {
+            var steps = string.Join("\\n",
+                ep.Trajectory.TakeLast(3).Select(s =>
+                    $"Thought: {s.Thought}\\nAction: {s.Action}"));
+            return $"Task: {ep.Task}\\n{steps}\\n" +
+                   $"Result: {ep.Outcome.Result}";
+        });
+
+        return string.Join("\\n---\\n", examples);
+    }
+}`,
+  },
+];
+
+const mem0Example = [
+  {
+    language: 'python',
+    label: 'Python (Mem0)',
+    code: `from mem0 import Memory
+
+# Initialize Mem0 with configuration
+config = {
+    "llm": {
+        "provider": "openai",
+        "config": {
+            "model": "gpt-4",
+            "temperature": 0.1
+        }
+    },
+    "embedder": {
+        "provider": "openai",
+        "config": {
+            "model": "text-embedding-3-small"
+        }
+    },
+    "vector_store": {
+        "provider": "chroma",
+        "config": {
+            "collection_name": "agent_memories",
+            "path": "./mem0_data"
+        }
+    }
+}
+
+memory = Memory.from_config(config)
+
+# Add memories with user context
+memory.add(
+    "User prefers dark mode and uses VS Code",
+    user_id="user_123",
+    metadata={"category": "preferences"}
+)
+
+memory.add(
+    "User is working on a Python FastAPI project",
+    user_id="user_123",
+    metadata={"category": "context"}
+)
+
+# Search memories
+results = memory.search(
+    "What IDE does the user prefer?",
+    user_id="user_123"
+)
+
+# Results include relevance scores
+for result in results:
+    print(f"Memory: {result['memory']}")
+    print(f"Score: {result['score']}")
+
+# Get all memories for a user
+all_memories = memory.get_all(user_id="user_123")
+
+# Update a memory
+memory.update(
+    memory_id=results[0]["id"],
+    data="User prefers dark mode, uses VS Code with Vim keybindings"
+)
+
+# Memory statistics
+stats = memory.history(user_id="user_123")
+print(f"Total memories: {len(stats)}")`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Integration Pattern',
+    code: `# Integrating Mem0 with an agent
+
+class MemoryAugmentedAgent:
+    memory = Mem0()
+    llm = ChatModel()
+
+    function respond(userMessage, userId):
+        # 1. Retrieve relevant memories
+        memories = memory.search(userMessage, userId)
+        memoryContext = formatMemories(memories)
+
+        # 2. Build prompt with memory context
+        prompt = f"""
+        User memories:
+        {memoryContext}
+
+        Current request: {userMessage}
+        """
+
+        # 3. Generate response
+        response = llm.generate(prompt)
+
+        # 4. Extract and store new memories
+        newFacts = extractFacts(userMessage, response)
+        for fact in newFacts:
+            memory.add(fact, userId)
+
+        return response
+
+# Key benefit: 80% token reduction while preserving fidelity
+# Instead of keeping entire history, store and retrieve facts`,
+  },
+];
+---
+
+<BaseLayout
+  title="Agent Memory Systems"
+  description="Learn how AI agents maintain context and learn from past interactions using different memory types"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Agent Memory Systems
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        How agents maintain context, learn from past interactions, and build persistent knowledge across sessions.
+      </p>
+    </header>
+
+    <!-- Concept Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Why Memory Matters
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Without memory systems, every agent interaction starts from scratch. Memory enables agents to:
+      </p>
+      <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-2 mb-6">
+        <li>Remember user preferences and past decisions</li>
+        <li>Learn from successful (and failed) task completions</li>
+        <li>Maintain context across long conversations</li>
+        <li>Build knowledge bases from interactions</li>
+        <li>Personalize responses based on history</li>
+      </ul>
+
+      <Callout type="info" title="Key Insight">
+        Memory systems like Mem0 achieve <strong>80% token reduction</strong> while preserving fidelity through intelligent summarization and retrieval. Instead of keeping entire conversation history, store and retrieve relevant facts.
+      </Callout>
+    </section>
+
+    <!-- Memory Types -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Types of Agent Memory
+      </h2>
+
+      <Diagram title="Memory Hierarchy">
+{`┌─────────────────────────────────────────────────────────────┐
+│                    Memory Architecture                       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  WORKING MEMORY                                              │
+│  ─────────────────                                           │
+│  Current conversation in context window                      │
+│  Scope: Current turn │ Storage: Context window               │
+│  Capacity: Model's context limit (4K-1M tokens)              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SHORT-TERM MEMORY                                           │
+│  ─────────────────────                                       │
+│  Facts extracted from current session                        │
+│  Scope: Current session │ Storage: In-memory                 │
+│  Example: "User asked about Python decorators"               │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  LONG-TERM MEMORY                                            │
+│  ────────────────────                                        │
+│  Persistent facts and knowledge                              │
+│  Scope: Cross-session │ Storage: Vector DB                   │
+│  Example: "User prefers concise responses"                   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  EPISODIC MEMORY                                             │
+│  ────────────────────                                        │
+│  Specific past experiences and outcomes                      │
+│  Scope: Cross-session │ Storage: Indexed experiences         │
+│  Example: "Task X succeeded with approach Y"                 │
+└─────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Table caption="Comparison of memory types">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Scope</th>
+            <th>Implementation</th>
+            <th>Use Case</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Working</strong></td>
+            <td>Current conversation</td>
+            <td>Context window</td>
+            <td>Immediate task context</td>
+          </tr>
+          <tr>
+            <td><strong>Short-term</strong></td>
+            <td>Current session</td>
+            <td>In-memory store</td>
+            <td>Session-specific facts</td>
+          </tr>
+          <tr>
+            <td><strong>Long-term</strong></td>
+            <td>Cross-session</td>
+            <td>Vector DB + metadata</td>
+            <td>User preferences, knowledge</td>
+          </tr>
+          <tr>
+            <td><strong>Episodic</strong></td>
+            <td>Specific interactions</td>
+            <td>Indexed experiences</td>
+            <td>Learning from past tasks</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <CodeBlock tabs={memoryTypesExample} title="Memory System Implementation" />
+    </section>
+
+    <!-- Working Memory Management -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Working Memory: Summarization
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The context window has limits. When conversations get long, you need strategies to compress history while preserving important information:
+      </p>
+
+      <CodeBlock tabs={summarizationExample} title="Conversation Summarization" />
+
+      <Callout type="tip" title="Summarization Strategy">
+        Keep recent messages verbatim (last 5-10) and summarize older ones. This preserves immediate context while retaining key facts from earlier in the conversation.
+      </Callout>
+    </section>
+
+    <!-- Episodic Memory -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Episodic Memory: Learning from Experience
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Episodic memory stores complete interaction trajectories, enabling agents to learn from past successes and failures:
+      </p>
+
+      <CodeBlock tabs={episodicMemoryExample} title="Episodic Memory for Learning" />
+
+      <Callout type="info" title="Few-Shot from Experience">
+        Episodic memory enables dynamic few-shot learning. Instead of hardcoded examples, the agent retrieves relevant past experiences to guide current tasks.
+      </Callout>
+    </section>
+
+    <!-- Mem0 Integration -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Production Memory: Mem0
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Mem0 is a popular framework for production memory systems, handling the complexity of memory extraction, storage, and retrieval:
+      </p>
+
+      <CodeBlock tabs={mem0Example} title="Mem0 Integration" />
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          Mem0 Key Features
+        </h3>
+        <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-1">
+          <li>Automatic memory extraction from conversations</li>
+          <li>User-scoped and agent-scoped memories</li>
+          <li>Conflict resolution for contradicting facts</li>
+          <li>Memory decay and importance ranking</li>
+          <li>Multiple vector store backends</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Memory Patterns -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Memory Design Patterns
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Description</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Rolling Window</strong></td>
+            <td>Keep last N messages only</td>
+            <td>Simple chatbots, low-stakes tasks</td>
+          </tr>
+          <tr>
+            <td><strong>Summarize + Recent</strong></td>
+            <td>Summarize old, keep recent verbatim</td>
+            <td>Most agent applications</td>
+          </tr>
+          <tr>
+            <td><strong>Entity Memory</strong></td>
+            <td>Track entities and their states</td>
+            <td>Complex workflows, state machines</td>
+          </tr>
+          <tr>
+            <td><strong>Knowledge Graph</strong></td>
+            <td>Store facts as relationships</td>
+            <td>Domain-specific agents, reasoning</td>
+          </tr>
+          <tr>
+            <td><strong>Hierarchical</strong></td>
+            <td>Multiple summary levels</td>
+            <td>Very long conversations (100+ turns)</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Memory systems should be evaluated on both retrieval quality and downstream task performance:
+      </p>
+
+      <Table caption="Key metrics for memory system evaluation">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>How to Measure</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Recall Accuracy</strong></td>
+            <td>Can agent retrieve relevant facts?</td>
+            <td>Insert facts, query later, measure hit rate</td>
+          </tr>
+          <tr>
+            <td><strong>Recall@Turn N</strong></td>
+            <td>Accuracy degradation over turns</td>
+            <td>Track accuracy vs conversation length</td>
+          </tr>
+          <tr>
+            <td><strong>Token Efficiency</strong></td>
+            <td>Tokens used vs full history</td>
+            <td>Compare memory system vs raw context</td>
+          </tr>
+          <tr>
+            <td><strong>Latency Impact</strong></td>
+            <td>Time added by memory operations</td>
+            <td>Benchmark retrieval + storage time</td>
+          </tr>
+          <tr>
+            <td><strong>Task Performance</strong></td>
+            <td>Does memory improve outcomes?</td>
+            <td>A/B test with vs without memory</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Diagram title="Memory Retention Test">
+{`Test: Information Retention Over Conversation Length
+───────────────────────────────────────────────────────────
+
+Turn 1:  Insert fact: "Project deadline is March 15"
+Turn 5:  Query: "When is the deadline?" → Should recall
+Turn 10: Insert distractors about other dates
+Turn 15: Query: "What's the project deadline?" → Still recall?
+Turn 25: Heavy topic changes
+Turn 30: Query: "Remind me of the deadline" → Can still recall?
+
+Expected Results:
+┌─────────────────────────────────────────────────────────┐
+│ Recall Accuracy                                          │
+│ 100% ┤■■■■■■■■■■■■■■■■■■                                │
+│  90% ┤              ■■■■■■■■■■                          │
+│  80% ┤                      ■■■■■■■■                    │
+│  70% ┤                              ■■■■                │
+│      └──────────────────────────────────────────────────│
+│       Turn 1    Turn 10    Turn 20    Turn 30           │
+└─────────────────────────────────────────────────────────┘
+
+Analysis Questions:
+- At what turn count does recall degrade?
+- Does summarization help or hurt?
+- What's the optimal compression threshold?`}
+      </Diagram>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Memory Pollution">
+          Storing everything leads to irrelevant retrievals. Be selective about what enters long-term memory. Use importance scoring.
+        </Callout>
+
+        <Callout type="danger" title="Conflicting Memories">
+          When facts change (e.g., user updates preference), old memories can contradict new ones. Implement update/invalidation mechanisms.
+        </Callout>
+
+        <Callout type="warning" title="Over-Summarization">
+          Aggressive summarization loses nuance. Important details can be compressed away. Test recall on specific facts after summarization.
+        </Callout>
+
+        <Callout type="warning" title="Retrieval Latency">
+          Vector search adds latency. For real-time applications, consider caching hot memories or async prefetching.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Implementation Checklist -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Implementation Checklist
+      </h2>
+
+      <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <ul class="space-y-2 text-slate-600 dark:text-slate-300">
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">1.</span>
+            <span>Define memory types needed (working, short-term, long-term, episodic)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">2.</span>
+            <span>Choose vector database (Chroma, Pinecone, Weaviate, Qdrant)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">3.</span>
+            <span>Implement summarization with token threshold</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">4.</span>
+            <span>Design memory extraction logic (what to store, when)</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">5.</span>
+            <span>Build retrieval with relevance filtering</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">6.</span>
+            <span>Add memory update/invalidation for changing facts</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">7.</span>
+            <span>Test recall accuracy at various conversation lengths</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="text-green-500 font-bold">8.</span>
+            <span>Monitor token usage and latency in production</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/react-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">ReAct Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Combine memory with reasoning for more capable agents
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Store tool results in memory for future reference
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

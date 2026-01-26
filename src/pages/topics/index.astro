@@ -3,42 +3,65 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 
 const topics = [
   {
-    title: 'Agentic Loops',
-    description: 'Understand the fundamental loop pattern that powers AI agents: observe, think, act, repeat.',
-    href: '/agent-patterns/topics/agentic-loops/',
-    status: 'coming-soon',
+    title: 'Tool Use & Function Calling',
+    description: 'Learn how agents extend their capabilities by calling external tools and APIs. Covers schemas, parallel execution, and error handling.',
+    href: '/agent-patterns/topics/tool-use/',
+    status: 'available',
+    category: 'Foundational',
   },
   {
-    title: 'Tool Use',
-    description: 'Learn how agents extend their capabilities by calling external tools and APIs.',
-    href: '/agent-patterns/topics/tool-use/',
-    status: 'coming-soon',
+    title: 'ReAct Pattern',
+    description: 'Master the Reasoning + Acting loop that forms the foundation of agentic behavior. From explicit traces to modern implicit reasoning.',
+    href: '/agent-patterns/topics/react-pattern/',
+    status: 'available',
+    category: 'Foundational',
   },
   {
     title: 'Memory Systems',
-    description: 'Explore how agents maintain context and learn from past interactions.',
+    description: 'Explore how agents maintain context and learn from past interactions. Working, short-term, long-term, and episodic memory.',
     href: '/agent-patterns/topics/memory/',
+    status: 'available',
+    category: 'Foundational',
+  },
+  {
+    title: 'Context Engineering',
+    description: 'The discipline of optimizing what goes into the context window. Write, Select, Compress, and Isolate strategies.',
+    href: '/agent-patterns/topics/context-engineering/',
     status: 'coming-soon',
+    category: 'Context Layer',
+  },
+  {
+    title: 'Skills Pattern',
+    description: 'Anthropic\'s approach to scalable tool management. Filesystem-based tool discovery with 98% token savings.',
+    href: '/agent-patterns/topics/skills-pattern/',
+    status: 'coming-soon',
+    category: 'Advanced',
   },
   {
     title: 'Multi-Agent Systems',
-    description: 'Discover patterns for coordinating multiple specialized agents.',
+    description: 'Discover patterns for coordinating multiple specialized agents. Hierarchical, peer-to-peer, and role-based architectures.',
     href: '/agent-patterns/topics/multi-agent/',
     status: 'coming-soon',
+    category: 'Advanced',
   },
   {
-    title: 'Planning & Reasoning',
-    description: 'Study how agents break down complex tasks and reason about solutions.',
-    href: '/agent-patterns/topics/planning/',
+    title: 'Agentic RAG',
+    description: 'Beyond simple retrieval: agents that decide when and what to retrieve. Self-RAG, Corrective RAG, and Graph RAG.',
+    href: '/agent-patterns/topics/agentic-rag/',
     status: 'coming-soon',
+    category: 'Advanced',
   },
   {
     title: 'Safety & Guardrails',
-    description: 'Implement safeguards to ensure agents behave safely and predictably.',
+    description: 'Implement safeguards to ensure agents behave safely and predictably. Guardian agents and OWASP top 10 for LLMs.',
     href: '/agent-patterns/topics/safety/',
     status: 'coming-soon',
+    category: 'Safety',
   },
 ];
+
+// Group topics by category
+const categories = [...new Set(topics.map(t => t.category))];
 ---
 
 <BaseLayout title="Topics">
@@ -48,26 +71,55 @@ const topics = [
         Topics
       </h1>
       <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
-        Explore the core concepts and patterns that power modern AI agents. Each topic includes explanations, code examples, and practical guidance.
+        Explore the core concepts and patterns that power modern AI agents. Each topic includes explanations, code examples in multiple languages, and evaluation approaches.
       </p>
     </div>
 
-    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {topics.map((topic) => (
-        <div class="relative p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-          {topic.status === 'coming-soon' && (
-            <span class="absolute top-4 right-4 px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">
-              Coming Soon
-            </span>
-          )}
-          <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-            {topic.title}
-          </h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">
-            {topic.description}
-          </p>
+    {categories.map((category) => (
+      <div class="mb-12">
+        <h2 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+          {category}
+        </h2>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {topics.filter(t => t.category === category).map((topic) => (
+            topic.status === 'available' ? (
+              <a
+                href={topic.href}
+                class="group relative p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-lg transition-all"
+              >
+                <span class="absolute top-4 right-4 px-2 py-1 text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded">
+                  Available
+                </span>
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                  {topic.title}
+                </h3>
+                <p class="text-sm text-slate-600 dark:text-slate-400">
+                  {topic.description}
+                </p>
+                <div class="mt-4 text-sm font-medium text-primary-600 dark:text-primary-400 flex items-center gap-1">
+                  Read more
+                  <svg class="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </div>
+              </a>
+            ) : (
+              <div class="relative p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 opacity-75">
+                <span class="absolute top-4 right-4 px-2 py-1 text-xs font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded">
+                  Coming Soon
+                </span>
+                <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                  {topic.title}
+                </h3>
+                <p class="text-sm text-slate-600 dark:text-slate-400">
+                  {topic.description}
+                </p>
+              </div>
+            )
+          ))}
         </div>
-      ))}
-    </div>
+      </div>
+    ))}
   </div>
 </BaseLayout>

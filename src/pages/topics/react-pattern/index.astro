@@ -1,0 +1,877 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const basicReactExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function reactAgent(task, tools, maxSteps = 10):
+    observations = []
+
+    for step in range(maxSteps):
+        # REASON: Generate thought about current state
+        thought = llm.think(
+            task: task,
+            history: observations,
+            prompt: "What should I do next to accomplish this task?"
+        )
+
+        # Check if task is complete
+        if thought.indicatesCompletion:
+            return extractFinalAnswer(thought, observations)
+
+        # ACT: Select and execute action
+        action = llm.selectAction(
+            thought: thought,
+            availableTools: tools
+        )
+
+        # OBSERVE: Get result from environment
+        observation = execute(action)
+
+        # Store for next iteration
+        observations.append({
+            thought: thought,
+            action: action,
+            observation: observation
+        })
+
+    return "Max steps reached without completion"`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangGraph)',
+    code: `from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+
+# Define tools
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return web_search_api(query)
+
+@tool
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    return str(eval(expression))  # Use safe eval in production
+
+# Create ReAct agent
+llm = ChatOpenAI(model="gpt-4")
+tools = [search, calculator]
+
+agent = create_react_agent(llm, tools)
+
+# Run the agent
+result = agent.invoke({
+    "messages": [
+        ("user", "What's the population of France times 2?")
+    ]
+})
+
+# The agent will:
+# 1. Think: I need to find France's population
+# 2. Act: search("population of France")
+# 3. Observe: "67 million"
+# 4. Think: Now I need to multiply by 2
+# 5. Act: calculator("67000000 * 2")
+# 6. Observe: "134000000"
+# 7. Return: "France has ~67M people, doubled is 134M"`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using System.ComponentModel;
+
+public class ReActAgent
+{
+    private readonly IChatClient _client;
+    private readonly List<AITool> _tools;
+    private readonly int _maxIterations;
+
+    public ReActAgent(
+        IChatClient client,
+        List<AITool> tools,
+        int maxIterations = 10)
+    {
+        _client = client;
+        _tools = tools;
+        _maxIterations = maxIterations;
+    }
+
+    public async Task<string> RunAsync(string task)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, GetSystemPrompt()),
+            new(ChatRole.User, task)
+        };
+
+        for (int i = 0; i < _maxIterations; i++)
+        {
+            var response = await _client.GetResponseAsync(
+                messages,
+                new ChatOptions { Tools = _tools }
+            );
+
+            messages.Add(response.Message);
+
+            // Check if agent is done (no tool calls)
+            if (!response.Message.Contents
+                .OfType<FunctionCallContent>().Any())
+            {
+                return response.Message.Text ?? "";
+            }
+
+            // Execute tool calls and add results
+            foreach (var toolCall in response.Message.Contents
+                .OfType<FunctionCallContent>())
+            {
+                var result = await ExecuteToolAsync(toolCall);
+                messages.Add(new ChatMessage(
+                    ChatRole.Tool,
+                    result
+                ));
+            }
+        }
+
+        return "Max iterations reached";
+    }
+
+    private string GetSystemPrompt() => """
+        You are a ReAct agent. For each step:
+        1. THOUGHT: Reason about what to do next
+        2. ACTION: Use a tool if needed
+        3. OBSERVATION: Analyze the result
+        Repeat until you can answer the user's question.
+        """;
+}`,
+  },
+];
+
+const explicitReasoningExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Explicit ReAct format with structured output
+SYSTEM_PROMPT = """
+You are a ReAct agent. Always respond in this exact format:
+
+Thought: [Your reasoning about the current situation]
+Action: [tool_name(arg1, arg2)] OR Answer: [final response]
+"""
+
+function parseReactResponse(response):
+    thought = extractBetween(response, "Thought:", "Action:")
+
+    if contains(response, "Answer:"):
+        answer = extractAfter(response, "Answer:")
+        return { type: "complete", answer: answer }
+
+    actionStr = extractAfter(response, "Action:")
+    action = parseToolCall(actionStr)
+    return { type: "action", thought: thought, action: action }
+
+function reactLoop(task):
+    messages = [systemPrompt, userMessage(task)]
+
+    while true:
+        response = llm.generate(messages)
+        parsed = parseReactResponse(response)
+
+        if parsed.type == "complete":
+            return parsed.answer
+
+        # Execute action and format observation
+        result = execute(parsed.action)
+        observation = f"Observation: {result}"
+
+        messages.append(assistantMessage(response))
+        messages.append(userMessage(observation))`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `import re
+from openai import OpenAI
+
+client = OpenAI()
+
+REACT_PROMPT = """You are a ReAct agent. Always respond in this format:
+
+Thought: [Your reasoning about what to do next]
+Action: tool_name(arg1="value1", arg2="value2")
+
+OR if you have the final answer:
+
+Thought: [Your reasoning]
+Answer: [Your final response to the user]
+
+Available tools:
+- search(query: str) - Search the web
+- calculator(expression: str) - Evaluate math
+- lookup(term: str) - Look up a definition
+"""
+
+def parse_react_response(response: str) -> dict:
+    """Parse the structured ReAct response."""
+    thought_match = re.search(
+        r"Thought:\s*(.+?)(?=Action:|Answer:|$)",
+        response,
+        re.DOTALL
+    )
+    thought = thought_match.group(1).strip() if thought_match else ""
+
+    if "Answer:" in response:
+        answer_match = re.search(r"Answer:\s*(.+)", response, re.DOTALL)
+        return {
+            "type": "complete",
+            "thought": thought,
+            "answer": answer_match.group(1).strip()
+        }
+
+    action_match = re.search(
+        r"Action:\s*(\w+)\((.+)\)",
+        response
+    )
+    if action_match:
+        tool_name = action_match.group(1)
+        args_str = action_match.group(2)
+        # Parse args (simplified - use ast.literal_eval in production)
+        args = parse_tool_args(args_str)
+        return {
+            "type": "action",
+            "thought": thought,
+            "tool": tool_name,
+            "args": args
+        }
+
+    return {"type": "error", "thought": thought}
+
+def react_agent(task: str, max_steps: int = 10) -> str:
+    messages = [
+        {"role": "system", "content": REACT_PROMPT},
+        {"role": "user", "content": task}
+    ]
+
+    for step in range(max_steps):
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+        )
+
+        content = response.choices[0].message.content
+        parsed = parse_react_response(content)
+
+        print(f"Step {step + 1}:")
+        print(f"  Thought: {parsed.get('thought', 'N/A')}")
+
+        if parsed["type"] == "complete":
+            print(f"  Answer: {parsed['answer']}")
+            return parsed["answer"]
+
+        if parsed["type"] == "action":
+            print(f"  Action: {parsed['tool']}({parsed['args']})")
+
+            # Execute the tool
+            result = execute_tool(parsed["tool"], parsed["args"])
+            print(f"  Observation: {result}")
+
+            # Add to conversation
+            messages.append({"role": "assistant", "content": content})
+            messages.append({
+                "role": "user",
+                "content": f"Observation: {result}"
+            })
+
+    return "Max steps reached"`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using System.Text.RegularExpressions;
+
+public class ExplicitReActAgent
+{
+    private const string SystemPrompt = """
+        You are a ReAct agent. Always respond in this format:
+
+        Thought: [Your reasoning about what to do next]
+        Action: tool_name(arg1="value1")
+
+        OR if you have the final answer:
+
+        Thought: [Your reasoning]
+        Answer: [Your final response]
+        """;
+
+    private readonly IChatClient _client;
+    private readonly Dictionary<string, Func<string, Task<string>>> _tools;
+
+    public async Task<string> RunAsync(string task, int maxSteps = 10)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, SystemPrompt),
+            new(ChatRole.User, task)
+        };
+
+        for (int step = 0; step < maxSteps; step++)
+        {
+            var response = await _client.GetResponseAsync(messages);
+            var content = response.Message.Text ?? "";
+
+            var parsed = ParseReActResponse(content);
+
+            Console.WriteLine($"Step {step + 1}:");
+            Console.WriteLine($"  Thought: {parsed.Thought}");
+
+            if (parsed.IsComplete)
+            {
+                Console.WriteLine($"  Answer: {parsed.Answer}");
+                return parsed.Answer;
+            }
+
+            Console.WriteLine($"  Action: {parsed.ToolName}({parsed.Args})");
+
+            // Execute tool
+            var result = await _tools[parsed.ToolName](parsed.Args);
+            Console.WriteLine($"  Observation: {result}");
+
+            // Add to conversation
+            messages.Add(new(ChatRole.Assistant, content));
+            messages.Add(new(ChatRole.User, $"Observation: {result}"));
+        }
+
+        return "Max steps reached";
+    }
+
+    private ReActParsedResponse ParseReActResponse(string response)
+    {
+        var thoughtMatch = Regex.Match(
+            response,
+            @"Thought:\s*(.+?)(?=Action:|Answer:|$)",
+            RegexOptions.Singleline
+        );
+
+        var thought = thoughtMatch.Success
+            ? thoughtMatch.Groups[1].Value.Trim()
+            : "";
+
+        if (response.Contains("Answer:"))
+        {
+            var answerMatch = Regex.Match(
+                response,
+                @"Answer:\s*(.+)",
+                RegexOptions.Singleline
+            );
+            return new ReActParsedResponse
+            {
+                IsComplete = true,
+                Thought = thought,
+                Answer = answerMatch.Groups[1].Value.Trim()
+            };
+        }
+
+        var actionMatch = Regex.Match(
+            response,
+            @"Action:\s*(\w+)\((.+)\)"
+        );
+
+        return new ReActParsedResponse
+        {
+            IsComplete = false,
+            Thought = thought,
+            ToolName = actionMatch.Groups[1].Value,
+            Args = actionMatch.Groups[2].Value
+        };
+    }
+}`,
+  },
+];
+
+const modernReasoningExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Modern approach: Let reasoning models handle thinking internally
+# No explicit "Thought:" prompting needed
+
+function modernAgentLoop(task, tools):
+    messages = [userMessage(task)]
+
+    while true:
+        response = reasoningModel.generate(
+            messages: messages,
+            tools: tools,
+            # Reasoning model internally does CoT
+            # No need to prompt for explicit thoughts
+        )
+
+        if response.hasToolCalls:
+            for call in response.toolCalls:
+                result = execute(call)
+                messages.append(toolResult(call.id, result))
+        else:
+            # Model provides final answer directly
+            return response.content
+
+# Key insight: Models like o1, DeepSeek-R1, Claude 3.5
+# have internalized reasoning - explicit CoT prompts
+# can actually degrade performance by 3-5%`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from anthropic import Anthropic
+
+client = Anthropic()
+
+def modern_agent(task: str, tools: list) -> str:
+    """
+    Modern approach using Claude's extended thinking.
+    The model reasons internally without explicit prompting.
+    """
+    messages = [{"role": "user", "content": task}]
+
+    while True:
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8096,
+            tools=tools,
+            messages=messages,
+            # Enable extended thinking for complex reasoning
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 5000
+            }
+        )
+
+        # Check for tool use
+        tool_uses = [
+            block for block in response.content
+            if block.type == "tool_use"
+        ]
+
+        if not tool_uses:
+            # Extract final text response
+            text_blocks = [
+                block.text for block in response.content
+                if hasattr(block, 'text')
+            ]
+            return "\\n".join(text_blocks)
+
+        # Execute tools and continue
+        messages.append({"role": "assistant", "content": response.content})
+
+        tool_results = []
+        for tool_use in tool_uses:
+            result = execute_tool(tool_use.name, tool_use.input)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": tool_use.id,
+                "content": str(result)
+            })
+
+        messages.append({"role": "user", "content": tool_results})
+
+# The model's internal reasoning is more effective than
+# our explicit "Thought:" prompting`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `// Modern approach: Trust the model's internal reasoning
+// Use structured outputs instead of text parsing
+
+public class ModernReActAgent
+{
+    private readonly IChatClient _client;
+
+    public async Task<string> RunAsync(
+        string task,
+        IEnumerable<AITool> tools)
+    {
+        // Use auto function invocation - the framework handles
+        // the ReAct loop internally with proper reasoning
+        var client = new ChatClientBuilder(_client)
+            .UseFunctionInvocation(options =>
+            {
+                // Let the model decide when to stop
+                options.MaximumIterations = 15;
+                options.RetryOnError = true;
+            })
+            .Build();
+
+        var response = await client.GetResponseAsync(
+            task,
+            new ChatOptions { Tools = tools.ToList() }
+        );
+
+        return response.Message.Text ?? "";
+    }
+}
+
+// Key insight: Modern frameworks abstract the ReAct loop
+// The pattern is built into the infrastructure
+// Focus on tool quality, not loop mechanics`,
+  },
+];
+---
+
+<BaseLayout
+  title="ReAct Pattern"
+  description="Learn the Reasoning + Acting pattern that forms the foundation of agentic AI behavior"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        ReAct Pattern
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        Reasoning + Acting: The foundational loop that enables AI agents to think through problems and take action in the world.
+      </p>
+    </header>
+
+    <!-- Concept Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        What is ReAct?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        ReAct (Reasoning + Acting) is a prompting paradigm introduced by Yao et al. in 2022 that interleaves reasoning traces with actions. The key insight: by making the model explicitly reason about its actions, we get more reliable and interpretable agent behavior.
+      </p>
+
+      <Diagram title="The ReAct Loop">
+{`┌─────────────────────────────────────────────────────────┐
+│                      ReAct Loop                         │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │       THOUGHT        │
+              │  "I need to find..." │
+              │  "The result shows..." │
+              │  "Now I should..."   │
+              └──────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │        ACTION        │
+              │  search("query")     │
+              │  calculate("2+2")    │
+              │  lookup("term")      │
+              └──────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │     OBSERVATION      │
+              │  Result from tool    │
+              │  or environment      │
+              └──────────────────────┘
+                          │
+            ┌─────────────┴─────────────┐
+            │                           │
+            ▼                           ▼
+    ┌───────────────┐          ┌───────────────┐
+    │   Continue    │          │   Complete    │
+    │   (loop back) │          │   (return)    │
+    └───────────────┘          └───────────────┘`}
+      </Diagram>
+
+      <Callout type="info" title="Original Paper">
+        ReAct was introduced in "ReAct: Synergizing Reasoning and Acting in Language Models" (Yao et al., 2022). It showed that combining reasoning traces with actions outperforms either approach alone.
+      </Callout>
+    </section>
+
+    <!-- Basic Implementation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Basic ReAct Implementation
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The core ReAct pattern combines three elements in a loop: thinking about what to do, taking action, and observing the results.
+      </p>
+
+      <CodeBlock tabs={basicReactExample} title="ReAct Agent Loop" />
+    </section>
+
+    <!-- Explicit Reasoning -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Explicit Reasoning Traces
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The original ReAct approach uses explicit text formatting to structure thoughts and actions. This makes the agent's reasoning visible and debuggable:
+      </p>
+
+      <CodeBlock tabs={explicitReasoningExample} title="Explicit ReAct Format" />
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          Example Trace
+        </h3>
+        <pre class="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap font-mono">{`User: What's the population of Tokyo multiplied by 3?
+
+Thought: I need to find the current population of Tokyo first.
+Action: search(query="Tokyo population 2024")
+
+Observation: Tokyo has a population of approximately 14 million people.
+
+Thought: Now I have the population (14 million). I need to multiply by 3.
+Action: calculator(expression="14000000 * 3")
+
+Observation: 42000000
+
+Thought: I have the answer. 14 million * 3 = 42 million.
+Answer: The population of Tokyo (approximately 14 million) multiplied by 3 is 42 million.`}</pre>
+      </div>
+    </section>
+
+    <!-- Evolution -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evolution: From Explicit to Implicit Reasoning
+      </h2>
+
+      <Table caption="ReAct has evolved as models have become more capable">
+        <thead>
+          <tr>
+            <th>Era</th>
+            <th>Approach</th>
+            <th>Characteristics</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>2022-2023</strong></td>
+            <td>Explicit ReAct</td>
+            <td>Structured "Thought/Action/Observation" prompts</td>
+          </tr>
+          <tr>
+            <td><strong>2023-2024</strong></td>
+            <td>Tool-augmented LLMs</td>
+            <td>Native function calling, implicit reasoning</td>
+          </tr>
+          <tr>
+            <td><strong>2024-2025</strong></td>
+            <td>Reasoning Models</td>
+            <td>Internal chain-of-thought (o1, DeepSeek-R1, Claude)</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="warning" title="Important Finding">
+        Research shows that explicit Chain-of-Thought prompting can <em>degrade</em> performance by 3-5% on reasoning models like o1 and DeepSeek-R1. These models have internalized the reasoning process.
+      </Callout>
+
+      <CodeBlock tabs={modernReasoningExample} title="Modern Approach: Implicit Reasoning" />
+    </section>
+
+    <!-- When to Use Which -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        When to Use Each Approach
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Recommended Approach</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Debugging/Development</td>
+            <td>Explicit ReAct</td>
+            <td>Visible reasoning traces aid debugging</td>
+          </tr>
+          <tr>
+            <td>Production with GPT-4</td>
+            <td>Either</td>
+            <td>Model supports both well</td>
+          </tr>
+          <tr>
+            <td>Production with o1/R1</td>
+            <td>Implicit (native tools)</td>
+            <td>Explicit prompting hurts performance</td>
+          </tr>
+          <tr>
+            <td>Open-source models</td>
+            <td>Explicit ReAct</td>
+            <td>More predictable behavior</td>
+          </tr>
+          <tr>
+            <td>Compliance/Audit needs</td>
+            <td>Explicit ReAct</td>
+            <td>Full reasoning trail required</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Evaluating ReAct agents requires measuring both the reasoning quality and task completion:
+      </p>
+
+      <Table caption="Key metrics for evaluating ReAct agents">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Task Completion</strong></td>
+            <td>Did the agent achieve the goal?</td>
+            <td>Binary or partial credit</td>
+          </tr>
+          <tr>
+            <td><strong>Step Efficiency</strong></td>
+            <td>Steps taken vs optimal path</td>
+            <td>Lower is better</td>
+          </tr>
+          <tr>
+            <td><strong>Reasoning Quality</strong></td>
+            <td>Are thoughts logical and relevant?</td>
+            <td>LLM-as-judge or human eval</td>
+          </tr>
+          <tr>
+            <td><strong>Error Recovery</strong></td>
+            <td>Can agent recover from mistakes?</td>
+            <td>% successful recoveries</td>
+          </tr>
+          <tr>
+            <td><strong>Hallucination Rate</strong></td>
+            <td>Made-up facts in reasoning</td>
+            <td>Lower is better</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          Benchmarks
+        </h3>
+        <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-1">
+          <li><strong>HotpotQA</strong> - Multi-hop reasoning questions</li>
+          <li><strong>FEVER</strong> - Fact verification requiring evidence</li>
+          <li><strong>ALFWorld</strong> - Embodied agent tasks</li>
+          <li><strong>WebShop</strong> - Web navigation and shopping</li>
+          <li><strong>SWE-bench</strong> - Software engineering tasks</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Infinite Loops">
+          Without proper termination conditions, agents can loop indefinitely. Always set maximum step limits and detect repetitive behavior.
+        </Callout>
+
+        <Callout type="danger" title="Reasoning-Action Mismatch">
+          The model might state an intention in its thought but take a different action. Validate that actions align with stated reasoning.
+        </Callout>
+
+        <Callout type="warning" title="Over-thinking">
+          Some tasks don't need multi-step reasoning. Don't force the ReAct pattern on simple queries that could be answered directly.
+        </Callout>
+
+        <Callout type="warning" title="Lost Context">
+          In long traces, the model may forget earlier observations. Consider summarizing history or using memory systems.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Trajectory Analysis -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Trajectory Analysis & Debugging
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        One of ReAct's key benefits is interpretability. You can analyze agent trajectories to understand failures:
+      </p>
+
+      <Diagram title="Trajectory Analysis">
+{`Trajectory: Weather Query
+─────────────────────────────────────────────────────
+Step 1 │ Thought: Need weather for NYC
+       │ Action:  search("NYC weather")
+       │ Result:  ✓ Got weather data
+─────────────────────────────────────────────────────
+Step 2 │ Thought: Need to convert to Celsius
+       │ Action:  calculator("75 - 32 * 5/9")  ← BUG!
+       │ Result:  ✗ Wrong formula (missing parens)
+─────────────────────────────────────────────────────
+Step 3 │ Thought: Result seems wrong, retry
+       │ Action:  calculator("(75 - 32) * 5/9")
+       │ Result:  ✓ Correct conversion
+─────────────────────────────────────────────────────
+
+Analysis:
+- Model caught its own error (good recovery)
+- Root cause: Math formatting issue
+- Fix: Add examples to calculator tool description`}
+      </Diagram>
+
+      <Callout type="tip" title="Best Practice">
+        Log full trajectories in production. When failures occur, the trace shows exactly where and why the agent went wrong, making debugging straightforward.
+      </Callout>
+    </section>
+
+    <!-- Next Steps -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The ACTION component of ReAct - how tools are defined and called
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Extend ReAct with persistent memory for multi-session agents
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
