@@ -12,7 +12,9 @@
       "Bash(npx astro build)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:dev.to)",
-      "WebFetch(domain:blog.modelcontextprotocol.io)"
+      "WebFetch(domain:blog.modelcontextprotocol.io)",
+      "Bash(powershell -Command:*)",
+      "Bash(node -e:*)"
     ]
   }
 }
