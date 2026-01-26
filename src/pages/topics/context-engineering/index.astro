@@ -1,0 +1,1579 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const writeStrategyExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function agentWithScratchpad(task, tools):
+    # Initialize scratchpad in context
+    scratchpad = ""
+    messages = [
+        systemPrompt(tools),
+        userMessage(task)
+    ]
+
+    while not complete:
+        response = llm.generate(messages)
+
+        if response.hasToolCall:
+            result = executeTools(response.toolCalls)
+
+            # Write key findings to scratchpad
+            scratchpad = updateScratchpad(scratchpad, result)
+
+            # Include scratchpad in next iteration
+            messages.append(assistantMessage(response))
+            messages.append(toolResult(result))
+            messages.append(systemMessage(
+                "Current scratchpad:\\n" + scratchpad
+            ))
+        else:
+            return response.content
+
+function updateScratchpad(current, newInfo):
+    # Extract key facts, discard noise
+    keyFacts = extractKeyFacts(newInfo)
+
+    # Merge with existing, avoiding duplicates
+    return deduplicate(current + "\\n" + keyFacts)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+
+class AgentState(TypedDict):
+    messages: list
+    scratchpad: str  # Working memory within context
+    task_complete: bool
+
+llm = ChatOpenAI(model="gpt-4")
+
+def think_and_act(state: AgentState) -> AgentState:
+    """Agent step with scratchpad for working memory."""
+    # Include scratchpad in the prompt
+    scratchpad_prompt = f"""
+Current Scratchpad (key findings so far):
+{state['scratchpad'] or 'Empty - no findings yet'}
+
+Use this scratchpad to track important discoveries.
+Update it with new relevant information.
+"""
+
+    messages = state['messages'] + [
+        {"role": "system", "content": scratchpad_prompt}
+    ]
+
+    response = llm.invoke(messages)
+
+    # Extract any scratchpad updates from response
+    new_scratchpad = extract_scratchpad_update(
+        response.content,
+        state['scratchpad']
+    )
+
+    return {
+        **state,
+        "messages": state['messages'] + [response],
+        "scratchpad": new_scratchpad
+    }
+
+def extract_scratchpad_update(
+    response: str,
+    current: str
+) -> str:
+    """Extract key facts from response to update scratchpad."""
+    # Use LLM to summarize key findings
+    summary_prompt = f"""
+Extract only the key facts from this response that
+should be remembered for future steps. Be concise.
+
+Response: {response}
+Current scratchpad: {current}
+
+Output just the updated scratchpad content:
+"""
+    summary = llm.invoke([{"role": "user", "content": summary_prompt}])
+    return summary.content
+
+# Build graph with scratchpad state
+graph = StateGraph(AgentState)
+graph.add_node("agent", think_and_act)
+graph.add_edge(START, "agent")
+# ... add conditional edges based on task completion`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+
+public class ScratchpadAgent
+{
+    private readonly IChatClient _client;
+    private StringBuilder _scratchpad = new();
+
+    public ScratchpadAgent(IChatClient client)
+    {
+        _client = client;
+    }
+
+    public async Task<string> RunAsync(string task)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, GetSystemPrompt()),
+            new(ChatRole.User, task)
+        };
+
+        while (true)
+        {
+            // Inject scratchpad into context
+            if (_scratchpad.Length > 0)
+            {
+                messages.Add(new(ChatRole.System,
+                    $"Current scratchpad:\\n{_scratchpad}"));
+            }
+
+            var response = await _client.GetResponseAsync(messages);
+
+            if (response.FinishReason == ChatFinishReason.ToolCalls)
+            {
+                var result = await ExecuteToolsAsync(response);
+
+                // Update scratchpad with key findings
+                await UpdateScratchpadAsync(result);
+
+                messages.Add(response.Messages.Last());
+                messages.Add(new(ChatRole.Tool, result));
+            }
+            else
+            {
+                return response.Text;
+            }
+        }
+    }
+
+    private async Task UpdateScratchpadAsync(string newInfo)
+    {
+        // Use LLM to extract and deduplicate key facts
+        var extractPrompt = $"""
+            Extract key facts to remember from:
+            {newInfo}
+
+            Current scratchpad:
+            {_scratchpad}
+
+            Output updated scratchpad (concise, no duplicates):
+            """;
+
+        var summary = await _client.GetResponseAsync(extractPrompt);
+        _scratchpad.Clear();
+        _scratchpad.Append(summary.Text);
+    }
+}`,
+  },
+];
+
+const selectStrategyExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function selectRelevantContext(query, availableContext):
+    # Score each piece of context for relevance
+    scoredContext = []
+
+    for item in availableContext:
+        # Semantic similarity
+        similarity = embeddings.similarity(query, item.content)
+
+        # Recency boost (newer = more relevant)
+        recencyScore = calculateRecency(item.timestamp)
+
+        # Importance (based on metadata or past usage)
+        importance = item.metadata.importance or 1.0
+
+        finalScore = (similarity * 0.6) +
+                     (recencyScore * 0.2) +
+                     (importance * 0.2)
+
+        scoredContext.append({ item, finalScore })
+
+    # Sort by score and take top K items
+    scoredContext.sort(by: "finalScore", descending: true)
+    selected = scoredContext[:maxItems]
+
+    # Ensure we stay within token budget
+    return fitToTokenBudget(selected, maxTokens)
+
+function fitToTokenBudget(items, maxTokens):
+    result = []
+    currentTokens = 0
+
+    for item in items:
+        itemTokens = countTokens(item.content)
+        if currentTokens + itemTokens <= maxTokens:
+            result.append(item)
+            currentTokens += itemTokens
+        else:
+            break
+
+    return result`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from typing import List, Dict, Any
+import numpy as np
+from datetime import datetime, timedelta
+from sentence_transformers import SentenceTransformer
+
+class ContextSelector:
+    def __init__(
+        self,
+        max_tokens: int = 4000,
+        embedding_model: str = "all-MiniLM-L6-v2"
+    ):
+        self.max_tokens = max_tokens
+        self.embedder = SentenceTransformer(embedding_model)
+
+    def select(
+        self,
+        query: str,
+        context_items: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Select most relevant context items for query."""
+
+        # Compute query embedding
+        query_embedding = self.embedder.encode(query)
+
+        # Score each item
+        scored_items = []
+        for item in context_items:
+            score = self._score_item(
+                query_embedding,
+                item
+            )
+            scored_items.append((item, score))
+
+        # Sort by score descending
+        scored_items.sort(key=lambda x: x[1], reverse=True)
+
+        # Select within token budget
+        return self._fit_to_budget(scored_items)
+
+    def _score_item(
+        self,
+        query_embedding: np.ndarray,
+        item: Dict[str, Any]
+    ) -> float:
+        """Compute relevance score for an item."""
+        # Semantic similarity (cosine)
+        item_embedding = self.embedder.encode(item["content"])
+        similarity = np.dot(query_embedding, item_embedding) / (
+            np.linalg.norm(query_embedding) *
+            np.linalg.norm(item_embedding)
+        )
+
+        # Recency score (decay over time)
+        if "timestamp" in item:
+            age = datetime.now() - item["timestamp"]
+            # Exponential decay: half-life of 7 days
+            recency = np.exp(-age.days / 7)
+        else:
+            recency = 0.5
+
+        # Importance from metadata
+        importance = item.get("importance", 1.0)
+
+        # Weighted combination
+        return (
+            similarity * 0.6 +
+            recency * 0.2 +
+            importance * 0.2
+        )
+
+    def _fit_to_budget(
+        self,
+        scored_items: List[tuple]
+    ) -> List[Dict[str, Any]]:
+        """Select items within token budget."""
+        import tiktoken
+        enc = tiktoken.get_encoding("cl100k_base")
+
+        selected = []
+        current_tokens = 0
+
+        for item, score in scored_items:
+            tokens = len(enc.encode(item["content"]))
+            if current_tokens + tokens <= self.max_tokens:
+                selected.append(item)
+                current_tokens += tokens
+            else:
+                break
+
+        return selected
+
+# Usage
+selector = ContextSelector(max_tokens=4000)
+relevant = selector.select(
+    query="How do I handle API rate limits?",
+    context_items=all_docs
+)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.SemanticKernel.Embeddings;
+using Microsoft.ML.Tokenizers;
+
+public class ContextSelector
+{
+    private readonly ITextEmbeddingGenerationService _embedder;
+    private readonly Tokenizer _tokenizer;
+    private readonly int _maxTokens;
+
+    public ContextSelector(
+        ITextEmbeddingGenerationService embedder,
+        int maxTokens = 4000)
+    {
+        _embedder = embedder;
+        _maxTokens = maxTokens;
+        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+    }
+
+    public async Task<List<ContextItem>> SelectAsync(
+        string query,
+        List<ContextItem> items)
+    {
+        // Get query embedding
+        var queryEmbedding = await _embedder
+            .GenerateEmbeddingAsync(query);
+
+        // Score all items
+        var scored = new List<(ContextItem Item, float Score)>();
+
+        foreach (var item in items)
+        {
+            var itemEmbedding = await _embedder
+                .GenerateEmbeddingAsync(item.Content);
+
+            var score = ScoreItem(
+                queryEmbedding,
+                itemEmbedding,
+                item
+            );
+            scored.Add((item, score));
+        }
+
+        // Sort by score descending
+        scored.Sort((a, b) => b.Score.CompareTo(a.Score));
+
+        // Select within token budget
+        return FitToBudget(scored);
+    }
+
+    private float ScoreItem(
+        ReadOnlyMemory<float> queryEmb,
+        ReadOnlyMemory<float> itemEmb,
+        ContextItem item)
+    {
+        // Cosine similarity
+        var similarity = CosineSimilarity(
+            queryEmb.Span,
+            itemEmb.Span
+        );
+
+        // Recency score
+        var age = DateTime.UtcNow - item.Timestamp;
+        var recency = (float)Math.Exp(-age.TotalDays / 7);
+
+        // Weighted combination
+        return similarity * 0.6f +
+               recency * 0.2f +
+               item.Importance * 0.2f;
+    }
+
+    private List<ContextItem> FitToBudget(
+        List<(ContextItem Item, float Score)> scored)
+    {
+        var selected = new List<ContextItem>();
+        var currentTokens = 0;
+
+        foreach (var (item, _) in scored)
+        {
+            var tokens = _tokenizer.CountTokens(item.Content);
+            if (currentTokens + tokens <= _maxTokens)
+            {
+                selected.Add(item);
+                currentTokens += tokens;
+            }
+            else break;
+        }
+
+        return selected;
+    }
+
+    private static float CosineSimilarity(
+        ReadOnlySpan<float> a,
+        ReadOnlySpan<float> b)
+    {
+        float dot = 0, normA = 0, normB = 0;
+        for (int i = 0; i < a.Length; i++)
+        {
+            dot += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+        return dot / (MathF.Sqrt(normA) * MathF.Sqrt(normB));
+    }
+}`,
+  },
+];
+
+const compressStrategyExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `function compressConversation(messages, targetTokens):
+    currentTokens = countTokens(messages)
+
+    if currentTokens <= targetTokens:
+        return messages
+
+    # Strategy 1: Summarize older messages
+    threshold = length(messages) * 0.6  # Keep recent 40% intact
+    oldMessages = messages[:threshold]
+    recentMessages = messages[threshold:]
+
+    summary = llm.summarize(
+        oldMessages,
+        instruction: "Summarize the key points, decisions,
+                      and pending tasks from this conversation."
+    )
+
+    compressedMessages = [
+        systemMessage("Previous conversation summary:\\n" + summary),
+        ...recentMessages
+    ]
+
+    # Strategy 2: If still too large, truncate tool outputs
+    if countTokens(compressedMessages) > targetTokens:
+        compressedMessages = truncateLargeToolOutputs(
+            compressedMessages,
+            maxOutputSize: 500
+        )
+
+    return compressedMessages
+
+function truncateLargeToolOutputs(messages, maxOutputSize):
+    for message in messages:
+        if message.role == "tool" and
+           countTokens(message.content) > maxOutputSize:
+            message.content = summarizeToolOutput(
+                message.content,
+                maxOutputSize
+            )
+    return messages`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from typing import List, Dict
+import tiktoken
+from openai import OpenAI
+
+class ConversationCompressor:
+    def __init__(
+        self,
+        client: OpenAI,
+        target_tokens: int = 8000,
+        preserve_recent_ratio: float = 0.4
+    ):
+        self.client = client
+        self.target_tokens = target_tokens
+        self.preserve_ratio = preserve_recent_ratio
+        self.enc = tiktoken.get_encoding("cl100k_base")
+
+    def compress(
+        self,
+        messages: List[Dict]
+    ) -> List[Dict]:
+        """Compress conversation to fit token budget."""
+        current_tokens = self._count_tokens(messages)
+
+        if current_tokens <= self.target_tokens:
+            return messages
+
+        # Split into old and recent
+        split_idx = int(len(messages) * (1 - self.preserve_ratio))
+        old_messages = messages[:split_idx]
+        recent_messages = messages[split_idx:]
+
+        # Summarize old messages
+        summary = self._summarize(old_messages)
+
+        compressed = [
+            {
+                "role": "system",
+                "content": f"Previous conversation summary:\\n{summary}"
+            },
+            *recent_messages
+        ]
+
+        # If still too large, truncate tool outputs
+        if self._count_tokens(compressed) > self.target_tokens:
+            compressed = self._truncate_tool_outputs(compressed)
+
+        return compressed
+
+    def _summarize(self, messages: List[Dict]) -> str:
+        """Summarize a list of messages."""
+        # Format messages for summarization
+        formatted = "\\n".join([
+            f"{m['role'].upper()}: {m['content'][:500]}"
+            for m in messages
+        ])
+
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",  # Use fast model for compression
+            messages=[{
+                "role": "user",
+                "content": f"""Summarize this conversation, preserving:
+1. Key decisions made
+2. Important facts discovered
+3. Current task status
+4. Any pending questions
+
+Conversation:
+{formatted}
+
+Concise summary:"""
+            }],
+            max_tokens=500
+        )
+
+        return response.choices[0].message.content
+
+    def _truncate_tool_outputs(
+        self,
+        messages: List[Dict],
+        max_output_tokens: int = 300
+    ) -> List[Dict]:
+        """Truncate large tool outputs."""
+        result = []
+
+        for msg in messages:
+            if msg.get("role") == "tool":
+                tokens = self._count_tokens([msg])
+                if tokens > max_output_tokens:
+                    # Summarize the output
+                    summary = self._summarize_output(msg["content"])
+                    result.append({**msg, "content": summary})
+                else:
+                    result.append(msg)
+            else:
+                result.append(msg)
+
+        return result
+
+    def _summarize_output(self, content: str) -> str:
+        """Summarize a tool output."""
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"Summarize this tool output in 2-3 sentences, "
+                          f"keeping essential data:\\n{content[:2000]}"
+            }],
+            max_tokens=150
+        )
+        return response.choices[0].message.content
+
+    def _count_tokens(self, messages: List[Dict]) -> int:
+        """Count tokens in messages."""
+        return sum(
+            len(self.enc.encode(str(m.get("content", ""))))
+            for m in messages
+        )`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+using Microsoft.ML.Tokenizers;
+
+public class ConversationCompressor
+{
+    private readonly IChatClient _client;
+    private readonly Tokenizer _tokenizer;
+    private readonly int _targetTokens;
+    private readonly float _preserveRatio;
+
+    public ConversationCompressor(
+        IChatClient client,
+        int targetTokens = 8000,
+        float preserveRecentRatio = 0.4f)
+    {
+        _client = client;
+        _targetTokens = targetTokens;
+        _preserveRatio = preserveRecentRatio;
+        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+    }
+
+    public async Task<List<ChatMessage>> CompressAsync(
+        List<ChatMessage> messages)
+    {
+        var currentTokens = CountTokens(messages);
+
+        if (currentTokens <= _targetTokens)
+            return messages;
+
+        // Split into old and recent
+        var splitIdx = (int)(messages.Count * (1 - _preserveRatio));
+        var oldMessages = messages.Take(splitIdx).ToList();
+        var recentMessages = messages.Skip(splitIdx).ToList();
+
+        // Summarize old messages
+        var summary = await SummarizeAsync(oldMessages);
+
+        var compressed = new List<ChatMessage>
+        {
+            new(ChatRole.System,
+                $"Previous conversation summary:\\n{summary}")
+        };
+        compressed.AddRange(recentMessages);
+
+        // Truncate tool outputs if still too large
+        if (CountTokens(compressed) > _targetTokens)
+        {
+            compressed = await TruncateToolOutputsAsync(compressed);
+        }
+
+        return compressed;
+    }
+
+    private async Task<string> SummarizeAsync(
+        List<ChatMessage> messages)
+    {
+        var formatted = string.Join("\\n",
+            messages.Select(m =>
+                $"{m.Role.ToString().ToUpper()}: " +
+                $"{Truncate(m.Text ?? "", 500)}"));
+
+        var prompt = $"""
+            Summarize this conversation, preserving:
+            1. Key decisions made
+            2. Important facts discovered
+            3. Current task status
+
+            Conversation:
+            {formatted}
+
+            Concise summary:
+            """;
+
+        var response = await _client.GetResponseAsync(prompt);
+        return response.Text;
+    }
+
+    private async Task<List<ChatMessage>> TruncateToolOutputsAsync(
+        List<ChatMessage> messages,
+        int maxOutputTokens = 300)
+    {
+        var result = new List<ChatMessage>();
+
+        foreach (var msg in messages)
+        {
+            if (msg.Role == ChatRole.Tool &&
+                _tokenizer.CountTokens(msg.Text ?? "") > maxOutputTokens)
+            {
+                var summary = await SummarizeOutputAsync(msg.Text!);
+                result.Add(new ChatMessage(ChatRole.Tool, summary));
+            }
+            else
+            {
+                result.Add(msg);
+            }
+        }
+
+        return result;
+    }
+
+    private async Task<string> SummarizeOutputAsync(string content)
+    {
+        var response = await _client.GetResponseAsync(
+            $"Summarize in 2-3 sentences: {Truncate(content, 2000)}");
+        return response.Text;
+    }
+
+    private int CountTokens(List<ChatMessage> messages) =>
+        messages.Sum(m => _tokenizer.CountTokens(m.Text ?? ""));
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s[..max] + "...";
+}`,
+  },
+];
+
+const isolateStrategyExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Strategy: Separate contexts for different concerns
+
+class IsolatedContextAgent:
+    def __init__():
+        self.planningContext = []    # High-level reasoning
+        self.executionContext = []   # Tool interactions
+        self.memoryContext = []      # Long-term facts
+
+    function plan(task):
+        # Planning uses only high-level context
+        response = llm.generate(
+            systemPrompt: "You are a planning agent...",
+            messages: self.planningContext + [task],
+            tools: []  # No tools during planning
+        )
+
+        self.planningContext.append(task)
+        self.planningContext.append(response)
+
+        return parsePlan(response)
+
+    function execute(step):
+        # Execution uses separate context with tools
+        relevantMemory = self.memoryContext.search(step)
+
+        response = llm.generate(
+            systemPrompt: "Execute this step precisely...",
+            messages: [
+                memoryContext(relevantMemory),
+                stepInstruction(step)
+            ],
+            tools: allTools
+        )
+
+        # Update execution context (bounded size)
+        self.executionContext.append(step, response)
+        self.executionContext = keepRecent(self.executionContext, 10)
+
+        # Extract facts for memory
+        facts = extractFacts(response)
+        self.memoryContext.store(facts)
+
+        return response
+
+    function run(task):
+        plan = self.plan(task)
+
+        for step in plan.steps:
+            result = self.execute(step)
+
+            # Check if replanning needed
+            if result.requiresReplan:
+                plan = self.plan(
+                    "Replan given: " + result.summary
+                )
+
+        return synthesizeResults(plan)`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from typing import List, Dict, Optional
+from dataclasses import dataclass, field
+from openai import OpenAI
+
+@dataclass
+class IsolatedContextAgent:
+    """Agent with separate contexts for planning vs execution."""
+
+    client: OpenAI
+    planning_context: List[Dict] = field(default_factory=list)
+    execution_context: List[Dict] = field(default_factory=list)
+    memory_store: List[Dict] = field(default_factory=list)
+    max_execution_history: int = 10
+
+    def plan(self, task: str) -> List[str]:
+        """Plan using isolated planning context (no tools)."""
+        messages = [
+            {
+                "role": "system",
+                "content": """You are a planning agent. Break down tasks
+into clear, executable steps. Do not execute - only plan.
+
+Output format:
+STEP 1: [action]
+STEP 2: [action]
+..."""
+            },
+            *self.planning_context,
+            {"role": "user", "content": task}
+        ]
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=messages
+            # No tools - planning only
+        )
+
+        plan_response = response.choices[0].message.content
+
+        # Update planning context
+        self.planning_context.append(
+            {"role": "user", "content": task}
+        )
+        self.planning_context.append(
+            {"role": "assistant", "content": plan_response}
+        )
+
+        return self._parse_steps(plan_response)
+
+    def execute(self, step: str, tools: List) -> Dict:
+        """Execute step in isolated execution context."""
+        # Retrieve relevant memory
+        relevant_memory = self._search_memory(step)
+
+        messages = [
+            {
+                "role": "system",
+                "content": f"""Execute this step precisely.
+
+Relevant context from memory:
+{relevant_memory}
+
+Complete the step and report results."""
+            },
+            {"role": "user", "content": f"Execute: {step}"}
+        ]
+
+        response = self.client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+            tools=tools
+        )
+
+        result = response.choices[0].message
+
+        # Update bounded execution context
+        self.execution_context.append({
+            "step": step,
+            "result": result.content
+        })
+        self.execution_context = self.execution_context[
+            -self.max_execution_history:
+        ]
+
+        # Extract and store facts
+        self._extract_and_store_facts(result.content)
+
+        return {"content": result.content, "tool_calls": result.tool_calls}
+
+    def _search_memory(self, query: str, top_k: int = 3) -> str:
+        """Search memory store for relevant facts."""
+        # Simple keyword matching (use embeddings in production)
+        relevant = []
+        query_words = set(query.lower().split())
+
+        for item in self.memory_store:
+            item_words = set(item["content"].lower().split())
+            overlap = len(query_words & item_words)
+            if overlap > 0:
+                relevant.append((item, overlap))
+
+        relevant.sort(key=lambda x: x[1], reverse=True)
+
+        return "\\n".join([
+            f"- {item['content']}"
+            for item, _ in relevant[:top_k]
+        ]) or "No relevant memory found."
+
+    def _extract_and_store_facts(self, content: str):
+        """Extract key facts and add to memory."""
+        extraction = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user",
+                "content": f"""Extract 1-3 key facts from this that
+should be remembered for future reference. Output one fact per line.
+
+Content: {content}"""
+            }]
+        )
+
+        facts = extraction.choices[0].message.content.strip().split("\\n")
+        for fact in facts:
+            if fact.strip():
+                self.memory_store.append({
+                    "content": fact.strip(),
+                    "source": "execution"
+                })
+
+    def _parse_steps(self, plan: str) -> List[str]:
+        """Parse plan into list of steps."""
+        steps = []
+        for line in plan.split("\\n"):
+            if line.strip().startswith("STEP"):
+                # Extract content after "STEP N:"
+                parts = line.split(":", 1)
+                if len(parts) > 1:
+                    steps.append(parts[1].strip())
+        return steps
+
+# Usage
+agent = IsolatedContextAgent(client=OpenAI())
+
+# Planning happens in isolated context
+steps = agent.plan("Research competitors and create summary report")
+
+# Each step executes in separate context
+for step in steps:
+    result = agent.execute(step, tools=research_tools)
+    print(f"Completed: {step}")`,
+  },
+  {
+    language: 'csharp',
+    label: 'C#',
+    code: `using Microsoft.Extensions.AI;
+
+public class IsolatedContextAgent
+{
+    private readonly IChatClient _client;
+    private readonly List<ChatMessage> _planningContext = new();
+    private readonly Queue<ExecutionRecord> _executionContext = new();
+    private readonly List<MemoryItem> _memoryStore = new();
+    private const int MaxExecutionHistory = 10;
+
+    public IsolatedContextAgent(IChatClient client)
+    {
+        _client = client;
+    }
+
+    public async Task<List<string>> PlanAsync(string task)
+    {
+        // Planning uses isolated context - no tools
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, """
+                You are a planning agent. Break down tasks
+                into clear, executable steps. Do not execute.
+
+                Output format:
+                STEP 1: [action]
+                STEP 2: [action]
+                """)
+        };
+        messages.AddRange(_planningContext);
+        messages.Add(new(ChatRole.User, task));
+
+        var response = await _client.GetResponseAsync(
+            messages,
+            new ChatOptions { Tools = [] }  // No tools for planning
+        );
+
+        // Update planning context
+        _planningContext.Add(new(ChatRole.User, task));
+        _planningContext.Add(new(ChatRole.Assistant, response.Text));
+
+        return ParseSteps(response.Text);
+    }
+
+    public async Task<ExecutionResult> ExecuteAsync(
+        string step,
+        IList<AITool> tools)
+    {
+        // Retrieve relevant memory
+        var relevantMemory = SearchMemory(step);
+
+        var messages = new List<ChatMessage>
+        {
+            new(ChatRole.System, $"""
+                Execute this step precisely.
+
+                Relevant context from memory:
+                {relevantMemory}
+
+                Complete the step and report results.
+                """),
+            new(ChatRole.User, $"Execute: {step}")
+        };
+
+        var response = await _client.GetResponseAsync(
+            messages,
+            new ChatOptions { Tools = tools }
+        );
+
+        // Update bounded execution context
+        _executionContext.Enqueue(new(step, response.Text));
+        while (_executionContext.Count > MaxExecutionHistory)
+            _executionContext.Dequeue();
+
+        // Extract and store facts
+        await ExtractAndStoreFactsAsync(response.Text);
+
+        return new ExecutionResult(response.Text, response.ToolCalls);
+    }
+
+    private string SearchMemory(string query, int topK = 3)
+    {
+        var queryWords = query.ToLower().Split(' ').ToHashSet();
+
+        var relevant = _memoryStore
+            .Select(m => (Item: m,
+                Score: m.Content.ToLower().Split(' ')
+                    .Count(w => queryWords.Contains(w))))
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .Take(topK)
+            .Select(x => $"- {x.Item.Content}");
+
+        return string.Join("\\n", relevant) ?? "No relevant memory.";
+    }
+
+    private async Task ExtractAndStoreFactsAsync(string content)
+    {
+        var response = await _client.GetResponseAsync($"""
+            Extract 1-3 key facts to remember:
+            {content}
+            """);
+
+        foreach (var fact in response.Text.Split('\\n'))
+        {
+            if (!string.IsNullOrWhiteSpace(fact))
+                _memoryStore.Add(new(fact.Trim(), "execution"));
+        }
+    }
+
+    private static List<string> ParseSteps(string plan)
+    {
+        return plan.Split('\\n')
+            .Where(l => l.TrimStart().StartsWith("STEP"))
+            .Select(l => l.Split(':', 2).LastOrDefault()?.Trim() ?? "")
+            .Where(s => !string.IsNullOrEmpty(s))
+            .ToList();
+    }
+}
+
+public record ExecutionRecord(string Step, string Result);
+public record MemoryItem(string Content, string Source);
+public record ExecutionResult(string Content, IList<AIToolCall>? ToolCalls);`,
+  },
+];
+---
+
+<BaseLayout
+  title="Context Engineering"
+  description="Master the discipline of optimizing what goes into the context window for AI agents"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/agent-patterns/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Context Engineering
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        The discipline of optimizing what goes into the context window. Context engineering is replacing "prompt engineering" as the key skill for agent developers.
+      </p>
+    </header>
+
+    <!-- Concept Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Why Context Engineering Matters
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        As context windows grow larger (128K, 200K, even 1M tokens), the challenge shifts from "fitting everything in" to "including the right things." Poor context management leads to:
+      </p>
+      <ul class="list-disc list-inside text-slate-600 dark:text-slate-300 space-y-2 mb-6">
+        <li><strong>Performance degradation</strong> — models attend poorly to irrelevant content</li>
+        <li><strong>Higher costs</strong> — more tokens processed per request</li>
+        <li><strong>Slower responses</strong> — latency scales with context size</li>
+        <li><strong>Confused reasoning</strong> — conflicting or outdated information</li>
+      </ul>
+
+      <Callout type="info" title="The New Paradigm">
+        Context engineering treats the context window as a <em>resource to be managed</em>, not a bucket to fill. The goal is maximum signal with minimum noise.
+      </Callout>
+    </section>
+
+    <!-- The Four Strategies -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Four Strategies
+      </h2>
+
+      <Diagram title="Context Engineering Strategies">
+{`┌─────────────────────────────────────────────────────────────┐
+│                    CONTEXT WINDOW                           │
+│                                                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│  │  WRITE   │  │  SELECT  │  │ COMPRESS │  │  ISOLATE │   │
+│  │          │  │          │  │          │  │          │   │
+│  │Scratchpad│  │ Retrieve │  │Summarize │  │ Separate │   │
+│  │  Working │  │ relevant │  │Dedupe    │  │ concerns │   │
+│  │  memory  │  │   only   │  │  Prune   │  │into parts│   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+│       │              │             │             │         │
+│       ▼              ▼             ▼             ▼         │
+│  Add useful    Filter out    Reduce size    Multiple      │
+│  intermediate  irrelevant    of existing    focused       │
+│  state         content       content        contexts      │
+└─────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Table caption="Overview of the four context engineering strategies">
+        <thead>
+          <tr>
+            <th>Strategy</th>
+            <th>Purpose</th>
+            <th>When to Use</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Write</strong></td>
+            <td>Add scratchpads and working memory to context</td>
+            <td>Multi-step reasoning, accumulating findings</td>
+          </tr>
+          <tr>
+            <td><strong>Select</strong></td>
+            <td>Retrieve only relevant information</td>
+            <td>Large knowledge bases, RAG scenarios</td>
+          </tr>
+          <tr>
+            <td><strong>Compress</strong></td>
+            <td>Summarize, deduplicate, prune content</td>
+            <td>Long conversations, large tool outputs</td>
+          </tr>
+          <tr>
+            <td><strong>Isolate</strong></td>
+            <td>Separate concerns into different contexts</td>
+            <td>Complex workflows, planning vs execution</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Write Strategy -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Strategy 1: Write
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Write strategy adds working memory to the context — scratchpads, intermediate results, and accumulated knowledge that helps the agent maintain coherence across steps.
+      </p>
+
+      <Diagram title="Write Strategy: Scratchpad Pattern">
+{`Step 1                    Step 2                    Step 3
+   │                         │                         │
+   ▼                         ▼                         ▼
+┌──────────┐            ┌──────────┐            ┌──────────┐
+│  Agent   │            │  Agent   │            │  Agent   │
+│  thinks  │            │  thinks  │            │  thinks  │
+└────┬─────┘            └────┬─────┘            └────┬─────┘
+     │                       │                       │
+     ▼                       ▼                       ▼
+┌──────────────────────────────────────────────────────────┐
+│                      SCRATCHPAD                          │
+│                                                          │
+│  - User wants to analyze Q4 sales data                   │
+│  - Found 3 relevant CSV files in /data/sales/           │
+│  - Total records: 45,000 across all files               │
+│  - Key finding: Revenue up 23% YoY                      │
+│  - Pending: Generate visualization                       │
+└──────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <CodeBlock tabs={writeStrategyExample} title="Implementing the Write Strategy" />
+
+      <Callout type="tip" title="Best Practice">
+        Keep scratchpads concise. Use the LLM to extract key facts rather than appending raw outputs. A good scratchpad should read like bullet points, not transcripts.
+      </Callout>
+    </section>
+
+    <!-- Select Strategy -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Strategy 2: Select
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Select strategy retrieves only the most relevant information for the current task. This is the foundation of RAG (Retrieval-Augmented Generation) but applies broadly to any context curation.
+      </p>
+
+      <Diagram title="Select Strategy: Multi-Factor Relevance">
+{`Query: "How do I handle API rate limits?"
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │        RELEVANCE SCORING          │
+    │                                   │
+    │  Semantic Similarity   × 0.6     │
+    │  (embedding distance)             │
+    │                                   │
+    │  Recency Score         × 0.2     │
+    │  (newer = more relevant)          │
+    │                                   │
+    │  Importance Score      × 0.2     │
+    │  (metadata-based)                 │
+    └───────────────────────────────────┘
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │         TOKEN BUDGET              │
+    │                                   │
+    │  Max: 4000 tokens                 │
+    │                                   │
+    │  ✓ rate-limiting.md (0.92) 800t  │
+    │  ✓ api-errors.md (0.84) 650t     │
+    │  ✓ retry-patterns.md (0.78) 720t │
+    │  ✗ auth-setup.md (0.45) ---      │
+    │                                   │
+    │  Total: 2170 tokens (under limit) │
+    └───────────────────────────────────┘`}
+      </Diagram>
+
+      <CodeBlock tabs={selectStrategyExample} title="Implementing the Select Strategy" />
+
+      <Callout type="warning" title="Pitfall: Over-Selection">
+        Don't retrieve too many documents. Research shows that adding marginally relevant content often hurts performance more than leaving it out. When in doubt, be selective.
+      </Callout>
+    </section>
+
+    <!-- Compress Strategy -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Strategy 3: Compress
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Compress strategy reduces the size of existing context through summarization, deduplication, and pruning. Essential for long-running conversations and agents that accumulate large tool outputs.
+      </p>
+
+      <Diagram title="Compress Strategy: Conversation Compression">
+{`BEFORE COMPRESSION (12,000 tokens)
+┌────────────────────────────────────────────┐
+│ Message 1: User asks about project setup   │
+│ Message 2: Agent explains 3 options        │
+│ Message 3: User chooses option B           │
+│ Message 4: Agent runs npm install          │
+│ Message 5: Tool output (3000 tokens!)      │
+│ Message 6: Agent summarizes result         │
+│ ...                                        │
+│ Message 20: Current question               │
+└────────────────────────────────────────────┘
+                    │
+                    │ Compress
+                    ▼
+AFTER COMPRESSION (3,500 tokens)
+┌────────────────────────────────────────────┐
+│ Summary: "User setting up project with     │
+│ option B. npm install completed with       │
+│ 847 packages. Currently working on..."     │
+│                                            │
+│ Message 18: [kept intact]                  │
+│ Message 19: [kept intact]                  │
+│ Message 20: Current question               │
+└────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <CodeBlock tabs={compressStrategyExample} title="Implementing the Compress Strategy" />
+
+      <Table caption="Compression techniques and their trade-offs">
+        <thead>
+          <tr>
+            <th>Technique</th>
+            <th>Token Reduction</th>
+            <th>Information Loss</th>
+            <th>Best For</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Summarization</strong></td>
+            <td>70-90%</td>
+            <td>Medium</td>
+            <td>Older conversation history</td>
+          </tr>
+          <tr>
+            <td><strong>Truncation</strong></td>
+            <td>Variable</td>
+            <td>High (for cut content)</td>
+            <td>Tool outputs with known structure</td>
+          </tr>
+          <tr>
+            <td><strong>Deduplication</strong></td>
+            <td>10-30%</td>
+            <td>None</td>
+            <td>Repeated information across sources</td>
+          </tr>
+          <tr>
+            <td><strong>Selective retention</strong></td>
+            <td>50-80%</td>
+            <td>Low (if done well)</td>
+            <td>Mixed-importance content</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Isolate Strategy -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Strategy 4: Isolate
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The Isolate strategy separates different concerns into distinct contexts. Instead of one massive context, use multiple focused contexts for different stages or aspects of the task.
+      </p>
+
+      <Diagram title="Isolate Strategy: Separated Contexts">
+{`┌─────────────────────────────────────────────────────────────┐
+│                      PLANNING CONTEXT                       │
+│                                                             │
+│  System: "You are a planning agent. Break down tasks..."    │
+│  History: Previous plans and their outcomes                 │
+│  Tools: NONE (planning only)                                │
+│                                                             │
+│  Output: Step-by-step plan                                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Plan steps
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     EXECUTION CONTEXT                       │
+│                                                             │
+│  System: "Execute this step precisely..."                   │
+│  History: Recent execution results only (bounded)           │
+│  Memory: Relevant facts retrieved on-demand                 │
+│  Tools: All available tools                                 │
+│                                                             │
+│  Output: Step results, extracted facts                      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ Facts
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      MEMORY CONTEXT                         │
+│                                                             │
+│  Long-term storage of extracted facts                       │
+│  Searchable by relevance to current step                    │
+│  Persists across conversation sessions                      │
+└─────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <CodeBlock tabs={isolateStrategyExample} title="Implementing the Isolate Strategy" />
+
+      <Callout type="info" title="When to Isolate">
+        Use context isolation when: (1) different phases need different tools, (2) you want to limit cross-contamination between concerns, (3) you need bounded memory for specific operations, or (4) planning and execution benefit from different prompts.
+      </Callout>
+    </section>
+
+    <!-- Combining Strategies -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Combining Strategies
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        In practice, effective agents combine multiple strategies. Here's a typical pattern:
+      </p>
+
+      <Diagram title="Combined Context Engineering Pipeline">
+{`User Query
+     │
+     ▼
+┌─────────────────┐
+│    SELECT       │ ◄── Retrieve relevant docs/memory
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│   COMPRESS      │ ◄── Summarize if over budget
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│    ISOLATE      │ ◄── Route to appropriate context
+└────────┬────────┘     (planning vs execution)
+         │
+         ▼
+┌─────────────────┐
+│     WRITE       │ ◄── Update scratchpad with findings
+└────────┬────────┘
+         │
+         ▼
+    Next iteration`}
+      </Diagram>
+
+      <Table caption="Strategy combinations for common scenarios">
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Primary Strategy</th>
+            <th>Supporting Strategies</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>RAG chatbot</strong></td>
+            <td>Select</td>
+            <td>Compress (for long docs)</td>
+          </tr>
+          <tr>
+            <td><strong>Coding agent</strong></td>
+            <td>Write + Isolate</td>
+            <td>Select (for relevant files)</td>
+          </tr>
+          <tr>
+            <td><strong>Research assistant</strong></td>
+            <td>Select + Write</td>
+            <td>Compress (for sources)</td>
+          </tr>
+          <tr>
+            <td><strong>Multi-step workflow</strong></td>
+            <td>Isolate</td>
+            <td>Write (scratchpad), Compress (history)</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Evaluation -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Evaluation Approach
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Measuring context engineering effectiveness requires tracking both efficiency and quality metrics:
+      </p>
+
+      <Table caption="Key metrics for context engineering evaluation">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What it Measures</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Token efficiency</strong></td>
+            <td>Useful tokens / total tokens</td>
+            <td>Higher is better (aim for &gt;70%)</td>
+          </tr>
+          <tr>
+            <td><strong>Retrieval precision</strong></td>
+            <td>Relevant items retrieved / total retrieved</td>
+            <td>&gt;80% for Select strategy</td>
+          </tr>
+          <tr>
+            <td><strong>Compression fidelity</strong></td>
+            <td>Key facts retained after compression</td>
+            <td>&gt;95% for critical facts</td>
+          </tr>
+          <tr>
+            <td><strong>Task success rate</strong></td>
+            <td>Tasks completed correctly</td>
+            <td>Compare before/after optimization</td>
+          </tr>
+          <tr>
+            <td><strong>Cost per task</strong></td>
+            <td>Total tokens × price per token</td>
+            <td>Track reduction over baseline</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-2">
+          A/B Testing Approach
+        </h3>
+        <p class="text-slate-600 dark:text-slate-300 text-sm">
+          Run the same tasks with different context strategies and compare: (1) task completion rate, (2) response quality (LLM-as-judge), (3) average tokens per task, (4) latency. The best strategy maximizes quality while minimizing tokens.
+        </p>
+      </div>
+    </section>
+
+    <!-- Common Pitfalls -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Common Pitfalls
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="danger" title="Aggressive Compression">
+          Over-compressing can lose critical details. Always preserve: user's original intent, key constraints, and recent decisions. Test compression with fact-recall questions.
+        </Callout>
+
+        <Callout type="danger" title="Retrieval Without Reranking">
+          Raw embedding similarity often includes false positives. Always rerank retrieved content by relevance, or use a cross-encoder for better precision.
+        </Callout>
+
+        <Callout type="warning" title="Ignoring Context Position">
+          Models attend differently to content based on position (see "lost in the middle" research). Place the most important content at the beginning or end of context.
+        </Callout>
+
+        <Callout type="warning" title="Static Strategies">
+          Context needs change throughout a task. Adapt your strategy dynamically — heavy retrieval early, more compression later as context accumulates.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Next Steps -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/agent-patterns/topics/context-bloat/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Bloat & Context Rot</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Understanding performance degradation in large contexts
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/prompt-caching/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Prompt Caching / KV Cache</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Optimize cost and latency with intelligent caching
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Long-term memory extends beyond the context window
+          </p>
+        </a>
+        <a
+          href="/agent-patterns/topics/react-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">ReAct Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Reasoning loops that benefit from context engineering
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
