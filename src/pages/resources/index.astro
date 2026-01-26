@@ -1,6 +1,5 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
-import Callout from '../../components/Callout.astro';
 
 // Research papers organized by topic
 const papers = {
@@ -329,37 +328,32 @@ const tools = {
 ---
 
 <BaseLayout title="Resources">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
     <div class="mb-12">
-      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+      <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
         Resources
       </h1>
-      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
-        Curated research papers, frameworks, and tools for understanding and building AI agents. Updated regularly with the latest developments.
+      <p class="text-slate-600 dark:text-slate-400 max-w-2xl">
+        Curated research papers, frameworks, and tools for understanding and building AI agents.
       </p>
     </div>
 
     <!-- Quick Navigation -->
-    <nav class="mb-12 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
-      <div class="flex flex-wrap gap-4 text-sm">
-        <a href="#papers" class="text-primary-600 dark:text-primary-400 hover:underline">Research Papers</a>
-        <span class="text-slate-300 dark:text-slate-600">|</span>
-        <a href="#frameworks" class="text-primary-600 dark:text-primary-400 hover:underline">Frameworks</a>
-        <span class="text-slate-300 dark:text-slate-600">|</span>
-        <a href="#tools" class="text-primary-600 dark:text-primary-400 hover:underline">Tools</a>
-      </div>
+    <nav class="mb-12 flex flex-wrap gap-6 text-sm">
+      <a href="#papers" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Papers</a>
+      <a href="#frameworks" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Frameworks</a>
+      <a href="#tools" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Tools</a>
     </nav>
 
     <!-- Research Papers Section -->
     <section id="papers" class="mb-16">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-8">
+      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
         Research Papers
       </h2>
 
       <!-- Foundational Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Foundational
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -389,8 +383,7 @@ const tools = {
 
       <!-- Memory Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Memory & Learning
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -420,8 +413,7 @@ const tools = {
 
       <!-- Multi-Agent Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Multi-Agent Systems
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -451,8 +443,7 @@ const tools = {
 
       <!-- RAG Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           RAG & Retrieval
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -482,8 +473,7 @@ const tools = {
 
       <!-- Benchmarks Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Benchmarks & Evaluation
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -513,8 +503,7 @@ const tools = {
 
       <!-- Safety Papers -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Safety & Alignment
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -545,14 +534,13 @@ const tools = {
 
     <!-- Frameworks Section -->
     <section id="frameworks" class="mb-16">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-8">
+      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
         Frameworks & Libraries
       </h2>
 
       <!-- Orchestration -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Agent Orchestration
         </h3>
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -580,8 +568,7 @@ const tools = {
 
       <!-- Tooling -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           LLM Tooling
         </h3>
         <div class="grid gap-4 md:grid-cols-3">
@@ -609,8 +596,7 @@ const tools = {
 
       <!-- Evaluation -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Evaluation & Testing
         </h3>
         <div class="grid gap-4 md:grid-cols-3">
@@ -638,8 +624,7 @@ const tools = {
 
       <!-- Protocols -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Protocols & Standards
         </h3>
         <div class="grid gap-4 md:grid-cols-2">
@@ -668,14 +653,13 @@ const tools = {
 
     <!-- Tools Section -->
     <section id="tools" class="mb-16">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-8">
+      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
         Tools & Products
       </h2>
 
       <!-- Development Tools -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           AI-Assisted Development
         </h3>
         <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -702,8 +686,7 @@ const tools = {
 
       <!-- Automation Tools -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Autonomous Agents
         </h3>
         <div class="grid gap-4 md:grid-cols-3">
@@ -730,8 +713,7 @@ const tools = {
 
       <!-- Observability Tools -->
       <div class="mb-10">
-        <h3 class="text-xl font-semibold text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-cyan-500"></span>
+        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
           Observability & Debugging
         </h3>
         <div class="grid gap-4 md:grid-cols-3">
@@ -758,32 +740,16 @@ const tools = {
     </section>
 
     <!-- Related Topics -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Related Topics
+    <section class="pt-8 border-t border-slate-200 dark:border-slate-800">
+      <h2 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
+        Related
       </h2>
-      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <a href="/agent-patterns/topics/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">All Topics</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Browse all agent patterns</p>
-        </a>
-        <a href="/agent-patterns/benchmarks/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Benchmarks</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Agent evaluation benchmarks</p>
-        </a>
-        <a href="/agent-patterns/topics/evaluation/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Evaluation</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Metrics and evaluation methods</p>
-        </a>
-        <a href="/agent-patterns/topics/safety/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Safety</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Guardrails and safety patterns</p>
-        </a>
+      <div class="flex flex-wrap gap-4">
+        <a href="/agent-patterns/topics/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Topics</a>
+        <a href="/agent-patterns/benchmarks/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Benchmarks</a>
+        <a href="/agent-patterns/topics/evaluation/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Evaluation</a>
+        <a href="/agent-patterns/topics/safety/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Safety</a>
       </div>
     </section>
-
-    <Callout type="tip" title="Keep Learning">
-      This is a rapidly evolving field. Follow arXiv, Twitter/X, and major AI labs for the latest research. Key accounts: @AnthropicAI, @OpenAI, @GoogleDeepMind, @langaborisov, @llama_index.
-    </Callout>
   </div>
 </BaseLayout>

@@ -1403,7 +1403,7 @@ is recalled with 20-40% lower accuracy than at the edges.`}
                     ▼
 Time T1: Partially stale
 ┌────────────────────────────────────────┐
-│ "Stock price is $150" ⚠️ (now $175)   │
+│ "Stock price is $150" [!] (now $175)   │
 │ "User prefers dark mode" (still true)  │
 │ "API endpoint is /v2/data" (still true)│
 └────────────────────────────────────────┘
@@ -1412,7 +1412,7 @@ Time T1: Partially stale
                     ▼
 Time T2: Contradictions emerge
 ┌────────────────────────────────────────┐
-│ "Stock price is $150" ❌ (outdated)    │
+│ "Stock price is $150" [x] (outdated)   │
 │ "Stock price is $175" (newer message)  │
 │ "User prefers dark mode" (still true)  │
 │ "API endpoint is /v3/data" (updated)   │
@@ -1473,7 +1473,7 @@ Context Size: 4K → 8K → 16K → 32K → 64K → 128K
                     │   (paragraphs,    │
                     │    documents)     │
                     │                   │
-              →     │   🔑 NEEDLE       │  ← Insert at position
+              →     │   [NEEDLE]        │  ← Insert at position
                     │   "Code: XYZ-123" │
                     │                   │
                     │   More filler...  │
