@@ -81,43 +81,34 @@ def execute_with_tools(user_message: str) -> str:
   },
   {
     language: 'csharp',
-    label: 'C# (Semantic Kernel)',
-    code: `using Microsoft.SemanticKernel;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using System.ComponentModel;
+using Azure.AI.OpenAI;
+using Azure.Identity;
 
-// Define tool as a Kernel Function
-public class WeatherPlugin
+// Define tool as a function with descriptions
+[Description("Get current weather for a location")]
+static string GetWeather(
+    [Description("City name")] string location,
+    [Description("Temperature unit")] string unit = "celsius")
 {
-    [KernelFunction, Description("Get current weather for a location")]
-    public string GetWeather(
-        [Description("City name")] string location,
-        [Description("Temperature unit")] string unit = "celsius")
-    {
-        return weatherService.GetCurrent(location, unit);
-    }
+    return weatherService.GetCurrent(location, unit);
 }
 
-// Create kernel with plugins
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion(
-    deploymentName: "gpt-4",
-    endpoint: endpoint,
-    apiKey: apiKey);
-builder.Plugins.AddFromType<WeatherPlugin>();
+// Create agent with tools
+AIAgent agent = new AzureOpenAIClient(
+    new Uri("https://your-resource.openai.azure.com"),
+    new AzureCliCredential())
+    .GetChatClient("gpt-4o")
+    .AsAIAgent(
+        instructions: "You are a helpful weather assistant",
+        tools: [AIFunctionFactory.Create(GetWeather)]
+    );
 
-var kernel = builder.Build();
-
-// Enable automatic function calling
-var settings = new OpenAIPromptExecutionSettings
-{
-    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-};
-
-// Execute with automatic tool invocation
-var result = await kernel.InvokePromptAsync(
-    "What's the weather in Tokyo?",
-    new KernelArguments(settings)
-);
+// Run the agent - it automatically calls tools as needed
+var result = await agent.RunAsync("What's the weather in Tokyo?");
 
 Console.WriteLine(result);`,
   },
@@ -204,41 +195,39 @@ async def agent_with_parallel_tools(query: str) -> str:
   },
   {
     language: 'csharp',
-    label: 'C# (Semantic Kernel)',
-    code: `using Microsoft.SemanticKernel;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using System.ComponentModel;
 
-// Define plugins with multiple functions
-public class ToolsPlugin
-{
-    [KernelFunction, Description("Get weather for a location")]
-    public async Task<string> GetWeather(string location)
-        => await weatherService.GetAsync(location);
+// Define multiple tools as functions
+[Description("Get weather for a location")]
+static async Task<string> GetWeather(string location)
+    => await weatherService.GetAsync(location);
 
-    [KernelFunction, Description("Search the web")]
-    public async Task<string> SearchWeb(string query)
-        => await searchService.SearchAsync(query);
+[Description("Search the web")]
+static async Task<string> SearchWeb(string query)
+    => await searchService.SearchAsync(query);
 
-    [KernelFunction, Description("Get stock price")]
-    public async Task<string> GetStockPrice(string symbol)
-        => await stockService.GetPriceAsync(symbol);
-}
+[Description("Get stock price")]
+static async Task<string> GetStockPrice(string symbol)
+    => await stockService.GetPriceAsync(symbol);
 
-// Create kernel
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
-builder.Plugins.AddFromType<ToolsPlugin>();
-var kernel = builder.Build();
+// Create agent with multiple tools
+AIAgent agent = new AzureOpenAIClient(endpoint, credentials)
+    .GetChatClient("gpt-4o")
+    .AsAIAgent(
+        instructions: "You are a helpful assistant",
+        tools: [
+            AIFunctionFactory.Create(GetWeather),
+            AIFunctionFactory.Create(SearchWeb),
+            AIFunctionFactory.Create(GetStockPrice)
+        ]
+    );
 
-// Auto function calling handles parallel execution
-var settings = new OpenAIPromptExecutionSettings
-{
-    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-};
-
-// Kernel executes multiple tool calls concurrently
-var result = await kernel.InvokePromptAsync(
-    "What's the weather in NYC and Tokyo, and Apple's stock price?",
-    new KernelArguments(settings)
+// Agent automatically handles parallel tool execution
+var result = await agent.RunAsync(
+    "What's the weather in NYC and Tokyo, and Apple's stock price?"
 );`,
   },
 ];
@@ -334,59 +323,51 @@ result = agent.invoke({"messages": [("user", query)]})`,
   },
   {
     language: 'csharp',
-    label: 'C# (Semantic Kernel)',
-    code: `using Microsoft.SemanticKernel;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using System.ComponentModel;
 using Polly;
 
-public class ResilientPlugin
+// Create retry policy
+var retryPolicy = Policy
+    .Handle<HttpRequestException>()
+    .Or<TimeoutException>()
+    .WaitAndRetryAsync(
+        3,
+        attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
+        onRetry: (ex, time, attempt, ctx) =>
+            Console.WriteLine($"Retry {attempt}: {ex.Message}")
+    );
+
+// Define tool with built-in error handling
+[Description("Search with automatic retry")]
+async Task<string> SearchWithRetry(string query)
 {
-    private readonly IAsyncPolicy _retryPolicy;
-
-    public ResilientPlugin()
+    try
     {
-        _retryPolicy = Policy
-            .Handle<HttpRequestException>()
-            .Or<TimeoutException>()
-            .WaitAndRetryAsync(
-                3,
-                attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
-                onRetry: (ex, time, attempt, ctx) =>
-                    Console.WriteLine($"Retry {attempt}: {ex.Message}")
-            );
+        return await retryPolicy.ExecuteAsync(async () =>
+        {
+            return await searchService.SearchAsync(query);
+        });
     }
-
-    [KernelFunction, Description("Search with automatic retry")]
-    public async Task<string> SearchWithRetry(string query)
+    catch (Exception ex)
     {
-        try
-        {
-            return await _retryPolicy.ExecuteAsync(async () =>
-            {
-                return await searchService.SearchAsync(query);
-            });
-        }
-        catch (Exception ex)
-        {
-            // Return error info so agent can adapt
-            return $"Error: {ex.Message}. Try a different approach.";
-        }
+        // Return error info so agent can adapt
+        return $"Error: {ex.Message}. Try a different approach.";
     }
 }
 
-// Kernel with retry-enabled plugins
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
-builder.Plugins.AddFromObject(new ResilientPlugin());
-var kernel = builder.Build();
+// Create agent with resilient tools
+AIAgent agent = new AzureOpenAIClient(endpoint, credentials)
+    .GetChatClient("gpt-4o")
+    .AsAIAgent(
+        instructions: "You are a helpful assistant",
+        tools: [AIFunctionFactory.Create(SearchWithRetry)]
+    );
 
-// Configure execution settings with retries
-var settings = new OpenAIPromptExecutionSettings
-{
-    FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-};
-
-// Kernel handles tool errors gracefully
-var result = await kernel.InvokePromptAsync(prompt, new(settings));`,
+// Agent receives error messages and can adapt its approach
+var result = await agent.RunAsync(prompt);`,
   },
 ];
 ---

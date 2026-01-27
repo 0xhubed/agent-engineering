@@ -129,20 +129,25 @@ class AgentMemorySystem:
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.SemanticKernel.Memory;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
+using Azure.AI.OpenAI;
 
 public class AgentMemorySystem
 {
     private readonly List<ChatMessage> _workingMemory = new();
-    private readonly List<Memory> _shortTermMemory = new();
-    private readonly ISemanticTextMemory _longTermMemory;
-    private readonly string _collectionName;
+    private readonly List<MemoryRecord> _shortTermMemory = new();
+    private readonly IVectorStore _vectorStore;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
+    private readonly string _collectionName = "agent_memories";
 
-    public AgentMemorySystem(ISemanticTextMemory memory)
+    public AgentMemorySystem(
+        IVectorStore vectorStore,
+        IEmbeddingGenerator<string, Embedding<float>> embedder)
     {
-        _longTermMemory = memory;
-        _collectionName = "agent_memories";
+        _vectorStore = vectorStore;
+        _embedder = embedder;
     }
 
     // Working Memory: Current conversation
@@ -159,7 +164,7 @@ public class AgentMemorySystem
     // Short-term: Current session only
     public void StoreShortTerm(string content, Dictionary<string, string>? metadata = null)
     {
-        _shortTermMemory.Add(new Memory
+        _shortTermMemory.Add(new MemoryRecord
         {
             Content = content,
             Type = MemoryType.ShortTerm,
@@ -168,62 +173,49 @@ public class AgentMemorySystem
         });
     }
 
-    // Long-term: Persistent across sessions
-    public async Task StoreLongTermAsync(
-        string content,
-        string? id = null,
-        Dictionary<string, string>? metadata = null)
+    // Long-term: Persistent with vector search
+    public async Task StoreLongTermAsync(string content, string? id = null)
     {
         var memoryId = id ?? $"mem_{DateTime.UtcNow.Ticks}";
+        var embedding = await _embedder.GenerateEmbeddingAsync(content);
 
-        await _longTermMemory.SaveInformationAsync(
-            _collectionName,
-            content,
-            memoryId,
-            additionalMetadata: metadata?.ToString()
-        );
+        var collection = _vectorStore.GetCollection<string, MemoryRecord>(_collectionName);
+        await collection.UpsertAsync(new MemoryRecord
+        {
+            Id = memoryId,
+            Content = content,
+            Embedding = embedding.Vector,
+            Timestamp = DateTime.UtcNow
+        });
     }
 
-    // Recall relevant memories
-    public async Task<List<string>> RecallAsync(
-        string query,
-        int limit = 5)
+    // Recall relevant memories using vector similarity
+    public async Task<List<string>> RecallAsync(string query, int limit = 5)
     {
         var results = new List<string>();
+        var queryEmbedding = await _embedder.GenerateEmbeddingAsync(query);
 
-        // Search long-term memory
-        await foreach (var memory in _longTermMemory.SearchAsync(
-            _collectionName,
-            query,
-            limit: limit))
+        var collection = _vectorStore.GetCollection<string, MemoryRecord>(_collectionName);
+        var searchResults = await collection.VectorizedSearchAsync(
+            queryEmbedding.Vector,
+            new VectorSearchOptions { Top = limit }
+        );
+
+        await foreach (var result in searchResults.Results)
         {
-            results.Add(memory.Metadata.Text);
+            results.Add(result.Record.Content);
         }
 
-        // Search short-term memory
-        foreach (var mem in _shortTermMemory
+        // Include relevant short-term memories
+        results.AddRange(_shortTermMemory
             .Where(m => IsRelevant(query, m.Content))
-            .Take(limit))
-        {
-            results.Add(mem.Content);
-        }
+            .Select(m => m.Content)
+            .Take(limit));
 
         return results.Take(limit).ToList();
     }
 
-    private void CompressWorkingMemory()
-    {
-        var oldMessages = _workingMemory.Take(_workingMemory.Count - 10).ToList();
-        var recentMessages = _workingMemory.Skip(_workingMemory.Count - 10).ToList();
-
-        var summary = SummarizeMessages(oldMessages);
-        _workingMemory.Clear();
-        _workingMemory.Add(new ChatMessage(
-            ChatRole.System,
-            $"Previous context: {summary}"
-        ));
-        _workingMemory.AddRange(recentMessages);
-    }
+    private void CompressWorkingMemory() { /* ... */ }
 }`,
   },
 ];
@@ -341,8 +333,9 @@ agent = create_react_agent(
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using Microsoft.ML.Tokenizers;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using Microsoft.ML.Tokenizers;
 
 public class ConversationSummarizer
 {
@@ -356,7 +349,7 @@ public class ConversationSummarizer
     {
         _client = client;
         _threshold = threshold;
-        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4");
+        _tokenizer = TiktokenTokenizer.CreateForModel("gpt-4o");
     }
 
     public int CountTokens(IEnumerable<ChatMessage> messages)
@@ -568,10 +561,15 @@ class EpisodicMemory:
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `public class EpisodicMemory
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using Microsoft.Extensions.VectorData;
+using System.Text.Json;
+
+public class EpisodicMemory
 {
-    private readonly ISemanticTextMemory _memory;
+    private readonly IVectorStore _vectorStore;
+    private readonly IEmbeddingGenerator<string, Embedding<float>> _embedder;
     private const string CollectionName = "episodes";
 
     public record Episode(
@@ -593,9 +591,12 @@ class EpisodicMemory:
         string? Error = null
     );
 
-    public EpisodicMemory(ISemanticTextMemory memory)
+    public EpisodicMemory(
+        IVectorStore vectorStore,
+        IEmbeddingGenerator<string, Embedding<float>> embedder)
     {
-        _memory = memory;
+        _vectorStore = vectorStore;
+        _embedder = embedder;
     }
 
     public async Task<string> RecordEpisodeAsync(
@@ -604,26 +605,21 @@ class EpisodicMemory:
         Outcome outcome)
     {
         var episodeId = $"ep_{DateTime.UtcNow.Ticks}";
-
-        // Searchable content
         var searchContent = $"{task}\\n{outcome.Result}";
+        var embedding = await _embedder.GenerateEmbeddingAsync(searchContent);
 
-        // Full episode as metadata
-        var metadata = JsonSerializer.Serialize(new
+        var collection = _vectorStore.GetCollection<string, EpisodeRecord>(CollectionName);
+        await collection.UpsertAsync(new EpisodeRecord
         {
+            Id = episodeId,
+            Content = searchContent,
+            Embedding = embedding.Vector,
             Task = task,
-            Trajectory = trajectory,
-            Outcome = outcome,
+            TrajectoryJson = JsonSerializer.Serialize(trajectory),
+            OutcomeJson = JsonSerializer.Serialize(outcome),
             Success = outcome.Success,
             Timestamp = DateTime.UtcNow
         });
-
-        await _memory.SaveInformationAsync(
-            CollectionName,
-            searchContent,
-            episodeId,
-            additionalMetadata: metadata
-        );
 
         return episodeId;
     }
@@ -634,30 +630,28 @@ class EpisodicMemory:
         bool successOnly = false)
     {
         var episodes = new List<Episode>();
+        var queryEmbedding = await _embedder.GenerateEmbeddingAsync(currentTask);
 
-        await foreach (var memory in _memory.SearchAsync(
-            CollectionName,
-            currentTask,
-            limit: k * 2))
+        var collection = _vectorStore.GetCollection<string, EpisodeRecord>(CollectionName);
+        var results = await collection.VectorizedSearchAsync(
+            queryEmbedding.Vector,
+            new VectorSearchOptions { Top = k * 2 }
+        );
+
+        await foreach (var result in results.Results)
         {
-            var data = JsonSerializer.Deserialize<EpisodeData>(
-                memory.Metadata.AdditionalMetadata ?? "{}");
-
-            if (successOnly && !data.Success)
-                continue;
+            if (successOnly && !result.Record.Success) continue;
 
             episodes.Add(new Episode(
-                data.Task,
-                data.Trajectory,
-                data.Outcome,
-                data.Timestamp
+                result.Record.Task,
+                JsonSerializer.Deserialize<List<TrajectoryStep>>(result.Record.TrajectoryJson)!,
+                JsonSerializer.Deserialize<Outcome>(result.Record.OutcomeJson)!,
+                result.Record.Timestamp
             ));
 
-            if (episodes.Count >= k)
-                break;
+            if (episodes.Count >= k) break;
         }
 
-        // Sort by success, then recency
         return episodes
             .OrderByDescending(e => e.Outcome.Success)
             .ThenByDescending(e => e.Timestamp)
@@ -669,18 +663,14 @@ class EpisodicMemory:
         string currentTask,
         int nExamples = 2)
     {
-        var episodes = await RetrieveSimilarAsync(
-            currentTask,
-            k: nExamples,
-            successOnly: true);
+        var episodes = await RetrieveSimilarAsync(currentTask, nExamples, successOnly: true);
 
         var examples = episodes.Select(ep =>
         {
             var steps = string.Join("\\n",
                 ep.Trajectory.TakeLast(3).Select(s =>
                     $"Thought: {s.Thought}\\nAction: {s.Action}"));
-            return $"Task: {ep.Task}\\n{steps}\\n" +
-                   $"Result: {ep.Outcome.Result}";
+            return $"Task: {ep.Task}\\n{steps}\\nResult: {ep.Outcome.Result}";
         });
 
         return string.Join("\\n---\\n", examples);

@@ -261,60 +261,45 @@ print(result["output"])`,
   },
   {
     language: 'csharp',
-    label: 'C# (Semantic Kernel)',
-    code: `using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Planning;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using System.ComponentModel;
 
-public class ReActAgent
-{
-    private readonly Kernel _kernel;
+// Define tools
+[Description("Search the web for information")]
+static string Search(string query) => searchApi.Search(query);
 
-    public ReActAgent(Kernel kernel)
-    {
-        _kernel = kernel;
-    }
+[Description("Evaluate a mathematical expression")]
+static string Calculator(string expression) => Evaluate(expression);
 
-    public async Task<string> RunAsync(string task, int maxSteps = 10)
-    {
-        // Use Semantic Kernel's built-in planner for ReAct-style execution
-        var planner = new FunctionCallingStepwisePlanner(
-            new FunctionCallingStepwisePlannerOptions
-            {
-                MaxIterations = maxSteps,
-                // Get reasoning traces in the result
-                GetObservations = true
-            }
-        );
+[Description("Look up a definition or fact")]
+static string Lookup(string term) => knowledgeBase.Lookup(term);
 
-        var result = await planner.ExecuteAsync(_kernel, task);
+// Create ReAct-style agent with explicit reasoning prompt
+AIAgent agent = new AzureOpenAIClient(endpoint, credentials)
+    .GetChatClient("gpt-4o")
+    .AsAIAgent(
+        instructions: """
+            You are a ReAct agent. For each step:
+            1. THOUGHT: Reason about what to do next
+            2. ACTION: Use a tool if needed
+            3. OBSERVATION: Analyze the result
+            Repeat until you can answer the user's question.
+            """,
+        tools: [
+            AIFunctionFactory.Create(Search),
+            AIFunctionFactory.Create(Calculator),
+            AIFunctionFactory.Create(Lookup)
+        ]
+    );
 
-        // Access the reasoning trace
-        foreach (var step in result.ChatHistory)
-        {
-            Console.WriteLine($"Step: {step.Role}");
-            Console.WriteLine($"Content: {step.Content}");
-        }
-
-        return result.FinalAnswer;
-    }
-}
-
-// Setup kernel with plugins
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
-
-// Add tool plugins
-builder.Plugins.AddFromType<SearchPlugin>();
-builder.Plugins.AddFromType<CalculatorPlugin>();
-builder.Plugins.AddFromType<LookupPlugin>();
-
-var kernel = builder.Build();
-
-// Run ReAct agent
-var agent = new ReActAgent(kernel);
+// Run the agent - it follows ReAct pattern internally
 var answer = await agent.RunAsync(
     "What's the population of Tokyo multiplied by 3?"
-);`,
+);
+
+Console.WriteLine(answer);`,
   },
 ];
 
@@ -399,52 +384,45 @@ async def modern_agent_stream(task: str):
   },
   {
     language: 'csharp',
-    label: 'C# (Semantic Kernel)',
-    code: `using Microsoft.SemanticKernel;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
+using System.ComponentModel;
 
-public class ModernReActAgent
-{
-    private readonly Kernel _kernel;
+// Define tools
+[Description("Search the web for information")]
+static string Search(string query) => searchApi.Search(query);
 
-    public ModernReActAgent(Kernel kernel)
-    {
-        _kernel = kernel;
-    }
+[Description("Evaluate a mathematical expression")]
+static string Calculator(string expression) => Evaluate(expression);
 
-    public async Task<string> RunAsync(string task)
-    {
-        // Semantic Kernel handles the ReAct loop internally
-        // with automatic function calling
-        var settings = new OpenAIPromptExecutionSettings
-        {
-            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-        };
+// Modern approach: Agent Framework handles ReAct loop internally
+// No explicit reasoning prompts needed - model reasons internally
+AIAgent agent = new AzureOpenAIClient(endpoint, credentials)
+    .GetChatClient("gpt-4o")
+    .AsAIAgent(
+        instructions: "You are a helpful assistant",
+        tools: [
+            AIFunctionFactory.Create(Search),
+            AIFunctionFactory.Create(Calculator)
+        ]
+    );
 
-        // The kernel automatically:
-        // 1. Sends the prompt to the model
-        // 2. Detects tool calls and executes them
-        // 3. Feeds results back to the model
-        // 4. Repeats until model gives final answer
-        var result = await _kernel.InvokePromptAsync(
-            task,
-            new KernelArguments(settings)
-        );
-
-        return result.ToString();
-    }
-}
-
-// Setup with plugins
-var builder = Kernel.CreateBuilder();
-builder.AddAzureOpenAIChatCompletion("gpt-4", endpoint, apiKey);
-builder.Plugins.AddFromType<SearchPlugin>();
-builder.Plugins.AddFromType<CalculatorPlugin>();
-var kernel = builder.Build();
-
-var agent = new ModernReActAgent(kernel);
+// The agent automatically:
+// 1. Sends the prompt to the model
+// 2. Detects tool calls and executes them
+// 3. Feeds results back to the model
+// 4. Repeats until model gives final answer
 var answer = await agent.RunAsync(
     "What's the population of Tokyo multiplied by 3?"
 );
+
+// For streaming with visible intermediate steps
+await foreach (var update in agent.RunStreamingAsync(
+    "What's the population of Tokyo multiplied by 3?"))
+{
+    Console.WriteLine(update);
+}
 
 // Key insight: Modern frameworks abstract the ReAct loop
 // The pattern is built into the infrastructure`,
