@@ -60,3 +60,23 @@ const example = [
 2. Create `src/pages/topics/[topic-slug]/index.astro`
 3. Import components: `BaseLayout`, `CodeBlock`, `Callout`, `Table`, `Diagram`
 4. Follow existing topic structure: header, sections with h2/h3, code examples, callouts
+
+## Automated News Updates
+
+A GitHub Actions workflow (`update-news.yml`) runs daily to fetch AI agent news:
+
+1. **Fetches RSS feeds** from LangChain, Anthropic, OpenAI, Google AI, Hugging Face
+2. **Filters with Claude** to select relevant agent engineering news
+3. **Updates `src/data/news.json`** with processed items
+4. **Auto-commits** changes, triggering site rebuild
+
+### Manual Trigger
+Run workflow manually from GitHub Actions tab or:
+```bash
+python scripts/update-news.py  # Requires ANTHROPIC_API_KEY env var
+```
+
+### Configuration
+- **Feeds**: Edit `FEEDS` list in `scripts/update-news.py`
+- **Schedule**: Edit cron in `.github/workflows/update-news.yml` (default: 8am UTC daily)
+- **Secret**: Requires `ANTHROPIC_API_KEY` in GitHub repository secrets

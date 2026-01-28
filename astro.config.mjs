@@ -4,8 +4,7 @@ import tailwind from '@astrojs/tailwind';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://your-username.github.io',
-  base: '/agent-engineering',
+  site: 'https://agent-engineering.vercel.app',
   integrations: [tailwind()],
   output: 'static',
   markdown: {

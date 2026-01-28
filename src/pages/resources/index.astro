@@ -1,6 +1,49 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
+// Type for news items
+interface NewsItem {
+  title: string;
+  url: string;
+  summary: string;
+  published: string | null;
+  source: string;
+  category: string;
+  tags?: string[];
+  processed_at?: string;
+}
+
+interface NewsData {
+  last_updated: string | null;
+  items: NewsItem[];
+}
+
+// Import news data (auto-updated daily by GitHub Actions)
+import newsDataRaw from '../../data/news.json';
+const newsData = newsDataRaw as NewsData;
+
+const news: NewsItem[] = newsData.items || [];
+const lastUpdated = newsData.last_updated
+  ? new Date(newsData.last_updated).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  : null;
+
+// Tag colors for news items
+const tagColors: Record<string, string> = {
+  frameworks: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
+  models: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
+  protocols: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  patterns: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
+  rag: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
+  evaluation: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  safety: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
+  tools: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
+  research: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
+};
+
 // Research papers organized by topic
 const papers = {
   foundational: [
@@ -364,10 +407,70 @@ const tools = {
 
     <!-- Quick Navigation -->
     <nav class="mb-12 flex flex-wrap gap-6 text-sm">
+      {news.length > 0 && (
+        <a href="#news" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">News</a>
+      )}
       <a href="#papers" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Papers</a>
       <a href="#frameworks" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Frameworks</a>
       <a href="#tools" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Tools</a>
     </nav>
+
+    <!-- News Section (Auto-updated daily) -->
+    {news.length > 0 && (
+      <section id="news" class="mb-16">
+        <div class="flex items-center justify-between mb-8">
+          <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">
+            Latest News
+          </h2>
+          {lastUpdated && (
+            <span class="text-sm text-slate-500 dark:text-slate-400">
+              Updated {lastUpdated}
+            </span>
+          )}
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {news.slice(0, 9).map((item) => (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
+            >
+              <div class="flex items-start justify-between gap-2 mb-2">
+                <h3 class="font-semibold text-slate-900 dark:text-white text-sm leading-tight">
+                  {item.title}
+                </h3>
+                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+              </div>
+              <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                {item.source}
+                {item.published && (
+                  <span>
+                    {' '}&middot;{' '}
+                    {new Date(item.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </p>
+              <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">
+                {item.summary}
+              </p>
+              {item.tags && (
+                <div class="flex flex-wrap gap-1">
+                  {item.tags.map((tag) => (
+                    <span class={`text-xs px-2 py-0.5 rounded-full ${tagColors[tag] || 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'}`}>
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
 
     <!-- Research Papers Section -->
     <section id="papers" class="mb-16">
@@ -769,10 +872,10 @@ const tools = {
         Related
       </h2>
       <div class="flex flex-wrap gap-4">
-        <a href="/agent-engineering/topics/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Topics</a>
-        <a href="/agent-engineering/benchmarks/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Benchmarks</a>
-        <a href="/agent-engineering/topics/evaluation/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Evaluation</a>
-        <a href="/agent-engineering/topics/safety/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Safety</a>
+        <a href="/topics/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Topics</a>
+        <a href="/benchmarks/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Benchmarks</a>
+        <a href="/topics/evaluation/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Evaluation</a>
+        <a href="/topics/safety/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Safety</a>
       </div>
     </section>
   </div>
