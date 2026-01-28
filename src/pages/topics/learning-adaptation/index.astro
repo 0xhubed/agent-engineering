@@ -401,10 +401,18 @@ function generateReflection(task, trajectory, outcome, errors):
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `from dataclasses import dataclass, field
-from typing import Optional
-from openai import OpenAI
+from typing import Callable
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel, Field
+
+class ReflectionOutput(BaseModel):
+    what_went_wrong: str = Field(description="What went wrong in this attempt")
+    why_it_failed: str = Field(description="Root cause of the failure")
+    improvements: list[str] = Field(description="Specific improvements for next attempt")
 
 @dataclass
 class Reflection:
@@ -420,8 +428,7 @@ class Reflection:
 class ReflexionAgent:
     """Agent that learns from self-reflection on failures."""
 
-    client: OpenAI = field(default_factory=OpenAI)
-    model: str = "gpt-4"
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
     short_term_memory: list[Reflection] = field(default_factory=list)
     long_term_memory: list[Reflection] = field(default_factory=list)
 
@@ -429,127 +436,84 @@ class ReflexionAgent:
         self,
         task: str,
         max_attempts: int = 3,
-        evaluator: callable = None
+        evaluator: Callable = None
     ) -> tuple[str, bool]:
         """Attempt to solve task with reflection on failures."""
-
-        self.short_term_memory = []  # Reset for new task
+        self.short_term_memory = []
 
         for attempt in range(max_attempts):
-            # Build prompt with reflections
             trajectory = self._generate_trajectory(task, attempt)
-
-            # Evaluate
             success, errors = evaluator(trajectory) if evaluator else (False, [])
 
             if success:
-                # Store successful reflection
-                reflection = self._generate_reflection(
-                    task, attempt, trajectory, "SUCCESS", []
-                )
+                reflection = self._generate_reflection(task, attempt, trajectory, "SUCCESS", [])
                 self.long_term_memory.append(reflection)
                 return trajectory, True
 
-            # Generate reflection on failure
-            reflection = self._generate_reflection(
-                task, attempt, trajectory, "FAILURE", errors
-            )
+            reflection = self._generate_reflection(task, attempt, trajectory, "FAILURE", errors)
             self.short_term_memory.append(reflection)
 
-        # Return best attempt
         return self._select_best_attempt(), False
 
     def _generate_trajectory(self, task: str, attempt: int) -> str:
-        """Generate a solution attempt."""
-        messages = [
-            {"role": "system", "content": self._build_system_prompt()},
-        ]
+        """Generate a solution attempt using LangChain."""
+        messages = [("system", self._build_system_prompt())]
 
-        # Add long-term reflections (learnings from past tasks)
         if self.long_term_memory:
             learnings = self._format_learnings(self.long_term_memory[-5:])
-            messages.append({
-                "role": "system",
-                "content": f"Learnings from past tasks:\\n{learnings}"
-            })
+            messages.append(("system", f"Learnings from past tasks:\\n{learnings}"))
 
-        # Add short-term reflections (previous attempts on this task)
         if self.short_term_memory:
             reflections = self._format_reflections(self.short_term_memory)
-            messages.append({
-                "role": "user",
-                "content": f"Previous attempts and reflections:\\n{reflections}"
-            })
+            messages.append(("user", f"Previous attempts and reflections:\\n{reflections}"))
 
-        messages.append({"role": "user", "content": f"Task: {task}"})
+        messages.append(("user", f"Task: {task}"))
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages
-        )
-        return response.choices[0].message.content
+        prompt = ChatPromptTemplate.from_messages(messages)
+        chain = prompt | self.llm
+        response = chain.invoke({})
+        return response.content
 
     def _generate_reflection(
-        self,
-        task: str,
-        attempt: int,
-        trajectory: str,
-        outcome: str,
-        errors: list[str]
+        self, task: str, attempt: int, trajectory: str, outcome: str, errors: list[str]
     ) -> Reflection:
-        """Generate structured reflection on attempt."""
-        prompt = f"""Analyze this attempt and generate a reflection.
+        """Generate structured reflection using LangChain JSON parser."""
+        parser = JsonOutputParser(pydantic_object=ReflectionOutput)
 
-Task: {task}
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "Analyze this attempt and generate a reflection."),
+            ("user", """Task: {task}
 
-Attempt #{attempt + 1}:
+Attempt #{attempt}:
 {trajectory}
 
 Outcome: {outcome}
-Errors: {', '.join(errors) if errors else 'None'}
+Errors: {errors}
 
-Provide reflection in this JSON format:
-{{
-    "what_went_wrong": "...",
-    "why_it_failed": "...",
-    "improvements": ["specific improvement 1", "specific improvement 2"]
-}}"""
+{format_instructions}""")
+        ])
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-
-        data = json.loads(response.choices[0].message.content)
+        chain = prompt | self.llm | parser
+        data = chain.invoke({
+            "task": task,
+            "attempt": attempt + 1,
+            "trajectory": trajectory,
+            "outcome": outcome,
+            "errors": ', '.join(errors) if errors else 'None',
+            "format_instructions": parser.get_format_instructions()
+        })
 
         return Reflection(
-            task=task,
-            attempt=attempt,
-            trajectory=trajectory,
-            outcome=outcome,
+            task=task, attempt=attempt, trajectory=trajectory, outcome=outcome,
             what_went_wrong=data.get("what_went_wrong", ""),
             why_it_failed=data.get("why_it_failed", ""),
             improvements=data.get("improvements", [])
         )
 
-    def _format_reflections(self, reflections: list[Reflection]) -> str:
-        """Format reflections for prompt."""
-        formatted = []
-        for r in reflections:
-            formatted.append(f"""
-Attempt {r.attempt + 1}:
-- What went wrong: {r.what_went_wrong}
-- Why: {r.why_it_failed}
-- Improvements to try: {', '.join(r.improvements)}
-""")
-        return "\\n".join(formatted)
-
 # Usage
 agent = ReflexionAgent()
 
 def code_evaluator(trajectory: str) -> tuple[bool, list[str]]:
-    # Run generated code, check for errors
     try:
         exec(trajectory)
         return True, []

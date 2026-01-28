@@ -876,120 +876,125 @@ def create_langgraph_workflow():
   },
   {
     language: 'python',
-    label: 'CrewAI',
-    code: `# CrewAI: Role-based agent teams
-from crewai import Agent, Task, Crew, Process
+    label: 'LangGraph (Sequential)',
+    code: `# LangGraph: Sequential multi-agent with handoffs
+from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
+from typing import TypedDict, Annotated
+from operator import add
 
-def create_crewai_workflow():
-    # Define agents with roles
-    researcher = Agent(
-        role="Research Analyst",
-        goal="Find comprehensive information on the topic",
-        backstory="You are an expert researcher...",
-        tools=[search_tool, browse_tool]
-    )
+class TeamState(TypedDict):
+    task: str
+    research: str
+    draft: str
+    feedback: str
+    final: str
+    messages: Annotated[list, add]
 
-    writer = Agent(
-        role="Technical Writer",
-        goal="Create clear, engaging content",
-        backstory="You are a skilled writer...",
-        tools=[write_tool]
-    )
+def create_sequential_team():
+    llm = ChatOpenAI(model="gpt-4")
 
-    reviewer = Agent(
-        role="Editor",
-        goal="Ensure quality and accuracy",
-        backstory="You are a meticulous editor..."
-    )
+    def researcher_node(state: TeamState) -> dict:
+        response = llm.invoke([
+            ("system", "You are a research analyst. Research the topic thoroughly."),
+            ("user", f"Research this: {state['task']}")
+        ])
+        return {"research": response.content}
 
-    # Define tasks
-    research_task = Task(
-        description="Research {topic}",
-        agent=researcher,
-        expected_output="Research summary"
-    )
+    def writer_node(state: TeamState) -> dict:
+        response = llm.invoke([
+            ("system", "You are a technical writer. Write clear content."),
+            ("user", f"Write about: {state['task']}\\n\\nResearch: {state['research']}")
+        ])
+        return {"draft": response.content}
 
-    write_task = Task(
-        description="Write article based on research",
-        agent=writer,
-        context=[research_task]
-    )
+    def reviewer_node(state: TeamState) -> dict:
+        response = llm.invoke([
+            ("system", "You are an editor. Review and provide feedback."),
+            ("user", f"Review this draft: {state['draft']}")
+        ])
+        return {"feedback": response.content, "final": state["draft"]}
 
-    review_task = Task(
-        description="Review and improve the article",
-        agent=reviewer,
-        context=[write_task]
-    )
+    # Build sequential workflow
+    workflow = StateGraph(TeamState)
+    workflow.add_node("researcher", researcher_node)
+    workflow.add_node("writer", writer_node)
+    workflow.add_node("reviewer", reviewer_node)
 
-    # Create crew
-    crew = Crew(
-        agents=[researcher, writer, reviewer],
-        tasks=[research_task, write_task, review_task],
-        process=Process.sequential
-    )
+    workflow.set_entry_point("researcher")
+    workflow.add_edge("researcher", "writer")
+    workflow.add_edge("writer", "reviewer")
+    workflow.add_edge("reviewer", END)
 
-    return crew
+    return workflow.compile()
 
 # Key characteristics:
-# - Role-based design (intuitive)
-# - Built-in task dependencies
-# - Sequential or hierarchical processes
-# - Good for team-like workflows`,
+# - Explicit handoffs between agents
+# - Shared state across all agents
+# - Clear sequential flow
+# - Good for pipeline-style workflows`,
   },
   {
     language: 'python',
-    label: 'AutoGen',
-    code: `# AutoGen: Conversational multi-agent
-from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
+    label: 'LangGraph (Supervisor)',
+    code: `# LangGraph: Supervisor-based multi-agent
+from langgraph.graph import StateGraph, END
+from langchain_openai import ChatOpenAI
+from typing import TypedDict, Literal
+import json
 
-def create_autogen_workflow():
-    # Configuration for all agents
-    config_list = [{"model": "gpt-4", "api_key": "..."}]
+class SupervisorState(TypedDict):
+    task: str
+    messages: list
+    next_agent: str | None
 
-    # Create agents
-    researcher = AssistantAgent(
-        name="Researcher",
-        system_message="You research topics thoroughly...",
-        llm_config={"config_list": config_list}
-    )
+def create_supervisor_team():
+    llm = ChatOpenAI(model="gpt-4")
+    agents = ["researcher", "writer", "critic"]
 
-    writer = AssistantAgent(
-        name="Writer",
-        system_message="You write clear articles...",
-        llm_config={"config_list": config_list}
-    )
+    def supervisor_node(state: SupervisorState) -> dict:
+        response = llm.invoke([
+            ("system", f"""You are a supervisor managing: {agents}.
+            Based on the task and conversation, decide:
+            - Which agent should act next, OR
+            - If task is complete, respond with "FINISH"
+            Return JSON: {{"next": "agent_name" or "FINISH", "instruction": "..."}}"""),
+            ("user", f"Task: {state['task']}\\nHistory: {state['messages']}")
+        ])
+        decision = json.loads(response.content)
+        return {"next_agent": decision["next"], "messages": state["messages"] + [decision]}
 
-    critic = AssistantAgent(
-        name="Critic",
-        system_message="You provide constructive feedback...",
-        llm_config={"config_list": config_list}
-    )
+    def agent_node(agent_name: str):
+        def node(state: SupervisorState) -> dict:
+            instruction = state["messages"][-1].get("instruction", state["task"])
+            response = llm.invoke([
+                ("system", f"You are the {agent_name}. Complete your assigned task."),
+                ("user", instruction)
+            ])
+            return {"messages": state["messages"] + [{"agent": agent_name, "response": response.content}]}
+        return node
 
-    user_proxy = UserProxyAgent(
-        name="User",
-        human_input_mode="NEVER",
-        code_execution_config={"work_dir": "workspace"}
-    )
+    def route(state: SupervisorState) -> Literal["researcher", "writer", "critic", "__end__"]:
+        if state["next_agent"] == "FINISH":
+            return END
+        return state["next_agent"]
 
-    # Create group chat
-    group_chat = GroupChat(
-        agents=[user_proxy, researcher, writer, critic],
-        messages=[],
-        max_round=10
-    )
+    workflow = StateGraph(SupervisorState)
+    workflow.add_node("supervisor", supervisor_node)
+    for agent in agents:
+        workflow.add_node(agent, agent_node(agent))
+        workflow.add_edge(agent, "supervisor")
 
-    manager = GroupChatManager(
-        groupchat=group_chat,
-        llm_config={"config_list": config_list}
-    )
+    workflow.set_entry_point("supervisor")
+    workflow.add_conditional_edges("supervisor", route)
 
-    return user_proxy, manager
+    return workflow.compile()
 
 # Key characteristics:
-# - Conversation-based coordination
-# - Automatic speaker selection
-# - Code execution built-in
-# - Good for open-ended collaboration`,
+# - Dynamic agent selection
+# - Supervisor controls workflow
+# - Flexible task routing
+# - Good for complex, adaptive workflows`,
   },
   {
     language: 'csharp',
@@ -1312,22 +1317,22 @@ MIXTURE OF EXPERTS         HIERARCHICAL              SEQUENTIAL
         </thead>
         <tbody>
           <tr>
-            <td><strong>LangGraph</strong></td>
+            <td><strong>LangGraph (Graph)</strong></td>
             <td>Python</td>
             <td>Graph-based</td>
             <td>Complex stateful workflows</td>
           </tr>
           <tr>
-            <td><strong>CrewAI</strong></td>
+            <td><strong>LangGraph (Sequential)</strong></td>
             <td>Python</td>
-            <td>Role-based</td>
-            <td>Team-like workflows</td>
+            <td>Pipeline</td>
+            <td>Linear multi-step workflows</td>
           </tr>
           <tr>
-            <td><strong>AutoGen</strong></td>
+            <td><strong>LangGraph (Supervisor)</strong></td>
             <td>Python</td>
-            <td>Conversational</td>
-            <td>Open-ended collaboration</td>
+            <td>Hierarchical</td>
+            <td>Dynamic agent routing</td>
           </tr>
           <tr>
             <td><strong>Agent Framework</strong></td>
