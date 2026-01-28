@@ -456,12 +456,13 @@ function analyzeResults(results):
   },
   {
     language: 'python',
-    label: 'Python',
+    label: 'Python (LangChain)',
     code: `import random
 import string
 from dataclasses import dataclass
-from typing import List, Literal
-from openai import OpenAI
+from typing import List
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
 import tiktoken
 
 @dataclass
@@ -486,9 +487,8 @@ class TestResult:
     response: str
 
 class NeedleInHaystackTest:
-    def __init__(self, client: OpenAI, model: str = "gpt-4"):
-        self.client = client
-        self.model = model
+    def __init__(self, model: str = "gpt-4"):
+        self.llm = ChatOpenAI(model=model, max_tokens=50)
         self.enc = tiktoken.get_encoding("cl100k_base")
 
     def run(self, config: NeedleTestConfig) -> List[TestResult]:
@@ -524,20 +524,14 @@ class NeedleInHaystackTest:
         # Insert needle at position
         context = self._insert_needle(filler, needle, position)
 
-        # Query for recall
+        # Query for recall using LangChain
         messages = [
-            {"role": "system", "content": context},
-            {"role": "user", "content": "What is the secret code? "
-                                        "Reply with just the code."}
+            SystemMessage(content=context),
+            HumanMessage(content="What is the secret code? Reply with just the code.")
         ]
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            max_tokens=50
-        )
-
-        answer = response.choices[0].message.content
+        response = self.llm.invoke(messages)
+        answer = response.content
         success = code in answer
 
         return TestResult(
@@ -617,8 +611,7 @@ class NeedleInHaystackTest:
         return analysis
 
 # Usage
-client = OpenAI()
-test = NeedleInHaystackTest(client, model="gpt-4-turbo")
+test = NeedleInHaystackTest(model="gpt-4-turbo")
 
 config = NeedleTestConfig(
     context_sizes=[4000, 8000, 16000, 32000],
@@ -635,7 +628,7 @@ for size, positions in analysis.items():
   },
   {
     language: 'csharp',
-    label: 'C#',
+    label: 'C# (Agent Framework)',
     code: `using Microsoft.Extensions.AI;
 using Microsoft.ML.Tokenizers;
 
@@ -883,22 +876,22 @@ function deduplicateSemantically(messages, threshold=0.9):
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from typing import List, Dict, Tuple
+    label: 'Python (LangChain)',
+    code: `from typing import List, Dict
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
 import tiktoken
 
 class ContextMitigationPipeline:
     def __init__(
         self,
-        client: OpenAI,
         hard_limit: int = 16000,
         window_size: int = 10,
         overlap: int = 2
     ):
-        self.client = client
+        self.llm = ChatOpenAI(model="gpt-4o-mini")
         self.hard_limit = hard_limit
         self.window_size = window_size
         self.overlap = overlap
@@ -1055,21 +1048,18 @@ class ContextMitigationPipeline:
         return result
 
     def _summarize(self, messages: List[Dict]) -> str:
-        """Summarize a list of messages."""
+        """Summarize a list of messages using LangChain."""
         formatted = "\\n".join([
             f"{m['role']}: {m.get('content', '')[:300]}"
             for m in messages
         ])
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"Summarize concisely:\\n{formatted}"
-            }]
-        )
-
-        return response.choices[0].message.content
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", "Summarize concisely:\\n{content}")
+        ])
+        chain = prompt | self.llm
+        response = chain.invoke({"content": formatted})
+        return response.content
 
     def _count_tokens(self, messages: List[Dict]) -> int:
         return sum(
@@ -1079,7 +1069,7 @@ class ContextMitigationPipeline:
   },
   {
     language: 'csharp',
-    label: 'C#',
+    label: 'C# (Agent Framework)',
     code: `using Microsoft.Extensions.AI;
 
 public class ContextMitigationPipeline

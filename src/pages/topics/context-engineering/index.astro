@@ -479,27 +479,25 @@ function truncateLargeToolOutputs(messages, maxOutputSize):
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from typing import List, Dict
+    label: 'Python (LangChain)',
+    code: `from typing import List
 import tiktoken
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate
 
 class ConversationCompressor:
     def __init__(
         self,
-        client: OpenAI,
         target_tokens: int = 8000,
         preserve_recent_ratio: float = 0.4
     ):
-        self.client = client
+        self.llm = ChatOpenAI(model="gpt-4o-mini")  # Fast model for compression
         self.target_tokens = target_tokens
         self.preserve_ratio = preserve_recent_ratio
         self.enc = tiktoken.get_encoding("cl100k_base")
 
-    def compress(
-        self,
-        messages: List[Dict]
-    ) -> List[Dict]:
+    def compress(self, messages: List[BaseMessage]) -> List[BaseMessage]:
         """Compress conversation to fit token budget."""
         current_tokens = self._count_tokens(messages)
 
@@ -515,10 +513,7 @@ class ConversationCompressor:
         summary = self._summarize(old_messages)
 
         compressed = [
-            {
-                "role": "system",
-                "content": f"Previous conversation summary:\\n{summary}"
-            },
+            SystemMessage(content=f"Previous conversation summary:\\n{summary}"),
             *recent_messages
         ]
 
@@ -528,79 +523,63 @@ class ConversationCompressor:
 
         return compressed
 
-    def _summarize(self, messages: List[Dict]) -> str:
-        """Summarize a list of messages."""
-        # Format messages for summarization
+    def _summarize(self, messages: List[BaseMessage]) -> str:
+        """Summarize messages using LangChain."""
         formatted = "\\n".join([
-            f"{m['role'].upper()}: {m['content'][:500]}"
+            f"{m.type.upper()}: {m.content[:500]}"
             for m in messages
         ])
 
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",  # Use fast model for compression
-            messages=[{
-                "role": "user",
-                "content": f"""Summarize this conversation, preserving:
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", """Summarize this conversation, preserving:
 1. Key decisions made
 2. Important facts discovered
 3. Current task status
 4. Any pending questions
 
 Conversation:
-{formatted}
+{conversation}
 
-Concise summary:"""
-            }],
-            max_tokens=500
-        )
+Concise summary:""")
+        ])
 
-        return response.choices[0].message.content
+        chain = prompt | self.llm
+        response = chain.invoke({"conversation": formatted})
+        return response.content
 
     def _truncate_tool_outputs(
-        self,
-        messages: List[Dict],
-        max_output_tokens: int = 300
-    ) -> List[Dict]:
+        self, messages: List[BaseMessage], max_output_tokens: int = 300
+    ) -> List[BaseMessage]:
         """Truncate large tool outputs."""
         result = []
-
         for msg in messages:
-            if msg.get("role") == "tool":
-                tokens = self._count_tokens([msg])
+            if msg.type == "tool":
+                tokens = len(self.enc.encode(str(msg.content)))
                 if tokens > max_output_tokens:
-                    # Summarize the output
-                    summary = self._summarize_output(msg["content"])
-                    result.append({**msg, "content": summary})
+                    summary = self._summarize_output(msg.content)
+                    result.append(msg.copy(update={"content": summary}))
                 else:
                     result.append(msg)
             else:
                 result.append(msg)
-
         return result
 
     def _summarize_output(self, content: str) -> str:
         """Summarize a tool output."""
-        response = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"Summarize this tool output in 2-3 sentences, "
-                          f"keeping essential data:\\n{content[:2000]}"
-            }],
-            max_tokens=150
-        )
-        return response.choices[0].message.content
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", "Summarize this tool output in 2-3 sentences, "
+                    "keeping essential data:\\n{content}")
+        ])
+        chain = prompt | self.llm
+        return chain.invoke({"content": content[:2000]}).content
 
-    def _count_tokens(self, messages: List[Dict]) -> int:
+    def _count_tokens(self, messages: List[BaseMessage]) -> int:
         """Count tokens in messages."""
-        return sum(
-            len(self.enc.encode(str(m.get("content", ""))))
-            for m in messages
-        )`,
+        return sum(len(self.enc.encode(str(m.content))) for m in messages)`,
   },
   {
     language: 'csharp',
-    label: 'C#',
+    label: 'C# (Agent Framework)',
     code: `using Microsoft.Extensions.AI;
 using Microsoft.ML.Tokenizers;
 
@@ -781,17 +760,20 @@ class IsolatedContextAgent:
   },
   {
     language: 'python',
-    label: 'Python',
-    code: `from typing import List, Dict, Optional
+    label: 'Python (LangChain)',
+    code: `from typing import List, Dict
 from dataclasses import dataclass, field
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 
 @dataclass
 class IsolatedContextAgent:
     """Agent with separate contexts for planning vs execution."""
 
-    client: OpenAI
-    planning_context: List[Dict] = field(default_factory=list)
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
+    fast_llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4o-mini"))
+    planning_context: List = field(default_factory=list)
     execution_context: List[Dict] = field(default_factory=list)
     memory_store: List[Dict] = field(default_factory=list)
     max_execution_history: int = 10
@@ -799,81 +781,56 @@ class IsolatedContextAgent:
     def plan(self, task: str) -> List[str]:
         """Plan using isolated planning context (no tools)."""
         messages = [
-            {
-                "role": "system",
-                "content": """You are a planning agent. Break down tasks
+            SystemMessage(content="""You are a planning agent. Break down tasks
 into clear, executable steps. Do not execute - only plan.
 
 Output format:
 STEP 1: [action]
 STEP 2: [action]
-..."""
-            },
+..."""),
             *self.planning_context,
-            {"role": "user", "content": task}
+            HumanMessage(content=task)
         ]
 
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=messages
-            # No tools - planning only
-        )
-
-        plan_response = response.choices[0].message.content
+        response = self.llm.invoke(messages)
+        plan_response = response.content
 
         # Update planning context
-        self.planning_context.append(
-            {"role": "user", "content": task}
-        )
-        self.planning_context.append(
-            {"role": "assistant", "content": plan_response}
-        )
+        self.planning_context.append(HumanMessage(content=task))
+        self.planning_context.append(AIMessage(content=plan_response))
 
         return self._parse_steps(plan_response)
 
     def execute(self, step: str, tools: List) -> Dict:
         """Execute step in isolated execution context."""
-        # Retrieve relevant memory
         relevant_memory = self._search_memory(step)
 
+        # Bind tools for execution
+        llm_with_tools = self.llm.bind_tools(tools)
+
         messages = [
-            {
-                "role": "system",
-                "content": f"""Execute this step precisely.
+            SystemMessage(content=f"""Execute this step precisely.
 
 Relevant context from memory:
 {relevant_memory}
 
-Complete the step and report results."""
-            },
-            {"role": "user", "content": f"Execute: {step}"}
+Complete the step and report results."""),
+            HumanMessage(content=f"Execute: {step}")
         ]
 
-        response = self.client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-            tools=tools
-        )
-
-        result = response.choices[0].message
+        response = llm_with_tools.invoke(messages)
 
         # Update bounded execution context
-        self.execution_context.append({
-            "step": step,
-            "result": result.content
-        })
-        self.execution_context = self.execution_context[
-            -self.max_execution_history:
-        ]
+        self.execution_context.append({"step": step, "result": response.content})
+        self.execution_context = self.execution_context[-self.max_execution_history:]
 
         # Extract and store facts
-        self._extract_and_store_facts(result.content)
+        self._extract_and_store_facts(response.content)
 
-        return {"content": result.content, "tool_calls": result.tool_calls}
+        return {"content": response.content, "tool_calls": response.tool_calls}
 
     def _search_memory(self, query: str, top_k: int = 3) -> str:
         """Search memory store for relevant facts."""
-        # Simple keyword matching (use embeddings in production)
         relevant = []
         query_words = set(query.lower().split())
 
@@ -884,46 +841,35 @@ Complete the step and report results."""
                 relevant.append((item, overlap))
 
         relevant.sort(key=lambda x: x[1], reverse=True)
-
-        return "\\n".join([
-            f"- {item['content']}"
-            for item, _ in relevant[:top_k]
-        ]) or "No relevant memory found."
+        return "\\n".join([f"- {item['content']}" for item, _ in relevant[:top_k]]) or "No relevant memory found."
 
     def _extract_and_store_facts(self, content: str):
         """Extract key facts and add to memory."""
-        extraction = self.client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user",
-                "content": f"""Extract 1-3 key facts from this that
-should be remembered for future reference. Output one fact per line.
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", """Extract 1-3 key facts from this that should be remembered. Output one fact per line.
 
-Content: {content}"""
-            }]
-        )
+Content: {content}""")
+        ])
+        chain = prompt | self.fast_llm
+        extraction = chain.invoke({"content": content})
 
-        facts = extraction.choices[0].message.content.strip().split("\\n")
+        facts = extraction.content.strip().split("\\n")
         for fact in facts:
             if fact.strip():
-                self.memory_store.append({
-                    "content": fact.strip(),
-                    "source": "execution"
-                })
+                self.memory_store.append({"content": fact.strip(), "source": "execution"})
 
     def _parse_steps(self, plan: str) -> List[str]:
         """Parse plan into list of steps."""
         steps = []
         for line in plan.split("\\n"):
             if line.strip().startswith("STEP"):
-                # Extract content after "STEP N:"
                 parts = line.split(":", 1)
                 if len(parts) > 1:
                     steps.append(parts[1].strip())
         return steps
 
 # Usage
-agent = IsolatedContextAgent(client=OpenAI())
+agent = IsolatedContextAgent()
 
 # Planning happens in isolated context
 steps = agent.plan("Research competitors and create summary report")
@@ -935,7 +881,7 @@ for step in steps:
   },
   {
     language: 'csharp',
-    label: 'C#',
+    label: 'C# (Agent Framework)',
     code: `using Microsoft.Extensions.AI;
 
 public class IsolatedContextAgent

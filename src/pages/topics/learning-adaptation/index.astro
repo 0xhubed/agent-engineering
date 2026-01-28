@@ -527,9 +527,11 @@ solution, success = agent.solve(
   },
   {
     language: 'csharp',
-    label: 'C#',
-    code: `using OpenAI;
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Agents.AI;
+using Microsoft.Extensions.AI;
 using System.Text.Json;
+using OpenAI;
 
 public record Reflection(
     string Task,
@@ -543,42 +545,46 @@ public record Reflection(
 
 public class ReflexionAgent
 {
-    private readonly OpenAIClient _client;
-    private readonly string _model;
+    private readonly AIAgent _agent;
+    private readonly IChatClient _chatClient;
     private List<Reflection> _shortTermMemory = new();
     private readonly List<Reflection> _longTermMemory = new();
 
-    public ReflexionAgent(string apiKey, string model = "gpt-4")
+    public ReflexionAgent(string apiKey)
     {
-        _client = new OpenAIClient(apiKey);
-        _model = model;
+        _chatClient = new OpenAIClient(apiKey)
+            .GetChatClient("gpt-4o")
+            .AsIChatClient();
+
+        _agent = _chatClient.CreateAIAgent(
+            name: "ReflexionAgent",
+            instructions: "You solve tasks and learn from your mistakes."
+        );
     }
 
     public async Task<(string Solution, bool Success)> SolveAsync(
         string task,
         Func<string, (bool Success, List<string> Errors)> evaluator,
-        int maxAttempts = 3,
-        CancellationToken ct = default)
+        int maxAttempts = 3)
     {
-        _shortTermMemory = new List<Reflection>();
+        _shortTermMemory = new();
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            var trajectory = await GenerateTrajectoryAsync(task, attempt, ct);
-
+            var trajectory = await GenerateTrajectoryAsync(task, attempt);
             var (success, errors) = evaluator(trajectory);
 
             if (success)
             {
                 var reflection = await GenerateReflectionAsync(
-                    task, attempt, trajectory, "SUCCESS", new(), ct
+                    task, attempt, trajectory, "SUCCESS", new()
                 );
                 _longTermMemory.Add(reflection);
                 return (trajectory, true);
             }
 
             var failureReflection = await GenerateReflectionAsync(
-                task, attempt, trajectory, "FAILURE", errors, ct
+                task, attempt, trajectory, "FAILURE", errors
             );
             _shortTermMemory.Add(failureReflection);
         }
@@ -586,89 +592,54 @@ public class ReflexionAgent
         return (SelectBestAttempt(), false);
     }
 
-    private async Task<string> GenerateTrajectoryAsync(
-        string task,
-        int attempt,
-        CancellationToken ct)
+    private async Task<string> GenerateTrajectoryAsync(string task, int attempt)
     {
-        var messages = new List<ChatMessage>
-        {
-            new("system", BuildSystemPrompt())
-        };
+        var thread = _agent.GetNewThread();
 
+        // Add learnings from past tasks
         if (_longTermMemory.Count > 0)
         {
             var learnings = FormatLearnings(_longTermMemory.TakeLast(5));
-            messages.Add(new("system", $"Learnings from past tasks:\\n{learnings}"));
+            await thread.AddMessageAsync($"Learnings from past tasks:\\n{learnings}");
         }
 
+        // Add reflections from previous attempts
         if (_shortTermMemory.Count > 0)
         {
             var reflections = FormatReflections(_shortTermMemory);
-            messages.Add(new("user",
-                $"Previous attempts and reflections:\\n{reflections}"));
+            await thread.AddMessageAsync($"Previous attempts:\\n{reflections}");
         }
 
-        messages.Add(new("user", $"Task: {task}"));
-
-        var response = await _client.ChatCompletions.CreateAsync(
-            new ChatCompletionsOptions(_model, messages),
-            ct
-        );
-
-        return response.Choices[0].Message.Content;
+        return await _agent.RunAsync($"Task: {task}", thread);
     }
 
     private async Task<Reflection> GenerateReflectionAsync(
-        string task,
-        int attempt,
-        string trajectory,
-        string outcome,
-        List<string> errors,
-        CancellationToken ct)
+        string task, int attempt, string trajectory, string outcome, List<string> errors)
     {
         var prompt = $@"Analyze this attempt and generate a reflection.
 
 Task: {task}
-
 Attempt #{attempt + 1}:
 {trajectory}
-
 Outcome: {outcome}
 Errors: {string.Join(", ", errors)}
 
-Provide reflection in JSON format:
-{{
-    ""what_went_wrong"": ""..."",
-    ""why_it_failed"": ""..."",
-    ""improvements"": [""improvement 1"", ""improvement 2""]
-}}";
+Return JSON with: what_went_wrong, why_it_failed, improvements[]";
 
-        var response = await _client.ChatCompletions.CreateAsync(
-            new ChatCompletionsOptions(_model, new[]
-            {
-                new ChatMessage("user", prompt)
-            })
-            {
-                ResponseFormat = ChatCompletionsResponseFormat.JsonObject
-            },
-            ct
+        var response = await _chatClient.GetResponseAsync(
+            prompt,
+            new() { ResponseFormat = ChatResponseFormat.Json }
         );
 
-        var data = JsonDocument.Parse(response.Choices[0].Message.Content);
+        var data = JsonDocument.Parse(response.Text);
         var root = data.RootElement;
 
         return new Reflection(
-            Task: task,
-            Attempt: attempt,
-            Trajectory: trajectory,
-            Outcome: outcome,
+            Task: task, Attempt: attempt, Trajectory: trajectory, Outcome: outcome,
             WhatWentWrong: root.GetProperty("what_went_wrong").GetString() ?? "",
             WhyItFailed: root.GetProperty("why_it_failed").GetString() ?? "",
             Improvements: root.GetProperty("improvements")
-                .EnumerateArray()
-                .Select(e => e.GetString()!)
-                .ToList()
+                .EnumerateArray().Select(e => e.GetString()!).ToList()
         );
     }
 
