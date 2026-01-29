@@ -24,7 +24,8 @@
       "Bash(npx astro check)",
       "WebFetch(domain:www.anthropic.com)",
       "WebFetch(domain:unsloth.ai)",
-      "WebFetch(domain:aws.amazon.com)"
+      "WebFetch(domain:aws.amazon.com)",
+      "Bash(findstr:*)"
     ]
   }
 }

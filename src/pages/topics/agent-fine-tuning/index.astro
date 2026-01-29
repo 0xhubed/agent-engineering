@@ -297,6 +297,101 @@ model.save_pretrained_gguf(
   },
 ];
 
+const skillTransferExample = [
+  {
+    language: 'bash',
+    label: 'upskill CLI',
+    code: `# Install upskill tool
+pip install upskill
+# Or use uvx for one-off runs
+uvx upskill --help
+
+# Set API keys
+export ANTHROPIC_API_KEY=sk-ant-...
+export HF_TOKEN=hf_...
+
+# Generate skill from task description (uses Opus as teacher)
+upskill generate "build optimized CUDA kernels for PyTorch"
+
+# Generate from existing execution trace
+upskill generate "write kernels" --from ./claude-trace.md
+
+# Improve existing skill
+upskill generate "add more error handling" --from ./skills/kernel-builder/
+
+# Evaluate skill on different models
+upskill eval ./skills/kernel-builder/ --model haiku --model sonnet --runs 5
+
+# Evaluate with local model via llama.cpp
+llama-server -hf unsloth/GLM-4.7-Flash-GGUF:Q4_K_M
+upskill eval ./skills/my-skill/ \\
+    --model "unsloth/GLM-4.7-Flash-GGUF:Q4_0" \\
+    --base-url http://localhost:8080/v1`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Skill Structure',
+    code: `# Agent Skills follow the agentskills.io specification
+# A skill is a directory with structured context
+
+./skills/kernel-builder-cuda/
+  SKILL.md              # Main instructions (~500 tokens)
+  skill_meta.json       # Metadata and test cases
+
+# SKILL.md contains domain expertise:
+# - Project structure and conventions
+# - Configuration file formats
+# - API usage patterns
+# - Common pitfalls and solutions
+# - Best practices
+
+# skill_meta.json defines evaluation:
+{
+  "name": "h100-cuda-kernel-builder",
+  "version": "1.0.0",
+  "cases": [
+    {
+      "input": "Create a build.toml for CUDA targeting H100",
+      "expected": {"contains": "9.0"}  // compute capability
+    },
+    {
+      "input": "Write a basic CUDA kernel template",
+      "expected": {"contains": "cuda_runtime.h"}
+    }
+  ]
+}`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Teacher-Student Flow',
+    code: `# The "Robin Hood" approach to skill transfer:
+# 1. Expensive teacher model solves the problem
+# 2. Export the solution as a skill
+# 3. Cheaper student models use the skill
+
+# Step 1: Teacher (Opus) builds solution interactively
+User: "Help me write CUDA kernels for diffusers library"
+Claude Opus: [solves problem, exports trace]
+
+# Step 2: Convert execution trace to skill
+upskill generate "write CUDA kernels" --from ./opus-trace.md
+
+# Step 3: Evaluate skill lift on student models
+upskill eval ./skills/cuda-kernels/ --model haiku --model kimi
+
+# Results show improvement per model:
+# Model       | Without Skill | With Skill | Lift
+# ------------|---------------|------------|------
+# Haiku       | 45%           | 82%        | +37%
+# GLM-4.7     | 40%           | 85%        | +45%
+# Kimi-K2     | 60%           | 95%        | +35%
+# Opus 4.5    | 90%           | 88%        | -2%  (skip!)
+
+# Key insight: Skills don't work universally
+# Always measure both accuracy AND token usage`,
+  },
+];
+
 const workflowExample = [
   {
     language: 'pseudo',
@@ -687,6 +782,57 @@ Agent Response:
       </Callout>
     </section>
 
+    <!-- Skill Transfer -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Skill Transfer with upskill
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        An alternative to weight-based fine-tuning: transfer expertise from expensive models to cheaper ones via structured context. HuggingFace's <code>upskill</code> tool automates this "Robin Hood" approach&mdash;teaching open models skills that frontier models have mastered.
+      </p>
+
+      <CodeBlock tabs={skillTransferExample} title="Skill Transfer" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Skills vs Fine-Tuning
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Modifies</th>
+            <th>Best For</th>
+            <th>Trade-offs</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Fine-Tuning</strong></td>
+            <td>Model weights</td>
+            <td>Consistent style, domain-specific knowledge, production</td>
+            <td>GPU cost, training time, potential catastrophic forgetting</td>
+          </tr>
+          <tr>
+            <td><strong>Skill Transfer</strong></td>
+            <td>Context only</td>
+            <td>Specialized tasks, quick iteration, model comparison</td>
+            <td>Token overhead, skill maintenance, varies by model</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 grid sm:grid-cols-2 gap-4">
+        <Callout type="tip" title="When to Use Skills">
+          Skills work best for specialized domains where ~500 tokens of context can encode the expertise. Examples: CUDA kernel patterns, API usage, coding conventions, project-specific guidelines.
+        </Callout>
+
+        <Callout type="warning" title="Measure Per Model">
+          Skills don't improve all models equally&mdash;some may even regress. Always evaluate on your target model before deployment. Use <code>upskill eval</code> to measure accuracy and token efficiency.
+        </Callout>
+      </div>
+    </section>
+
     <!-- End-to-End Workflow -->
     <section class="mb-12">
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
@@ -800,6 +946,9 @@ Agent Response:
       </h2>
 
       <div class="space-y-2 text-slate-600 dark:text-slate-300">
+        <p><a href="https://huggingface.co/blog/upskill" class="text-primary-600 dark:text-primary-400 hover:underline">upskill: Skill Transfer for LLMs</a> - Teaching open models with Agent Skills</p>
+        <p><a href="https://github.com/huggingface/upskill" class="text-primary-600 dark:text-primary-400 hover:underline">upskill Repository</a> - CLI tool for skill generation and evaluation</p>
+        <p><a href="https://agentskills.io" class="text-primary-600 dark:text-primary-400 hover:underline">Agent Skills Specification</a> - Standard format for portable skills</p>
         <p><a href="https://huggingface.co/blog/hf-skills-training" class="text-primary-600 dark:text-primary-400 hover:underline">Hugging Face Skills for Training</a> - Official guide to agent-assisted fine-tuning</p>
         <p><a href="https://unsloth.ai/docs/basics/claude-codex" class="text-primary-600 dark:text-primary-400 hover:underline">Unsloth + Claude Code Guide</a> - Local LLM fine-tuning setup</p>
         <p><a href="https://github.com/axolotl-ai-cloud/axolotl" class="text-primary-600 dark:text-primary-400 hover:underline">Axolotl Framework</a> - Production-grade fine-tuning</p>
