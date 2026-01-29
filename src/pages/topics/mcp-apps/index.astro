@@ -1,0 +1,1020 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const basicExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# MCP Apps: Returning Interactive UI from Tools
+
+# Traditional MCP tool returns text
+function searchData(query):
+    results = database.query(query)
+    return { text: "Found " + results.count + " records" }
+    # User sees: "Found 42 records"
+    # Context gap: User can't explore the data
+
+# MCP Apps tool returns UI metadata
+function searchDataWithUI(query):
+    results = database.query(query)
+
+    return {
+        content: [{ type: "text", text: "Found " + results.count + " records" }],
+        _meta: {
+            ui: {
+                # Reference to UI resource
+                resourceUri: "ui://data-explorer",
+                # Data passed to the UI
+                data: {
+                    results: results,
+                    query: query,
+                    interactive: true,
+                    allowExport: true
+                }
+            }
+        }
+    }
+    # User sees: Interactive dashboard with filtering, sorting, export
+
+# UI resource served via ui:// scheme
+resource "ui://data-explorer":
+    type: "text/html"
+    content: bundledReactApp  # HTML/JS bundle
+    sandbox: ["display", "user-input"]  # Limited permissions`,
+  },
+  {
+    language: 'javascript',
+    label: 'JavaScript',
+    code: `import { App } from "@modelcontextprotocol/ext-apps";
+
+// Client-side: Connect to MCP App host
+const app = new App();
+await app.connect();
+
+// Listen for tool results with UI components
+app.ontoolresult = (result) => {
+  if (result._meta?.ui) {
+    // Host renders UI in sandboxed iframe
+    console.log("UI component available:", result._meta.ui.resourceUri);
+  }
+};
+
+// Server-side: Define tool that returns UI
+server.tool("analyze_sales", {
+  description: "Analyze sales data with interactive visualization",
+  inputSchema: {
+    type: "object",
+    properties: {
+      region: { type: "string" },
+      period: { type: "string", enum: ["Q1", "Q2", "Q3", "Q4", "YTD"] }
+    },
+    required: ["period"]
+  }
+}, async (args) => {
+  const data = await salesDB.query(args);
+
+  return {
+    content: [{
+      type: "text",
+      text: \`Sales analysis for \${args.period}: \${data.total} total revenue\`
+    }],
+    _meta: {
+      ui: {
+        resourceUri: "ui://sales-dashboard",
+        data: {
+          records: data.records,
+          summary: data.summary,
+          chartConfig: {
+            type: "bar",
+            groupBy: "region",
+            metric: "revenue"
+          }
+        }
+      }
+    }
+  };
+});
+
+// Register UI resource
+server.resource("ui://sales-dashboard", {
+  mimeType: "text/html",
+  read: async () => ({
+    contents: salesDashboardBundle // Your bundled HTML/JS app
+  })
+});`,
+  },
+  {
+    language: 'python',
+    label: 'Python',
+    code: `from mcp.server import Server
+from mcp.types import Tool, TextContent, Resource
+from pathlib import Path
+
+server = Server("analytics-server")
+
+# Tool that returns interactive UI
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "analyze_sales":
+        data = await sales_db.query(
+            region=arguments.get("region"),
+            period=arguments["period"]
+        )
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Sales analysis for {arguments['period']}: ${data['total']:,.2f} total revenue"
+                )
+            ],
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://sales-dashboard",
+                    "data": {
+                        "records": data["records"],
+                        "summary": data["summary"],
+                        "chartConfig": {
+                            "type": "bar",
+                            "groupBy": "region",
+                            "metric": "revenue"
+                        }
+                    }
+                }
+            }
+        }
+
+@server.list_tools()
+async def list_tools():
+    return [
+        Tool(
+            name="analyze_sales",
+            description="Analyze sales data with interactive visualization",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "region": {"type": "string"},
+                    "period": {
+                        "type": "string",
+                        "enum": ["Q1", "Q2", "Q3", "Q4", "YTD"]
+                    }
+                },
+                "required": ["period"]
+            }
+        )
+    ]
+
+# UI resource - serves bundled HTML/JS application
+@server.read_resource()
+async def read_resource(uri: str):
+    if uri == "ui://sales-dashboard":
+        bundle_path = Path(__file__).parent / "ui" / "sales-dashboard.html"
+        return {
+            "uri": uri,
+            "mimeType": "text/html",
+            "text": bundle_path.read_text()
+        }
+
+@server.list_resources()
+async def list_resources():
+    return [
+        Resource(
+            uri="ui://sales-dashboard",
+            name="Sales Dashboard",
+            description="Interactive sales data visualization",
+            mimeType="text/html"
+        )
+    ]`,
+  },
+];
+
+const uiResourceExample = [
+  {
+    language: 'html',
+    label: 'UI Bundle (HTML)',
+    code: `<!DOCTYPE html>
+<html>
+<head>
+  <title>Sales Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: system-ui; padding: 20px; }
+    .chart-container { height: 300px; }
+    .controls { margin-bottom: 20px; }
+    button { padding: 8px 16px; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <button onclick="groupBy('region')">By Region</button>
+    <button onclick="groupBy('product')">By Product</button>
+    <button onclick="exportData()">Export CSV</button>
+  </div>
+  <div class="chart-container">
+    <canvas id="chart"></canvas>
+  </div>
+
+  <script type="module">
+    import { App } from "@modelcontextprotocol/ext-apps";
+
+    const app = new App();
+    let chartData = null;
+    let chart = null;
+
+    // Receive data from host
+    app.ondata = (data) => {
+      chartData = data;
+      renderChart(data.records, data.chartConfig);
+    };
+
+    function renderChart(records, config) {
+      const ctx = document.getElementById('chart').getContext('2d');
+
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: config.type || 'bar',
+        data: {
+          labels: records.map(r => r[config.groupBy]),
+          datasets: [{
+            label: config.metric,
+            data: records.map(r => r[config.metric])
+          }]
+        }
+      });
+    }
+
+    // Handle user interactions
+    window.groupBy = (field) => {
+      renderChart(chartData.records, { ...chartData.chartConfig, groupBy: field });
+
+      // Notify model of user action
+      app.updateModelContext({
+        content: [{
+          type: "text",
+          text: \`User grouped data by \${field}\`
+        }]
+      });
+    };
+
+    window.exportData = () => {
+      const csv = recordsToCSV(chartData.records);
+      downloadCSV(csv, 'sales-data.csv');
+    };
+
+    await app.connect();
+  </script>
+</body>
+</html>`,
+  },
+  {
+    language: 'javascript',
+    label: 'ext-apps Client API',
+    code: `import { App } from "@modelcontextprotocol/ext-apps";
+
+// Initialize the MCP App client
+const app = new App();
+
+// Handle incoming data from server
+app.ondata = (data) => {
+  // data contains what was passed in _meta.ui.data
+  console.log("Received data:", data);
+  renderVisualization(data);
+};
+
+// Connect to the host (Claude, VS Code, etc.)
+await app.connect();
+
+// Update model context based on user interactions
+// This adds information to the conversation
+async function handleUserSelection(selectedItem) {
+  await app.updateModelContext({
+    content: [{
+      type: "text",
+      text: \`User selected: \${selectedItem.name} (\${selectedItem.id})\`
+    }]
+  });
+}
+
+// Call server tools from within the UI
+async function refreshData(filters) {
+  const result = await app.callServerTool({
+    name: "fetch_sales_data",
+    arguments: {
+      filters: filters,
+      format: "detailed"
+    }
+  });
+
+  // Result may include new UI data
+  if (result._meta?.ui) {
+    renderVisualization(result._meta.ui.data);
+  }
+}
+
+// Request user confirmation for actions
+async function confirmDelete(itemId) {
+  const confirmed = await app.requestUserConfirmation({
+    title: "Delete Item",
+    message: \`Are you sure you want to delete item \${itemId}?\`,
+    confirmLabel: "Delete",
+    cancelLabel: "Cancel"
+  });
+
+  if (confirmed) {
+    await app.callServerTool({
+      name: "delete_item",
+      arguments: { id: itemId }
+    });
+  }
+}`,
+  },
+];
+
+const useCasesExample = [
+  {
+    language: 'pseudo',
+    label: 'Configuration Wizard',
+    code: `# Multi-step configuration with dependent fields
+
+tool "configure_deployment":
+    return {
+        content: [{ text: "Starting deployment configuration..." }],
+        _meta: {
+            ui: {
+                resourceUri: "ui://config-wizard",
+                data: {
+                    steps: [
+                        {
+                            id: "environment",
+                            title: "Select Environment",
+                            type: "select",
+                            options: ["development", "staging", "production"]
+                        },
+                        {
+                            id: "region",
+                            title: "Select Region",
+                            type: "select",
+                            dependsOn: "environment",
+                            optionsFrom: "getRegions(environment)"
+                        },
+                        {
+                            id: "resources",
+                            title: "Configure Resources",
+                            type: "form",
+                            fields: [
+                                { name: "cpu", type: "slider", min: 1, max: 16 },
+                                { name: "memory", type: "slider", min: 1, max: 64 },
+                                { name: "replicas", type: "number", min: 1, max: 10 }
+                            ]
+                        },
+                        {
+                            id: "review",
+                            title: "Review & Deploy",
+                            type: "summary"
+                        }
+                    ]
+                }
+            }
+        }
+    }`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Document Viewer',
+    code: `# PDF viewer with annotation capabilities
+
+tool "review_document":
+    document = storage.getDocument(documentId)
+
+    return {
+        content: [{ text: "Opening document for review..." }],
+        _meta: {
+            ui: {
+                resourceUri: "ui://document-viewer",
+                data: {
+                    documentUrl: document.url,
+                    documentType: "pdf",
+                    features: {
+                        highlighting: true,
+                        annotations: true,
+                        comments: true,
+                        search: true
+                    },
+                    existingAnnotations: document.annotations,
+                    # Callback when user adds annotation
+                    onAnnotate: {
+                        tool: "save_annotation",
+                        args: ["documentId", "annotation"]
+                    }
+                }
+            }
+        }
+    }`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Real-time Monitor',
+    code: `# Live monitoring dashboard with auto-refresh
+
+tool "monitor_system":
+    return {
+        content: [{ text: "Opening system monitor..." }],
+        _meta: {
+            ui: {
+                resourceUri: "ui://system-monitor",
+                data: {
+                    refreshInterval: 5000,  # 5 seconds
+                    metrics: [
+                        { id: "cpu", label: "CPU Usage", type: "gauge" },
+                        { id: "memory", label: "Memory", type: "gauge" },
+                        { id: "requests", label: "Requests/sec", type: "line" },
+                        { id: "errors", label: "Error Rate", type: "line" }
+                    ],
+                    alerts: [
+                        { metric: "cpu", threshold: 80, severity: "warning" },
+                        { metric: "errors", threshold: 5, severity: "critical" }
+                    ],
+                    # Endpoint for fetching updates
+                    dataSource: {
+                        tool: "get_metrics",
+                        pollInterval: 5000
+                    }
+                }
+            }
+        }
+    }`,
+  },
+];
+
+const bidirectionalExample = [
+  {
+    language: 'javascript',
+    label: 'JavaScript',
+    code: `// Bidirectional communication between UI and server
+
+import { App } from "@modelcontextprotocol/ext-apps";
+
+const app = new App();
+
+// === RECEIVING DATA FROM SERVER ===
+
+// Initial data when UI loads
+app.ondata = (data) => {
+  initializeUI(data);
+};
+
+// Server pushes updates (e.g., real-time data)
+app.onupdate = (update) => {
+  applyUpdate(update);
+};
+
+// === SENDING DATA TO SERVER ===
+
+// Update model context (adds to conversation)
+await app.updateModelContext({
+  content: [{
+    type: "text",
+    text: "User filtered results to show only Q4 data"
+  }]
+});
+
+// Call a tool on the server
+const result = await app.callServerTool({
+  name: "export_data",
+  arguments: {
+    format: "csv",
+    filters: currentFilters
+  }
+});
+
+// Request file download
+await app.downloadFile({
+  data: result.content,
+  filename: "export.csv",
+  mimeType: "text/csv"
+});
+
+// === USER INTERACTIONS ===
+
+// Request confirmation dialog
+const proceed = await app.requestUserConfirmation({
+  title: "Confirm Action",
+  message: "This will modify 47 records. Continue?",
+  confirmLabel: "Modify",
+  cancelLabel: "Cancel",
+  destructive: true
+});
+
+// Show toast notification
+await app.showNotification({
+  type: "success",
+  message: "Export completed successfully",
+  duration: 3000
+});
+
+await app.connect();`,
+  },
+  {
+    language: 'python',
+    label: 'Python (Server)',
+    code: `from mcp.server import Server
+from mcp.types import Tool, TextContent
+
+server = Server("interactive-server")
+
+# Tool that handles UI callbacks
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "export_data":
+        # Handle export request from UI
+        data = await db.query(arguments.get("filters", {}))
+
+        if arguments["format"] == "csv":
+            content = to_csv(data)
+        else:
+            content = to_json(data)
+
+        return {
+            "content": [
+                TextContent(type="text", text=content)
+            ]
+        }
+
+    if name == "save_annotation":
+        # Handle annotation from document viewer UI
+        await db.save_annotation(
+            document_id=arguments["documentId"],
+            annotation=arguments["annotation"]
+        )
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Saved annotation on document {arguments['documentId']}"
+                )
+            ]
+        }
+
+    if name == "get_metrics":
+        # Real-time metrics for monitoring UI
+        metrics = await monitoring.get_current_metrics()
+
+        return {
+            "content": [
+                TextContent(type="text", text="Metrics updated")
+            ],
+            "_meta": {
+                "ui": {
+                    "update": {  # Push update to existing UI
+                        "metrics": metrics,
+                        "timestamp": time.time()
+                    }
+                }
+            }
+        }`,
+  },
+];
+---
+
+<BaseLayout
+  title="MCP Apps"
+  description="UI capabilities for MCP that enable tools to return interactive interfaces directly in conversations"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        MCP Apps
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        An official MCP extension that enables tools to return interactive UI components&mdash;dashboards, forms, visualizations&mdash;that render directly in conversations instead of plain text.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        What are MCP Apps?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Traditional MCP tools return structured data that models summarize as text. MCP Apps close <strong>"the context gap between what tools can do and what users can see"</strong> by enabling tools to return rich, interactive UI components that users can directly manipulate.
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Interactive Dashboards</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Charts, tables, and visualizations users can filter, sort, and explore</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Configuration Wizards</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Multi-step forms with validation, dependent fields, and previews</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Document Viewers</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">PDFs, images, and documents with annotation and highlighting</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Real-time Monitors</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Live updating displays for system metrics, logs, and status</p>
+        </div>
+      </div>
+
+      <Callout type="info" title="Why MCP Apps Matter">
+        Without MCP Apps, a sales analysis tool might return "Q4 revenue: $2.3M across 4 regions". With MCP Apps, users see an interactive chart where they can click regions to drill down, compare quarters, and export data&mdash;all without additional prompts.
+      </Callout>
+    </section>
+
+    <!-- Architecture -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Architecture
+      </h2>
+
+      <Diagram title="MCP Apps Data Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                    MCP CLIENT (Claude, VS Code)                  │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                     Conversation                            │ │
+│  │                                                             │ │
+│  │  User: "Show me Q4 sales by region"                         │ │
+│  │                                                             │ │
+│  │  Assistant: Analyzing Q4 sales data...                      │ │
+│  │                                                             │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │              SANDBOXED IFRAME (ui://)                  │ │ │
+│  │  │  ┌─────────────────────────────────────────────────┐  │ │ │
+│  │  │  │     Q4 Sales by Region                          │  │ │ │
+│  │  │  │  ┌────┐ ┌────┐ ┌────┐ ┌────┐                   │  │ │ │
+│  │  │  │  │ NA │ │ EU │ │APAC│ │LATAM│  [Export] [Filter]│  │ │ │
+│  │  │  │  │$1.2│ │$0.6│ │$0.3│ │$0.2│                   │  │ │ │
+│  │  │  │  └────┘ └────┘ └────┘ └────┘                   │  │ │ │
+│  │  │  │  Click any region to drill down                 │  │ │ │
+│  │  │  └─────────────────────────────────────────────────┘  │ │ │
+│  │  │                     ▲         │                        │ │ │
+│  │  │                     │ JSON-RPC│                        │ │ │
+│  │  │                     └─────────┘                        │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Tool response with _meta.ui
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                         MCP SERVER                               │
+│                                                                  │
+│  Tool: "analyze_sales"                                          │
+│    → Queries database                                            │
+│    → Returns data + UI metadata                                  │
+│                                                                  │
+│  Resource: "ui://sales-dashboard"                                │
+│    → Serves bundled HTML/JS application                          │
+└─────────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <div class="mt-6 space-y-4">
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white">
+          How It Works
+        </h3>
+        <ol class="space-y-3 text-slate-600 dark:text-slate-300">
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">1</span>
+            <span>Tool returns standard content plus <code>_meta.ui</code> with a <code>resourceUri</code> and <code>data</code></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">2</span>
+            <span>Host fetches the UI resource (bundled HTML/JS) via the <code>ui://</code> scheme</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">3</span>
+            <span>Host renders the UI in a sandboxed iframe with restricted permissions</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">4</span>
+            <span>UI receives data and can communicate back via JSON-RPC (update context, call tools)</span>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Basic Example -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Basic Implementation
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Tools declare UI components by including <code>_meta.ui</code> in their response:
+      </p>
+
+      <CodeBlock tabs={basicExample} title="MCP Apps Basic Pattern" />
+    </section>
+
+    <!-- UI Resources -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Building UI Resources
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        UI resources are HTML/JavaScript bundles served via the <code>ui://</code> scheme. Use the <code>@modelcontextprotocol/ext-apps</code> package to communicate with the host:
+      </p>
+
+      <CodeBlock tabs={uiResourceExample} title="UI Resource Implementation" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        ext-apps API Reference
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Direction</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>app.connect()</code></td>
+            <td>-</td>
+            <td>Initialize connection to host</td>
+          </tr>
+          <tr>
+            <td><code>app.ondata</code></td>
+            <td>Server → UI</td>
+            <td>Receive initial data from tool result</td>
+          </tr>
+          <tr>
+            <td><code>app.onupdate</code></td>
+            <td>Server → UI</td>
+            <td>Receive pushed updates from server</td>
+          </tr>
+          <tr>
+            <td><code>app.updateModelContext()</code></td>
+            <td>UI → Model</td>
+            <td>Add information to conversation context</td>
+          </tr>
+          <tr>
+            <td><code>app.callServerTool()</code></td>
+            <td>UI → Server</td>
+            <td>Invoke another tool on the server</td>
+          </tr>
+          <tr>
+            <td><code>app.requestUserConfirmation()</code></td>
+            <td>UI → Host</td>
+            <td>Show confirmation dialog to user</td>
+          </tr>
+          <tr>
+            <td><code>app.downloadFile()</code></td>
+            <td>UI → Host</td>
+            <td>Trigger file download</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Use Cases -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Use Cases
+      </h2>
+
+      <CodeBlock tabs={useCasesExample} title="MCP Apps Use Cases" />
+
+      <div class="mt-6 flex flex-wrap gap-2">
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Data Exploration</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Configuration Wizards</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Document Review</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Real-time Monitoring</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Form Builders</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Workflow Editors</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">3D Visualization</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Map Interfaces</span>
+        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Music Notation</span>
+      </div>
+    </section>
+
+    <!-- Bidirectional Communication -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Bidirectional Communication
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP Apps support full bidirectional communication between the UI and server via JSON-RPC:
+      </p>
+
+      <Diagram title="Bidirectional Communication">
+{`┌──────────────────┐         ┌──────────────────┐
+│    UI (iframe)   │         │    MCP Server    │
+└────────┬─────────┘         └────────┬─────────┘
+         │                            │
+         │◄────── ondata ─────────────│  Initial data
+         │                            │
+         │◄────── onupdate ───────────│  Real-time updates
+         │                            │
+         │─── updateModelContext ────►│  Add to conversation
+         │                            │
+         │─── callServerTool ────────►│  Invoke tool
+         │◄────── result ─────────────│
+         │                            │
+         │─── requestConfirmation ───►│  User dialog
+         │◄────── confirmed ──────────│
+         │                            │`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={bidirectionalExample} title="Bidirectional Communication" />
+      </div>
+    </section>
+
+    <!-- Security -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Security Model
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Protection</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Iframe Sandboxing</strong></td>
+            <td>UI runs in isolated context with restricted permissions (no direct DOM access to host)</td>
+          </tr>
+          <tr>
+            <td><strong>Content Security Policy</strong></td>
+            <td>Strict CSP prevents XSS, limits external resource loading</td>
+          </tr>
+          <tr>
+            <td><strong>JSON-RPC Boundary</strong></td>
+            <td>All communication is auditable structured messages, not arbitrary code execution</td>
+          </tr>
+          <tr>
+            <td><strong>Template Review</strong></td>
+            <td>UI bundles can be audited before deployment; no dynamic code injection</td>
+          </tr>
+          <tr>
+            <td><strong>User Consent</strong></td>
+            <td>Tool invocation still requires explicit user approval</td>
+          </tr>
+          <tr>
+            <td><strong>Origin Isolation</strong></td>
+            <td>Each UI resource runs in its own origin, preventing cross-UI attacks</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6 space-y-4">
+        <Callout type="warning" title="Bundle Security">
+          Always serve UI bundles from trusted sources. Review third-party UI components before including them in your MCP server.
+        </Callout>
+
+        <Callout type="tip" title="Data Validation">
+          Validate all data passed to UI components. Never include sensitive data (tokens, passwords) in <code>_meta.ui.data</code> as it may be visible in network logs.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Client Support -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Client Support
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        MCP Apps is currently supported in:
+      </p>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Status</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Claude (Web)</strong></td>
+            <td>Available</td>
+            <td>Full support for all UI features</td>
+          </tr>
+          <tr>
+            <td><strong>Claude (Desktop)</strong></td>
+            <td>Available</td>
+            <td>Full support for all UI features</td>
+          </tr>
+          <tr>
+            <td><strong>Goose</strong></td>
+            <td>Available</td>
+            <td>Full support</td>
+          </tr>
+          <tr>
+            <td><strong>VS Code Insiders</strong></td>
+            <td>Available</td>
+            <td>Via GitHub Copilot MCP extension</td>
+          </tr>
+          <tr>
+            <td><strong>ChatGPT</strong></td>
+            <td>Rolling out</td>
+            <td>Gradual rollout in progress</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Getting Started -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Getting Started
+      </h2>
+
+      <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+        <h3 class="font-semibold text-slate-900 dark:text-white mb-3">Quick Start</h3>
+        <ol class="space-y-3 text-slate-700 dark:text-slate-300">
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">1</span>
+            <span>Install ext-apps: <code>npm install @modelcontextprotocol/ext-apps</code></span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">2</span>
+            <span>Create your UI bundle (HTML/JS) using any framework</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">3</span>
+            <span>Register the bundle as a <code>ui://</code> resource in your MCP server</span>
+          </li>
+          <li class="flex items-start gap-3">
+            <span class="flex-shrink-0 w-6 h-6 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full flex items-center justify-center text-sm font-medium">4</span>
+            <span>Return <code>_meta.ui</code> from your tool with resourceUri and data</span>
+          </li>
+        </ol>
+      </div>
+
+      <Callout type="info" title="Example Repository">
+        The <a href="https://github.com/anthropics/ext-apps" class="text-primary-600 dark:text-primary-400 hover:underline">ext-apps repository</a> includes working examples: 3D visualization, maps, PDFs, dashboards, and music notation.
+      </Callout>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/topics/mcp/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Model Context Protocol (MCP)</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The foundation protocol that MCP Apps extends
+          </p>
+        </a>
+        <a
+          href="/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            How agents invoke tools that can return UI
+          </p>
+        </a>
+        <a
+          href="/topics/a2a/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Agent2Agent Protocol (A2A)</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Agent-to-agent communication protocol
+          </p>
+        </a>
+        <a
+          href="/topics/ucp/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Universal Commerce Protocol</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Protocol for AI agent commerce and payments
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>

@@ -19,7 +19,10 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nUpdate code samples to use LangChain and Agent Framework\n\n- learning-adaptation: Update Reflexion examples to use LangChain \\(Python\\)\n  and Microsoft Agent Framework \\(C#\\)\n- context-engineering: Update ConversationCompressor and IsolatedContextAgent\n  to use LangChain/Agent Framework\n- context-bloat: Update NeedleInHaystackTest and ContextMitigationPipeline\n  to use LangChain/Agent Framework\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd CLAUDE.md for Claude Code guidance\n\nIncludes project overview, commands, architecture, and code sample standards.\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(npm install:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebFetch(domain:ucp.dev)",
+      "Bash(npx astro check)",
+      "WebFetch(domain:www.anthropic.com)"
     ]
   }
 }

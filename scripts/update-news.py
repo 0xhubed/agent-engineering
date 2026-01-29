@@ -14,31 +14,32 @@ import feedparser
 import httpx
 
 # RSS feeds to monitor
+# Note: All URLs verified working as of Jan 2026
 FEEDS = [
     {
         "name": "LangChain Blog",
-        "url": "https://blog.langchain.dev/rss/",
+        "url": "https://blog.langchain.dev/rss",
         "category": "frameworks",
     },
     {
-        "name": "Anthropic News",
-        "url": "https://www.anthropic.com/rss.xml",
+        "name": "OpenAI News",
+        "url": "https://openai.com/news/rss.xml",
         "category": "providers",
     },
     {
-        "name": "OpenAI Blog",
-        "url": "https://openai.com/blog/rss.xml",
-        "category": "providers",
-    },
-    {
-        "name": "Google AI Blog",
-        "url": "https://blog.google/technology/ai/rss/",
+        "name": "Google DeepMind Blog",
+        "url": "https://deepmind.google/blog/rss.xml",
         "category": "providers",
     },
     {
         "name": "Hugging Face Blog",
         "url": "https://huggingface.co/blog/feed.xml",
         "category": "tools",
+    },
+    {
+        "name": "LlamaIndex Blog",
+        "url": "https://medium.com/feed/llamaindex-blog",
+        "category": "frameworks",
     },
 ]
 
@@ -52,9 +53,18 @@ MAX_NEWS_ITEMS = 20
 def fetch_feed(feed_config: dict) -> list[dict]:
     """Fetch and parse an RSS feed."""
     try:
-        response = httpx.get(feed_config["url"], timeout=30, follow_redirects=True)
+        response = httpx.get(
+            feed_config["url"],
+            timeout=30,
+            follow_redirects=True,
+            headers={"User-Agent": "AgentEngineering-NewsBot/1.0"}
+        )
         response.raise_for_status()
         parsed = feedparser.parse(response.text)
+
+        if parsed.bozo and not parsed.entries:
+            print(f"  Warning: Feed {feed_config['name']} returned invalid XML")
+            return []
 
         cutoff = datetime.now() - timedelta(days=LOOKBACK_DAYS)
         items = []
@@ -80,8 +90,14 @@ def fetch_feed(feed_config: dict) -> list[dict]:
             })
 
         return items
+    except httpx.HTTPStatusError as e:
+        print(f"  Error fetching {feed_config['name']}: HTTP {e.response.status_code}")
+        return []
+    except httpx.RequestError as e:
+        print(f"  Error fetching {feed_config['name']}: {type(e).__name__} - {e}")
+        return []
     except Exception as e:
-        print(f"Error fetching {feed_config['name']}: {e}")
+        print(f"  Error fetching {feed_config['name']}: {type(e).__name__} - {e}")
         return []
 
 
@@ -205,6 +221,12 @@ def merge_news(existing: list[dict], new: list[dict]) -> list[dict]:
 
 
 def main():
+    # Check for API key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("ERROR: ANTHROPIC_API_KEY environment variable not set")
+        print("Please set the ANTHROPIC_API_KEY secret in your GitHub repository settings")
+        raise SystemExit(1)
+
     # Paths
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
@@ -220,13 +242,19 @@ def main():
     print(f"Total items fetched: {len(raw_items)}")
 
     if not raw_items:
-        print("No new items found, exiting.")
+        print("WARNING: No items fetched from any feed.")
+        print("This could indicate network issues or changed feed URLs.")
+        # Don't fail - just skip processing
         return
 
     # Process with Claude
     print("\nProcessing with Claude...")
-    processed_items = filter_and_summarize_with_claude(raw_items)
-    print(f"Relevant items after processing: {len(processed_items)}")
+    try:
+        processed_items = filter_and_summarize_with_claude(raw_items)
+        print(f"Relevant items after processing: {len(processed_items)}")
+    except anthropic.APIError as e:
+        print(f"ERROR: Anthropic API error: {e}")
+        raise SystemExit(1)
 
     if not processed_items:
         print("No relevant items after filtering, exiting.")

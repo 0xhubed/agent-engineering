@@ -29,7 +29,17 @@ jobs:
       - name: Fetch and process news
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python scripts/update-news.py
+        run: |
+          echo "Starting news update..."
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::ANTHROPIC_API_KEY is empty or not set"
+            echo "Please check: Repository Settings > Secrets and variables > Actions > Repository secrets"
+            echo "Ensure the secret is named exactly 'ANTHROPIC_API_KEY' (case-sensitive)"
+            exit 1
+          fi
+          echo "API key is configured (length: ${#ANTHROPIC_API_KEY} chars)"
+          python scripts/update-news.py
+          echo "News update completed."
 
       - name: Check for changes
         id: changes
