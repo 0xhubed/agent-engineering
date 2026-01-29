@@ -152,7 +152,7 @@ async def purchase_product(
         cart["id"],
         shipping_address
     )
-    print(f"Total: ${totals['total']}")
+    print(f"Total: {totals['total']}")
 
     # Complete purchase
     order = await ucp.checkout(
@@ -643,7 +643,7 @@ async def call_tool(name: str, arguments: dict):
         return {
             "content": [TextContent(
                 type="text",
-                text=f"Ready to purchase for ${totals['total']}"
+                text=f"Ready to purchase for {totals['total']}"
             )],
             "_meta": {
                 "ui": {

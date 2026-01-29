@@ -80,7 +80,7 @@ server.tool("analyze_sales", {
   return {
     content: [{
       type: "text",
-      text: \`Sales analysis for \${args.period}: \${data.total} total revenue\`
+      text: "Sales analysis for " + args.period + ": " + data.total + " revenue"
     }],
     _meta: {
       ui: {
@@ -129,7 +129,7 @@ async def call_tool(name: str, arguments: dict):
             "content": [
                 TextContent(
                     type="text",
-                    text=f"Sales analysis for {arguments['period']}: ${data['total']:,.2f} total revenue"
+                    text=f"Sales analysis for {arguments['period']}: {data['total']:,.2f} revenue"
                 )
             ],
             "_meta": {
@@ -194,84 +194,6 @@ async def list_resources():
 
 const uiResourceExample = [
   {
-    language: 'html',
-    label: 'UI Bundle (HTML)',
-    code: `<!DOCTYPE html>
-<html>
-<head>
-  <title>Sales Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <style>
-    body { font-family: system-ui; padding: 20px; }
-    .chart-container { height: 300px; }
-    .controls { margin-bottom: 20px; }
-    button { padding: 8px 16px; margin-right: 8px; }
-  </style>
-</head>
-<body>
-  <div class="controls">
-    <button onclick="groupBy('region')">By Region</button>
-    <button onclick="groupBy('product')">By Product</button>
-    <button onclick="exportData()">Export CSV</button>
-  </div>
-  <div class="chart-container">
-    <canvas id="chart"></canvas>
-  </div>
-
-  <script type="module">
-    import { App } from "@modelcontextprotocol/ext-apps";
-
-    const app = new App();
-    let chartData = null;
-    let chart = null;
-
-    // Receive data from host
-    app.ondata = (data) => {
-      chartData = data;
-      renderChart(data.records, data.chartConfig);
-    };
-
-    function renderChart(records, config) {
-      const ctx = document.getElementById('chart').getContext('2d');
-
-      if (chart) chart.destroy();
-
-      chart = new Chart(ctx, {
-        type: config.type || 'bar',
-        data: {
-          labels: records.map(r => r[config.groupBy]),
-          datasets: [{
-            label: config.metric,
-            data: records.map(r => r[config.metric])
-          }]
-        }
-      });
-    }
-
-    // Handle user interactions
-    window.groupBy = (field) => {
-      renderChart(chartData.records, { ...chartData.chartConfig, groupBy: field });
-
-      // Notify model of user action
-      app.updateModelContext({
-        content: [{
-          type: "text",
-          text: \`User grouped data by \${field}\`
-        }]
-      });
-    };
-
-    window.exportData = () => {
-      const csv = recordsToCSV(chartData.records);
-      downloadCSV(csv, 'sales-data.csv');
-    };
-
-    await app.connect();
-  </script>
-</body>
-</html>`,
-  },
-  {
     language: 'javascript',
     label: 'ext-apps Client API',
     code: `import { App } from "@modelcontextprotocol/ext-apps";
@@ -295,7 +217,7 @@ async function handleUserSelection(selectedItem) {
   await app.updateModelContext({
     content: [{
       type: "text",
-      text: \`User selected: \${selectedItem.name} (\${selectedItem.id})\`
+      text: "User selected: " + selectedItem.name
     }]
   });
 }
@@ -320,7 +242,7 @@ async function refreshData(filters) {
 async function confirmDelete(itemId) {
   const confirmed = await app.requestUserConfirmation({
     title: "Delete Item",
-    message: \`Are you sure you want to delete item \${itemId}?\`,
+    message: "Are you sure you want to delete item " + itemId + "?",
     confirmLabel: "Delete",
     cancelLabel: "Cancel"
   });
@@ -454,7 +376,7 @@ tool "monitor_system":
 const bidirectionalExample = [
   {
     language: 'javascript',
-    label: 'JavaScript',
+    label: 'JavaScript (Client)',
     code: `// Bidirectional communication between UI and server
 
 import { App } from "@modelcontextprotocol/ext-apps";
@@ -661,7 +583,7 @@ async def call_tool(name: str, arguments: dict):
 │  │  │  │     Q4 Sales by Region                          │  │ │ │
 │  │  │  │  ┌────┐ ┌────┐ ┌────┐ ┌────┐                   │  │ │ │
 │  │  │  │  │ NA │ │ EU │ │APAC│ │LATAM│  [Export] [Filter]│  │ │ │
-│  │  │  │  │$1.2│ │$0.6│ │$0.3│ │$0.2│                   │  │ │ │
+│  │  │  │  │1.2M│ │0.6M│ │0.3M│ │0.2M│                   │  │ │ │
 │  │  │  │  └────┘ └────┘ └────┘ └────┘                   │  │ │ │
 │  │  │  │  Click any region to drill down                 │  │ │ │
 │  │  │  └─────────────────────────────────────────────────┘  │ │ │
@@ -732,10 +654,10 @@ async def call_tool(name: str, arguments: dict):
         UI resources are HTML/JavaScript bundles served via the <code>ui://</code> scheme. Use the <code>@modelcontextprotocol/ext-apps</code> package to communicate with the host:
       </p>
 
-      <CodeBlock tabs={uiResourceExample} title="UI Resource Implementation" />
+      <CodeBlock tabs={uiResourceExample} title="ext-apps Client API" />
 
       <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
-        ext-apps API Reference
+        API Reference
       </h3>
 
       <Table>
@@ -803,7 +725,6 @@ async def call_tool(name: str, arguments: dict):
         <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Workflow Editors</span>
         <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">3D Visualization</span>
         <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Map Interfaces</span>
-        <span class="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm rounded-full">Music Notation</span>
       </div>
     </section>
 
@@ -967,8 +888,8 @@ async def call_tool(name: str, arguments: dict):
         </ol>
       </div>
 
-      <Callout type="info" title="Example Repository">
-        The <a href="https://github.com/anthropics/ext-apps" class="text-primary-600 dark:text-primary-400 hover:underline">ext-apps repository</a> includes working examples: 3D visualization, maps, PDFs, dashboards, and music notation.
+      <Callout type="info" title="Learn More">
+        See the official announcement at <a href="https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/" class="text-primary-600 dark:text-primary-400 hover:underline">blog.modelcontextprotocol.io</a> for full documentation.
       </Callout>
     </section>
 
