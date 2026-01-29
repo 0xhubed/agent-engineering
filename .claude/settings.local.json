@@ -22,7 +22,9 @@
       "Bash(find:*)",
       "WebFetch(domain:ucp.dev)",
       "Bash(npx astro check)",
-      "WebFetch(domain:www.anthropic.com)"
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:unsloth.ai)",
+      "WebFetch(domain:aws.amazon.com)"
     ]
   }
 }

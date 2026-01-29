@@ -1,0 +1,856 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const hfSkillsExample = [
+  {
+    language: 'bash',
+    label: 'Claude Code Setup',
+    code: `# Install Hugging Face Skills plugin
+/plugin marketplace add huggingface/skills
+/plugin install hf-llm-trainer@huggingface-skills
+
+# Authenticate with Hugging Face (requires Pro plan for Jobs)
+hf auth login
+# Or set environment variable
+export HF_TOKEN=hf_your_write_access_token_here
+
+# Start fine-tuning with natural language
+# Claude Code handles everything automatically:
+# - GPU selection based on model size
+# - Training script configuration
+# - Job submission and monitoring
+# - Model upload to Hub`,
+  },
+  {
+    language: 'pseudo',
+    label: 'Natural Language Commands',
+    code: `# Simple fine-tuning request
+User: "Fine-tune Qwen3-0.6B on the open-r1/codeforces-cots dataset
+       for instruction following."
+
+# Agent automatically:
+# 1. Validates dataset format
+# 2. Selects hardware (t4-small for 0.6B model)
+# 3. Configures training with Trackio monitoring
+# 4. Submits job to Hugging Face Jobs
+# 5. Reports cost estimate (~$0.30)
+
+# Production run with specific parameters
+User: "SFT Qwen-0.6B for production on my-org/support-conversations.
+       Checkpoints every 500 steps, 3 epochs, cosine learning rate."
+
+# Multi-stage pipeline
+User: "Train a math reasoning model:
+       1. SFT on openai/gsm8k
+       2. DPO alignment with preference data
+       3. Convert to GGUF Q4_K_M for local deployment"`,
+  },
+];
+
+const localLLMExample = [
+  {
+    language: 'bash',
+    label: 'llama.cpp Setup',
+    code: `# Build llama.cpp with GPU support
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON  # or DGGML_METAL=ON for Mac
+cmake --build build --config Release
+
+# Download quantized model (e.g., GLM-4.7-Flash 30B MoE)
+pip install huggingface_hub
+python -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download(
+    repo_id='unsloth/GLM-4.7-Flash-GGUF',
+    filename='GLM-4.7-Flash-UD-Q4_K_XL.gguf',
+    local_dir='./models'
+)
+"
+
+# Start server with OpenAI-compatible API
+./build/bin/llama-server \\
+    -m ./models/GLM-4.7-Flash-UD-Q4_K_XL.gguf \\
+    --port 8000 \\
+    --host 0.0.0.0 \\
+    -c 32768 \\
+    --temp 1.0 \\
+    --top-p 0.95 \\
+    --jinja  # Enable tool calling support`,
+  },
+  {
+    language: 'bash',
+    label: 'Claude Code with Local LLM',
+    code: `# Point Claude Code to local server
+export ANTHROPIC_BASE_URL="http://localhost:8000"
+
+# Run with local model
+claude --model unsloth/GLM-4.7-Flash
+
+# For unrestricted execution (use with caution)
+claude --model unsloth/GLM-4.7-Flash --dangerously-skip-permissions`,
+  },
+  {
+    language: 'toml',
+    label: 'Codex Config',
+    code: `# ~/.codex/config.toml
+[llama_cpp]
+endpoint = "http://localhost:8000/v1"
+wire_api = "responses"
+
+# Run Codex with local model
+# codex --model unsloth/GLM-4.7-Flash -c model_provider=llama_cpp`,
+  },
+];
+
+const trainingMethodsExample = [
+  {
+    language: 'pseudo',
+    label: 'SFT (Supervised Fine-Tuning)',
+    code: `# Best for: High-quality input-output demonstration pairs
+# Use cases: Customer support, code generation, domain Q&A
+
+User: "Fine-tune Qwen3-0.6B on my-org/support-conversations for 3 epochs."
+
+# Agent selects:
+# - LoRA for models >3B (memory efficient)
+# - Full fine-tuning for smaller models
+# - Appropriate batch size and learning rate
+
+# Dataset format (messages column):
+{
+  "messages": [
+    {"role": "user", "content": "How do I reset my password?"},
+    {"role": "assistant", "content": "To reset your password..."}
+  ]
+}`,
+  },
+  {
+    language: 'pseudo',
+    label: 'DPO (Direct Preference Optimization)',
+    code: `# Best for: Preference-annotated data (chosen vs rejected)
+# Use cases: Alignment, reducing harmful outputs, style matching
+
+User: "Run DPO on my-org/preference-data to align the SFT model.
+       Dataset has 'chosen' and 'rejected' columns."
+
+# No separate reward model needed
+# Typically applied after SFT
+
+# Dataset format:
+{
+  "prompt": "Explain quantum computing",
+  "chosen": "Quantum computing uses quantum bits...",
+  "rejected": "Quantum computing is magic..."
+}`,
+  },
+  {
+    language: 'pseudo',
+    label: 'GRPO (Group Relative Policy Optimization)',
+    code: `# Best for: Verifiable tasks with programmatic success criteria
+# Use cases: Math reasoning, code generation, structured problems
+
+User: "Train a math reasoning model using GRPO on openai/gsm8k
+       based on Qwen3-0.6B."
+
+# Model generates responses and receives rewards
+# Learning from verifiable outcomes
+# Particularly effective for reasoning tasks
+
+# The agent configures:
+# - Reward function based on answer correctness
+# - Multiple response sampling
+# - Relative ranking within groups`,
+  },
+];
+
+const frameworksExample = [
+  {
+    language: 'yaml',
+    label: 'Axolotl Config',
+    code: `# config.yaml - Axolotl configuration
+base_model: Qwen/Qwen2.5-7B-Instruct
+model_type: AutoModelForCausalLM
+tokenizer_type: AutoTokenizer
+
+# Dataset
+datasets:
+  - path: my-org/training-data
+    type: chat_template
+    chat_template: chatml
+
+# LoRA configuration
+adapter: lora
+lora_r: 32
+lora_alpha: 64
+lora_dropout: 0.05
+lora_target_linear: true
+
+# Training parameters
+sequence_len: 4096
+micro_batch_size: 2
+gradient_accumulation_steps: 4
+num_epochs: 3
+learning_rate: 2e-4
+lr_scheduler: cosine
+warmup_ratio: 0.1
+
+# Optimization
+bf16: true
+flash_attention: true
+gradient_checkpointing: true
+
+# Output
+output_dir: ./outputs/qwen-finetuned
+hub_model_id: username/qwen-finetuned
+push_to_hub: true`,
+  },
+  {
+    language: 'bash',
+    label: 'LLaMA-Factory CLI',
+    code: `# LLaMA-Factory - zero-code fine-tuning
+
+# Install
+pip install llamafactory
+
+# Launch web UI for no-code training
+llamafactory-cli webui
+
+# Or use CLI with YAML config
+llamafactory-cli train \\
+    --model_name_or_path Qwen/Qwen2.5-7B-Instruct \\
+    --dataset my_dataset \\
+    --finetuning_type lora \\
+    --lora_rank 32 \\
+    --output_dir ./outputs \\
+    --per_device_train_batch_size 2 \\
+    --gradient_accumulation_steps 4 \\
+    --num_train_epochs 3 \\
+    --learning_rate 2e-4 \\
+    --bf16 true
+
+# Export to GGUF for local deployment
+llamafactory-cli export \\
+    --model_name_or_path ./outputs \\
+    --export_quantization_bit 4 \\
+    --export_dir ./gguf-output`,
+  },
+  {
+    language: 'python',
+    label: 'Unsloth (2x faster)',
+    code: `from unsloth import FastLanguageModel
+import torch
+
+# Load model with 4-bit quantization
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Qwen2.5-7B-Instruct-bnb-4bit",
+    max_seq_length=4096,
+    dtype=None,  # Auto-detect
+    load_in_4bit=True,
+)
+
+# Add LoRA adapters (2x faster than standard)
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=32,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    lora_alpha=64,
+    lora_dropout=0,
+    bias="none",
+    use_gradient_checkpointing="unsloth",  # 30% less VRAM
+    random_state=42,
+)
+
+# Train with HuggingFace Trainer
+from trl import SFTTrainer
+from transformers import TrainingArguments
+
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=dataset,
+    args=TrainingArguments(
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        warmup_steps=100,
+        num_train_epochs=3,
+        learning_rate=2e-4,
+        fp16=not torch.cuda.is_bf16_supported(),
+        bf16=torch.cuda.is_bf16_supported(),
+        output_dir="outputs",
+    ),
+)
+
+trainer.train()
+
+# Save and convert to GGUF
+model.save_pretrained_gguf(
+    "outputs-gguf",
+    tokenizer,
+    quantization_method="q4_k_m"
+)`,
+  },
+];
+
+const workflowExample = [
+  {
+    language: 'pseudo',
+    label: 'End-to-End Workflow',
+    code: `# Complete agent-assisted fine-tuning workflow
+
+# Step 1: Dataset Validation (runs on CPU - no cost)
+User: "Check if my-org/conversation-data works for SFT training."
+
+Agent Response:
+  Dataset validation for my-org/conversation-data:
+
+  SFT: READY
+    Found 'messages' column with conversation format
+
+  DPO: INCOMPATIBLE
+    Missing 'chosen' and 'rejected' columns
+
+# Step 2: Test Run (quick validation)
+User: "Do a quick test run to SFT Qwen-0.6B with 100 examples."
+
+Agent Response:
+  Configuration:
+  - Hardware: t4-small (~$0.75/hour)
+  - Estimated time: ~5 minutes
+  - Estimated cost: ~$0.10
+
+  Submitting test job...
+  Job ID: test-abc123
+  Monitor: https://huggingface.co/jobs/username/test-abc123
+
+# Step 3: Production Training
+User: "Looks good! Run full training with 3 epochs."
+
+Agent Response:
+  Configuration:
+  - Hardware: t4-medium (~$1.50/hour)
+  - Estimated time: ~2 hours
+  - Estimated cost: ~$3.00
+  - Checkpoints: Every 500 steps
+
+  Job submitted: prod-xyz789
+
+# Step 4: Monitor Progress
+User: "How's my training job doing?"
+
+Agent Response:
+  Job: prod-xyz789
+  Status: Running (step 1500/3000)
+  Training loss: 1.23 -> 0.45
+  Learning rate: 1.8e-4
+  ETA: ~45 minutes
+
+# Step 5: Deploy Locally
+User: "Training complete! Convert to GGUF Q4_K_M and push to Hub."
+
+Agent Response:
+  Converting to GGUF...
+  Quantization: Q4_K_M (best size/quality balance)
+  Pushed to: username/qwen-finetuned-gguf
+
+  Run locally:
+  llama-server -hf username/qwen-finetuned-gguf:Q4_K_M`,
+  },
+];
+---
+
+<BaseLayout
+  title="Agent-Assisted Fine-Tuning"
+  description="Using coding agents to automate LLM fine-tuning workflows via natural language"
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Agent-Assisted Fine-Tuning
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        Using coding agents like Claude Code and OpenAI Codex to automate the entire LLM fine-tuning workflow&mdash;from GPU selection to model deployment&mdash;through natural language instructions.
+      </p>
+    </header>
+
+    <!-- Overview -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Why Agent-Assisted Fine-Tuning?
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Fine-tuning LLMs traditionally requires deep MLOps expertise: selecting hardware, configuring training scripts, managing datasets, monitoring jobs, and deploying models. Coding agents can now handle this entire workflow autonomously, making custom model training accessible to developers without ML infrastructure experience.
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Automatic Hardware Selection</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Agent picks optimal GPU based on model size, training method, and budget</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Dataset Validation</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Pre-flight checks on CPU before incurring GPU costs</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Job Orchestration</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Submit, monitor, and manage training runs via conversation</p>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">Local Deployment</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">Convert to GGUF and run with llama.cpp automatically</p>
+        </div>
+      </div>
+
+      <Callout type="info" title="Real-World Impact">
+        Teams report spending $20-30 total for multiple training runs including failed experiments&mdash;cheaper than one hour of ML consulting. The agent handles hardware selection, job orchestration, and monitoring, removing friction from the fine-tuning process.
+      </Callout>
+    </section>
+
+    <!-- Architecture -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Architecture
+      </h2>
+
+      <Diagram title="Agent-Assisted Fine-Tuning Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                      CODING AGENT                                │
+│              (Claude Code / Codex / Gemini CLI)                  │
+│                                                                  │
+│  User: "Fine-tune Qwen-7B on my customer support data"          │
+│                                                                  │
+│  Agent Actions:                                                  │
+│  1. Validate dataset format                                      │
+│  2. Select hardware (a10g-large for 7B + LoRA)                  │
+│  3. Generate training configuration                              │
+│  4. Submit job to compute platform                               │
+│  5. Monitor progress and report status                           │
+│  6. Convert to GGUF for local deployment                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Skills / Plugins
+                              │
+         ┌────────────────────┼────────────────────┐
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  Hugging Face   │  │    Unsloth      │  │   Local LLM     │
+│     Jobs        │  │                 │  │  (llama.cpp)    │
+│                 │  │                 │  │                 │
+│ - Managed GPU   │  │ - 2x faster     │  │ - Private data  │
+│ - Auto scaling  │  │ - 30% less VRAM │  │ - No API costs  │
+│ - Trackio logs  │  │ - GGUF export   │  │ - Offline use   │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+         │                    │                    │
+         └────────────────────┼────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  Fine-Tuned     │
+                    │     Model       │
+                    │                 │
+                    │ • HF Hub        │
+                    │ • GGUF local    │
+                    │ • API endpoint  │
+                    └─────────────────┘`}
+      </Diagram>
+    </section>
+
+    <!-- Hugging Face Skills -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Hugging Face Skills
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The <code>hf-llm-trainer</code> skill teaches coding agents everything needed for fine-tuning: which GPU to pick, how to configure training, when to use LoRA vs full fine-tuning, and how to handle the dozens of decisions in a successful training run.
+      </p>
+
+      <CodeBlock tabs={hfSkillsExample} title="Hugging Face Skills Setup" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Hardware & Cost Guide
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Model Size</th>
+            <th>Recommended GPU</th>
+            <th>Training Time</th>
+            <th>Estimated Cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>&lt;1B</td>
+            <td>t4-small</td>
+            <td>Minutes</td>
+            <td>$1-2</td>
+          </tr>
+          <tr>
+            <td>1-3B</td>
+            <td>t4-medium / a10g-small</td>
+            <td>Hours</td>
+            <td>$5-15</td>
+          </tr>
+          <tr>
+            <td>3-7B</td>
+            <td>a10g-large (LoRA)</td>
+            <td>Hours</td>
+            <td>$15-40</td>
+          </tr>
+          <tr>
+            <td>7-13B</td>
+            <td>a100-large (LoRA)</td>
+            <td>Hours</td>
+            <td>$40-100</td>
+          </tr>
+          <tr>
+            <td>70B+</td>
+            <td>Multi-GPU / QLoRA</td>
+            <td>Many hours</td>
+            <td>$100+</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="tip" title="Cost Optimization">
+        Start with small test runs (100 examples) to validate your workflow before committing to full training. The agent automatically suggests appropriate hardware to balance cost and performance.
+      </Callout>
+    </section>
+
+    <!-- Training Methods -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Training Methods
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Coding agents support multiple training methods, automatically selecting the best approach based on your dataset and goals:
+      </p>
+
+      <CodeBlock tabs={trainingMethodsExample} title="Training Methods" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        When to Use Each Method
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Method</th>
+            <th>Best For</th>
+            <th>Dataset Requirements</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>SFT</strong></td>
+            <td>Teaching specific behaviors, domain adaptation</td>
+            <td><code>messages</code> column with conversations</td>
+          </tr>
+          <tr>
+            <td><strong>DPO</strong></td>
+            <td>Alignment, preference learning, safety</td>
+            <td><code>chosen</code> and <code>rejected</code> columns</td>
+          </tr>
+          <tr>
+            <td><strong>GRPO</strong></td>
+            <td>Math, code, verifiable reasoning tasks</td>
+            <td>Tasks with programmatic success criteria</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="info" title="Multi-Stage Pipelines">
+        For best results, combine methods: SFT to teach behaviors, then DPO for alignment, then GRPO for reasoning. The agent can orchestrate multi-stage pipelines automatically.
+      </Callout>
+    </section>
+
+    <!-- Local LLM Setup -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Running with Local LLMs
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        For private data or to avoid API costs, connect coding agents to local LLMs via llama.cpp's OpenAI-compatible API:
+      </p>
+
+      <CodeBlock tabs={localLLMExample} title="Local LLM Setup" />
+
+      <div class="mt-6 space-y-4">
+        <Callout type="warning" title="Model Requirements">
+          Local models (20B-80B parameters) work well for orchestration tasks but may struggle with complex multi-file code generation where frontier models excel. Best for: summarization, Q&A, working with sensitive documents.
+        </Callout>
+
+        <Callout type="tip" title="Recommended Models">
+          For local fine-tuning orchestration, try GLM-4.7-Flash (30B MoE, optimized for coding), Qwen2.5-Coder (various sizes), or DeepSeek-Coder. Use Q4_K_M quantization for best size/quality balance.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Fine-Tuning Frameworks -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Fine-Tuning Frameworks
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Agents can drive various fine-tuning frameworks. Here are the most popular options:
+      </p>
+
+      <CodeBlock tabs={frameworksExample} title="Fine-Tuning Frameworks" />
+
+      <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3 mt-6">
+        Framework Comparison
+      </h3>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Framework</th>
+            <th>Best For</th>
+            <th>Key Features</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Axolotl</strong></td>
+            <td>Multi-GPU, production workloads</td>
+            <td>YAML config, DeepSpeed, FSDP, extensive model support</td>
+          </tr>
+          <tr>
+            <td><strong>LLaMA-Factory</strong></td>
+            <td>Beginners, quick experiments</td>
+            <td>Web UI, zero-code option, 100+ models supported</td>
+          </tr>
+          <tr>
+            <td><strong>Unsloth</strong></td>
+            <td>Speed and efficiency</td>
+            <td>2x faster training, 30% less VRAM, native GGUF export</td>
+          </tr>
+          <tr>
+            <td><strong>HF TRL</strong></td>
+            <td>Maximum flexibility</td>
+            <td>Official HF library, RLHF support, research-grade</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- LoRA and QLoRA -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        LoRA and QLoRA
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Parameter-efficient fine-tuning methods that make training large models feasible on consumer hardware:
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-4 mb-6">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">LoRA (Low-Rank Adaptation)</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-2">Trains small adapter layers instead of full model weights</p>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>Typically r=32, alpha=64</li>
+            <li>~1% of original parameters</li>
+            <li>Preserves base model quality</li>
+            <li>Multiple adapters per base model</li>
+          </ul>
+        </div>
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">QLoRA (Quantized LoRA)</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-2">Combines LoRA with 4-bit quantization</p>
+          <ul class="text-sm text-slate-600 dark:text-slate-400 space-y-1">
+            <li>70B model on single 24GB GPU</li>
+            <li>4-bit NormalFloat quantization</li>
+            <li>Double quantization for memory</li>
+            <li>Paged optimizers for spikes</li>
+          </ul>
+        </div>
+      </div>
+
+      <Callout type="info" title="When to Use Which">
+        Use <strong>LoRA</strong> for 95% of production fine-tuning needs&mdash;it's efficient and maintains quality. Use <strong>QLoRA</strong> when VRAM is limited or training very large models. Use <strong>full fine-tuning</strong> only when maximum accuracy is critical and resources are abundant.
+      </Callout>
+    </section>
+
+    <!-- End-to-End Workflow -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        End-to-End Workflow
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Here's a complete agent-assisted fine-tuning workflow from dataset validation to local deployment:
+      </p>
+
+      <CodeBlock tabs={workflowExample} title="Complete Workflow" />
+    </section>
+
+    <!-- Compatible Agents -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Compatible Coding Agents
+      </h2>
+
+      <Table>
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>HF Skills Support</th>
+            <th>Local LLM Support</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Claude Code</strong></td>
+            <td>Yes (plugin)</td>
+            <td>Yes (ANTHROPIC_BASE_URL)</td>
+            <td>Most capable, 90% of its own code written by itself</td>
+          </tr>
+          <tr>
+            <td><strong>OpenAI Codex</strong></td>
+            <td>Yes (instructions)</td>
+            <td>Yes (config.toml)</td>
+            <td>Good for OpenAI ecosystem users</td>
+          </tr>
+          <tr>
+            <td><strong>Gemini CLI</strong></td>
+            <td>Yes (extensions)</td>
+            <td>Limited</td>
+            <td>Google Cloud integration</td>
+          </tr>
+          <tr>
+            <td><strong>Aider</strong></td>
+            <td>Manual</td>
+            <td>Yes</td>
+            <td>Git-focused, good for code changes</td>
+          </tr>
+          <tr>
+            <td><strong>Anon Kode</strong></td>
+            <td>Manual</td>
+            <td>Yes (native)</td>
+            <td>LLM-agnostic Claude Code fork</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Best Practices -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Best Practices
+      </h2>
+
+      <div class="space-y-4">
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">1. Start Small</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Run test jobs with 100 examples before full training. Validate dataset format on CPU first. This catches issues before incurring GPU costs.
+          </p>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">2. Use Checkpoints</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Save checkpoints every 500 steps for long runs. This allows recovery from failures and enables evaluation at different training stages.
+          </p>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">3. Monitor Loss Curves</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Watch training loss via Trackio or W&B. Flat loss means the model isn't learning; spiking loss indicates issues with learning rate or data.
+          </p>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">4. Version Your Data</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Push datasets to Hugging Face Hub with version tags. This ensures reproducibility and makes it easy to iterate on data quality.
+          </p>
+        </div>
+
+        <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+          <h4 class="font-semibold text-slate-900 dark:text-white mb-2">5. Test Before Deploy</h4>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Run the fine-tuned model through your evaluation suite before production. Use the agent to help write and run evaluation scripts.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Resources -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Resources
+      </h2>
+
+      <div class="space-y-2 text-slate-600 dark:text-slate-300">
+        <p><a href="https://huggingface.co/blog/hf-skills-training" class="text-primary-600 dark:text-primary-400 hover:underline">Hugging Face Skills for Training</a> - Official guide to agent-assisted fine-tuning</p>
+        <p><a href="https://unsloth.ai/docs/basics/claude-codex" class="text-primary-600 dark:text-primary-400 hover:underline">Unsloth + Claude Code Guide</a> - Local LLM fine-tuning setup</p>
+        <p><a href="https://github.com/axolotl-ai-cloud/axolotl" class="text-primary-600 dark:text-primary-400 hover:underline">Axolotl Framework</a> - Production-grade fine-tuning</p>
+        <p><a href="https://github.com/hiyouga/LLaMA-Factory" class="text-primary-600 dark:text-primary-400 hover:underline">LLaMA-Factory</a> - Zero-code fine-tuning with web UI</p>
+        <p><a href="https://github.com/unslothai/unsloth" class="text-primary-600 dark:text-primary-400 hover:underline">Unsloth</a> - 2x faster fine-tuning</p>
+      </div>
+    </section>
+
+    <!-- Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/topics/learning-adaptation/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Learning & Adaptation</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            How agents improve without retraining
+          </p>
+        </a>
+        <a
+          href="/topics/tool-use/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            How agents execute training commands
+          </p>
+        </a>
+        <a
+          href="/topics/mcp/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Model Context Protocol (MCP)</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Skills and plugins for agent capabilities
+          </p>
+        </a>
+        <a
+          href="/topics/evaluation/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Evaluation & Metrics</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Measuring fine-tuned model performance
+          </p>
+        </a>
+      </div>
+    </section>
+  </article>
+</BaseLayout>
