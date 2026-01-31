@@ -48,35 +48,46 @@ The site automatically:
                                      │
                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                       WEEKLY DEEP DIVE (GitHub Actions)                      │
+│                    WEEKLY DEEP DIVE - TIERED LLM PROCESSING                  │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
-│  ANALYST AGENT - Deep processing of top discoveries                         │
+│  TIER 1: BULK PROCESSING (Together API - Cheap Model)                       │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Model: Llama 3.3 70B or DeepSeek-R1 via Together API               │   │
+│  │  Cost: ~$0.20/million tokens (vs Claude $3-15/million)              │   │
 │  │                                                                     │   │
-│  │  1. Rank week's findings by relevance + novelty                    │   │
-│  │  2. Select top 10 items for deep dive                              │   │
-│  │  3. Process by type:                                               │   │
+│  │  Process ALL week's findings (~30-50 items):                        │   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐                 │   │
+│  │  │   PAPERS    │  │  ARTICLES   │  │   VIDEOS    │                 │   │
+│  │  ├─────────────┤  ├─────────────┤  ├─────────────┤                 │   │
+│  │  │ Extract:    │  │ Extract:    │  │ Extract:    │                 │   │
+│  │  │ • Summary   │  │ • Summary   │  │ • Summary   │                 │   │
+│  │  │ • Key ideas │  │ • Key ideas │  │ • Key ideas │                 │   │
+│  │  │ • Relevance │  │ • Relevance │  │ • Relevance │                 │   │
+│  │  │   score 1-10│  │   score 1-10│  │   score 1-10│                 │   │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘                 │   │
 │  │                                                                     │   │
-│  │     ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │   │
-│  │     │   PAPERS    │  │  ARTICLES   │  │   VIDEOS    │              │   │
-│  │     ├─────────────┤  ├─────────────┤  ├─────────────┤              │   │
-│  │     │ arxiv lib   │  │ Tavily      │  │ youtube-    │              │   │
-│  │     │ pypdf       │  │ extract     │  │ transcript  │              │   │
-│  │     │ full text   │  │ full text   │  │ -api        │              │   │
-│  │     ├─────────────┤  ├─────────────┤  ├─────────────┤              │   │
-│  │     │ Claude:     │  │ Claude:     │  │ Claude:     │              │   │
-│  │     │ - Summary   │  │ - Summary   │  │ - Summary   │              │   │
-│  │     │ - Key ideas │  │ - Key ideas │  │ - Key ideas │              │   │
-│  │     │ - Code      │  │ - Tools     │  │ - Demos     │              │   │
-│  │     │   snippets  │  │   mentioned │  │   shown     │              │   │
-│  │     └─────────────┘  └─────────────┘  └─────────────┘              │   │
+│  │  Output: Ranked list with scores + rough summaries                  │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    │                                        │
+│                          Filter: score >= 7                                 │
+│                                    │                                        │
+│                                    ▼                                        │
+│  TIER 2: QUALITY ANALYSIS (Claude - Premium Model)                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Model: Claude Sonnet/Opus                                          │   │
+│  │  Process only TOP 5-10 high-ranked items                            │   │
+│  │                                                                     │   │
+│  │  Deep analysis:                                                     │   │
+│  │  • Detailed summaries with nuance                                   │   │
+│  │  • Code extraction and reconstruction                               │   │
+│  │  • Site integration suggestions                                     │   │
+│  │  • Quality writing for content updates                              │   │
 │  │                                                                     │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 │                                    │                                        │
 │                                    ▼                                        │
 │                    src/data/deep-dives/YYYY-WW.json                         │
-│                    (full analysis, extracted knowledge)                     │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      │
@@ -97,6 +108,131 @@ The site automatically:
 │  └──────────────────────────────────────────────────────────────────────┘  │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Tiered LLM Strategy
+
+The key cost optimization: use **cheap open-source models** for bulk processing, **Claude only for the best content**.
+
+### Why This Works
+
+| Task | Cheap Model (Together) | Premium Model (Claude) |
+|------|------------------------|------------------------|
+| Summarization | ✅ Good enough | Overkill |
+| Relevance scoring | ✅ Good enough | Overkill |
+| Code extraction | ⚠️ Decent | ✅ Better |
+| Nuanced analysis | ❌ Misses subtlety | ✅ Required |
+| Content writing | ❌ Generic | ✅ Required |
+
+### Model Options (Together API)
+
+| Model | Cost (per 1M tokens) | Quality | Best For |
+|-------|---------------------|---------|----------|
+| **Llama 3.3 70B** | $0.88 in / $0.88 out | Very good | General analysis |
+| **DeepSeek-R1** | $0.55 in / $2.19 out | Excellent reasoning | Complex papers |
+| **Qwen 2.5 72B** | $0.90 in / $0.90 out | Very good | Multilingual |
+| **Mistral Large** | $2.00 in / $6.00 out | Great | Fallback |
+
+**Recommendation:** Llama 3.3 70B for bulk processing - best quality/cost ratio.
+
+### Together API Integration
+
+```python
+from together import Together
+
+client = Together(api_key=os.environ["TOGETHER_API_KEY"])
+
+def bulk_analyze(content: str, content_type: str) -> dict:
+    """Tier 1: Cheap model for initial analysis and ranking."""
+
+    response = client.chat.completions.create(
+        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        messages=[{
+            "role": "user",
+            "content": f"""Analyze this {content_type} about AI agents.
+
+{content[:15000]}  # Truncate to manage costs
+
+Return JSON:
+{{
+    "summary": "2-3 sentence summary",
+    "key_ideas": ["idea1", "idea2", "idea3"],
+    "relevance_score": 1-10,
+    "topics": ["topic1", "topic2"],
+    "has_code": true/false,
+    "novelty": "high/medium/low",
+    "recommend_deep_dive": true/false
+}}"""
+        }],
+        temperature=0.3,
+        max_tokens=500
+    )
+
+    return json.loads(response.choices[0].message.content)
+
+
+def deep_analyze_with_claude(content: str, bulk_analysis: dict) -> dict:
+    """Tier 2: Claude for high-quality analysis of top content."""
+
+    response = anthropic.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=2000,
+        messages=[{
+            "role": "user",
+            "content": f"""You're analyzing high-value content for an AI agents knowledge base.
+
+Previous analysis flagged this as highly relevant:
+{json.dumps(bulk_analysis, indent=2)}
+
+Full content:
+{content}
+
+Provide detailed analysis:
+1. **Key Contribution**: What's genuinely new here?
+2. **Technical Details**: Extract any code, algorithms, or techniques
+3. **Practical Application**: How can agent builders use this?
+4. **Site Integration**: Which topic pages should be updated?
+5. **Content Draft**: Write 2-3 paragraphs ready to add to our site
+"""
+        }]
+    )
+
+    return parse_claude_response(response)
+```
+
+### Processing Pipeline
+
+```python
+def weekly_deep_dive():
+    # 1. Collect week's findings
+    findings = collect_week_findings()  # ~30-50 items
+
+    # 2. TIER 1: Bulk process ALL with cheap model
+    bulk_results = []
+    for item in findings:
+        content = fetch_full_content(item)  # PDF, transcript, article
+        analysis = bulk_analyze(content, item['type'])
+        bulk_results.append({**item, **analysis})
+
+    # Cost: ~50 items × 10K tokens × $0.88/1M = ~$0.44
+
+    # 3. Filter to high-value items
+    top_items = [r for r in bulk_results if r['relevance_score'] >= 7]
+    top_items = sorted(top_items, key=lambda x: x['relevance_score'], reverse=True)[:10]
+
+    # 4. TIER 2: Deep dive with Claude on TOP items only
+    deep_results = []
+    for item in top_items:
+        content = fetch_full_content(item)
+        deep_analysis = deep_analyze_with_claude(content, item)
+        deep_results.append({**item, 'deep_dive': deep_analysis})
+
+    # Cost: ~10 items × 15K tokens × $3/1M = ~$0.45
+
+    # 5. Save results
+    save_deep_dive(deep_results)
+
+    # Total weekly cost: ~$0.90 (vs ~$4.50 with Claude-only)
 ```
 
 ## Content Sources
@@ -418,6 +554,7 @@ This paper introduces a novel approach that directly relates to our memory topic
 ```txt
 # requirements.txt
 anthropic>=0.18.0
+together>=1.0.0
 tavily-python>=0.3.0
 arxiv>=2.1.0
 pypdf>=4.0.0
@@ -429,7 +566,8 @@ requests>=2.31.0
 
 | Secret | Purpose |
 |--------|---------|
-| `ANTHROPIC_API_KEY` | Claude API for analysis |
+| `ANTHROPIC_API_KEY` | Claude API for premium analysis (Tier 2) |
+| `TOGETHER_API_KEY` | Together API for bulk processing (Tier 1) |
 | `TAVILY_API_KEY` | Web search and extraction |
 | `GITHUB_TOKEN` | Auto-provided for PRs |
 
@@ -451,15 +589,41 @@ on:
 
 ## Cost Estimate
 
+### With Tiered LLM Strategy (Recommended)
+
 | Service | Daily | Weekly | Monthly |
 |---------|-------|--------|---------|
 | **Tavily** | $0.05 | - | ~$1.50 |
-| **Claude (scout)** | $0.10 | - | ~$3 |
-| **Claude (deep dive)** | - | $3-5 | ~$15-20 |
+| **Together API (Tier 1 bulk)** | - | $0.50 | ~$2 |
+| **Claude (Tier 2 premium)** | - | $0.50 | ~$2 |
 | **Vercel** | - | - | Free |
-| **Total** | | | **~$20-25/mo** |
+| **Total** | | | **~$6-8/mo** |
 
-With optional podcast transcription (Whisper): **~$30-40/mo**
+### Cost Breakdown
+
+```
+Weekly processing:
+├── Tier 1: 50 items × 10K tokens × $0.88/1M = $0.44
+├── Tier 2: 10 items × 15K tokens × $3/1M   = $0.45
+└── Tavily: 35 queries × $0.005             = $0.18
+                                      Total = ~$1.07/week
+```
+
+### Comparison: Old vs New
+
+| Approach | Monthly Cost | Quality |
+|----------|--------------|---------|
+| Claude-only (old plan) | $20-25 | Overkill for bulk |
+| **Tiered (new plan)** | **$6-8** | Right model for each task |
+| Together-only | $3-4 | Misses nuance on best content |
+
+### With Optional Add-ons
+
+| Add-on | Additional Cost |
+|--------|-----------------|
+| Podcast transcription (Whisper) | +$5-10/mo |
+| More deep dives (20/week) | +$2/mo |
+| Daily Claude summaries | +$3/mo |
 
 ## File Structure
 
@@ -528,21 +692,32 @@ agent-engineering/
 
 ## Getting Started
 
-1. **Get Tavily API Key**
+1. **Get API Keys**
    ```bash
-   # Sign up at https://tavily.com
-   # Add to GitHub Secrets as TAVILY_API_KEY
+   # Tavily - https://tavily.com (search)
+   # Together - https://together.ai (cheap bulk LLM)
+   # Anthropic - https://console.anthropic.com (premium LLM)
+
+   # Add to GitHub Secrets:
+   # - TAVILY_API_KEY
+   # - TOGETHER_API_KEY
+   # - ANTHROPIC_API_KEY
    ```
 
 2. **Test Scout Locally**
    ```bash
    export ANTHROPIC_API_KEY=your-key
+   export TOGETHER_API_KEY=your-key
    export TAVILY_API_KEY=your-key
    python scripts/scout-agent.py --dry-run
    ```
 
-3. **Test Deep Dive Locally**
+3. **Test Tiered Deep Dive Locally**
    ```bash
+   # Test Tier 1 only (bulk processing)
+   python scripts/deep-dive-agent.py --tier1-only --limit 5
+
+   # Test full pipeline
    python scripts/deep-dive-agent.py --limit 2 --dry-run
    ```
 
@@ -563,6 +738,8 @@ agent-engineering/
 
 ## References
 
+- [Together API Docs](https://docs.together.ai/)
+- [Together Models List](https://docs.together.ai/docs/inference-models)
 - [Tavily API Docs](https://docs.tavily.com/)
 - [arXiv API](https://info.arxiv.org/help/api/index.html)
 - [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api)
