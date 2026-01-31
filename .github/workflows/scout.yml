@@ -1,0 +1,96 @@
+name: Scout Agent
+
+on:
+  schedule:
+    # Run daily at 7:00 UTC
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no API calls)'
+        required: false
+        default: 'false'
+        type: boolean
+      sources:
+        description: 'Comma-separated sources (tavily,arxiv,youtube,github)'
+        required: false
+        default: 'tavily,arxiv,youtube,github'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run Scout Agent
+        env:
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          TOGETHER_API_KEY: ${{ secrets.TOGETHER_API_KEY }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_SOURCES: ${{ inputs.sources }}
+        run: |
+          echo "Starting Scout Agent..."
+
+          # Build command with optional flags
+          ARGS=""
+
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "Running in dry-run mode"
+          else
+            # Validate API keys only in non-dry-run mode
+            if [ -z "$TAVILY_API_KEY" ]; then
+              echo "::warning::TAVILY_API_KEY is not set - Tavily source will fail"
+            fi
+            if [ -z "$TOGETHER_API_KEY" ]; then
+              echo "::error::TOGETHER_API_KEY is empty or not set"
+              echo "Please check: Repository Settings > Secrets and variables > Actions > Repository secrets"
+              exit 1
+            fi
+          fi
+
+          # Validate sources input contains only allowed characters
+          if [ -n "$INPUT_SOURCES" ]; then
+            if echo "$INPUT_SOURCES" | grep -qE '^[a-z,]+$'; then
+              ARGS="$ARGS --sources $INPUT_SOURCES"
+            else
+              echo "::error::Invalid sources input - must contain only lowercase letters and commas"
+              exit 1
+            fi
+          fi
+
+          echo "Running: python scripts/scout-agent.py $ARGS"
+          python scripts/scout-agent.py $ARGS
+          echo "Scout Agent completed."
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet src/data/research/ 2>/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/research/
+          git commit -m "Scout findings $(date +%Y-%m-%d)"
+          git push

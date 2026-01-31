@@ -1,0 +1,104 @@
+name: Update Resources
+
+on:
+  # Run after deep-dive workflow completes
+  workflow_run:
+    workflows: ["Deep Dive Agent"]
+    types:
+      - completed
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (no changes saved)'
+        required: false
+        default: 'false'
+        type: boolean
+      weeks:
+        description: 'Number of weeks of deep dives to process'
+        required: false
+        default: '4'
+        type: string
+      min_score:
+        description: 'Minimum score to include resources'
+        required: false
+        default: '7'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  update-resources:
+    runs-on: ubuntu-latest
+    # Only run if deep-dive succeeded (for workflow_run trigger)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run Update Resources
+        env:
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_WEEKS: ${{ inputs.weeks }}
+          INPUT_MIN_SCORE: ${{ inputs.min_score }}
+        run: |
+          echo "Starting Update Resources..."
+
+          ARGS=""
+
+          if [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "Running in dry-run mode"
+          fi
+
+          # Validate weeks input
+          if [ -n "$INPUT_WEEKS" ]; then
+            if echo "$INPUT_WEEKS" | grep -qE '^[0-9]+$'; then
+              ARGS="$ARGS --weeks $INPUT_WEEKS"
+            else
+              echo "::error::Invalid weeks - must be a number"
+              exit 1
+            fi
+          fi
+
+          # Validate min_score input
+          if [ -n "$INPUT_MIN_SCORE" ]; then
+            if echo "$INPUT_MIN_SCORE" | grep -qE '^[0-9]+$'; then
+              ARGS="$ARGS --min-score $INPUT_MIN_SCORE"
+            else
+              echo "::error::Invalid min_score - must be a number"
+              exit 1
+            fi
+          fi
+
+          echo "Running: python scripts/update-resources.py $ARGS"
+          python scripts/update-resources.py $ARGS
+          echo "Update Resources completed."
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet src/data/resources.json 2>/dev/null; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data/resources.json
+          git commit -m "Update auto-discovered resources $(date +%Y-%m-%d)"
+          git push

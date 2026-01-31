@@ -293,63 +293,53 @@ response = requests.get(
 
 ## Implementation Phases
 
-### Phase 1: Scout Agent (Week 1-2)
+### Progress Summary
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| Phase 1: Scout Agent | ✅ Complete | Daily discovery across 4 sources |
+| Phase 2: Deep Dive Engine | ✅ Complete | Weekly tiered LLM analysis |
+| Phase 3: Auto-Update Resources | ✅ Complete | Extract and display discovered resources |
+| Phase 4: Content Suggestions | 📋 Planned | Generate PRs for topic page updates |
+
+---
+
+### Phase 1: Scout Agent (Week 1-2) - COMPLETED
 
 **Goal:** Daily discovery across all sources
 
-**New Script:** `scripts/scout-agent.py`
-```python
-"""
-Daily scout that discovers new content across sources.
-Runs in ~2 minutes, costs ~$0.10/day
-"""
+**Status:** Implemented and tested.
 
-from tavily import TavilyClient
-import arxiv
-from youtube_transcript_api import YouTubeTranscriptApi
-import json
-from datetime import datetime
-
-def scout():
-    findings = []
-
-    # 1. Tavily web search
-    tavily = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
-    for query in QUERIES:
-        results = tavily.search(query, max_results=5)
-        findings.extend(process_tavily(results))
-
-    # 2. arXiv papers (last 24h)
-    findings.extend(fetch_arxiv_recent())
-
-    # 3. YouTube (check subscribed channels)
-    findings.extend(check_youtube_channels())
-
-    # 4. GitHub trending
-    findings.extend(fetch_github_trending())
-
-    # 5. Score and dedupe
-    scored = score_relevance(findings)
-
-    # 6. Save
-    save_research(scored)
-
-QUERIES = [
-    "AI agents framework 2025",
-    "MCP model context protocol",
-    "LangGraph tutorial",
-    "autonomous agents LLM",
-    "agent orchestration patterns",
-]
-```
+**Files Created:**
+- `scripts/scout-agent.py` - Main scout script with 4 source fetchers
+- `.github/workflows/scout.yml` - Daily workflow (7am UTC)
+- `src/data/research/.gitkeep` - Output directory
 
 **Tasks:**
-- [ ] Set up Tavily API integration
-- [ ] Add arXiv paper discovery
-- [ ] Add YouTube channel monitoring
-- [ ] Add GitHub trending detection
-- [ ] Create relevance scoring with Claude
-- [ ] Store daily findings in `src/data/research/`
+- [x] Set up Tavily API integration (8 search queries, 5 results each)
+- [x] Add arXiv paper discovery (cs.AI, cs.CL, cs.LG categories, last 3 days)
+- [x] Add YouTube channel monitoring (RSS feeds from 3 channels)
+- [x] Add GitHub trending detection (5 topics, repos created in last 30 days)
+- [x] Create relevance scoring with Together API (GPT-OSS 120B)
+- [x] Store daily findings in `src/data/research/YYYY-MM-DD.json`
+
+**Usage:**
+```bash
+# Dry-run (no API calls)
+python scripts/scout-agent.py --dry-run
+
+# Specific sources only
+python scripts/scout-agent.py --sources arxiv,github
+
+# Full run (requires API keys)
+export TAVILY_API_KEY="tvly-xxx"
+export TOGETHER_API_KEY="xxx"
+python scripts/scout-agent.py
+```
+
+**Required GitHub Secrets:**
+- `TAVILY_API_KEY`
+- `TOGETHER_API_KEY`
 
 **Output Format:**
 ```json
@@ -389,75 +379,51 @@ QUERIES = [
 }
 ```
 
-### Phase 2: Deep Dive Engine (Week 3-4)
+### Phase 2: Deep Dive Engine (Week 3-4) - COMPLETED
 
 **Goal:** Weekly deep analysis of top discoveries
 
-**New Script:** `scripts/deep-dive-agent.py`
-```python
-"""
-Weekly deep dive into top content.
-Runs ~30 minutes, costs ~$2-5/week
-"""
+**Status:** Implemented and tested.
 
-def deep_dive():
-    # 1. Collect week's findings
-    week_findings = collect_week_findings()
-
-    # 2. Rank by priority
-    top_items = rank_for_deep_dive(week_findings, limit=10)
-
-    # 3. Process each item
-    analyses = []
-    for item in top_items:
-        if item['type'] == 'paper':
-            analysis = analyze_paper(item)
-        elif item['type'] == 'video':
-            analysis = analyze_video(item)
-        elif item['type'] == 'article':
-            analysis = analyze_article(item)
-        analyses.append(analysis)
-
-    # 4. Save deep dive results
-    save_deep_dive(analyses)
-
-def analyze_paper(item):
-    """Download PDF, extract text, analyze with Claude."""
-    pdf_path = download_arxiv_pdf(item['url'])
-    text = extract_pdf_text(pdf_path)
-
-    analysis = claude_analyze(text, prompt="""
-        Analyze this AI research paper. Extract:
-        1. Key contribution (2-3 sentences)
-        2. Novel techniques introduced
-        3. Relevant code/pseudocode
-        4. How this relates to: {SITE_TOPICS}
-        5. Practical applications for agent builders
-    """)
-    return analysis
-
-def analyze_video(item):
-    """Get transcript, analyze with Claude."""
-    transcript = get_youtube_transcript(item['url'])
-
-    analysis = claude_analyze(transcript, prompt="""
-        Analyze this video transcript about AI agents. Extract:
-        1. Main topic and key points
-        2. Tools/frameworks demonstrated
-        3. Code examples shown (reconstruct if described verbally)
-        4. Practical tips mentioned
-        5. Links/resources mentioned
-    """)
-    return analysis
-```
+**Files Created:**
+- `scripts/deep-dive-agent.py` - Main deep dive script with tiered LLM processing
+- `.github/workflows/deep-dive.yml` - Weekly workflow (Sunday 10am UTC)
+- `src/data/deep-dives/.gitkeep` - Output directory
 
 **Tasks:**
-- [ ] Create PDF text extraction pipeline
-- [ ] Create YouTube transcript pipeline
-- [ ] Create article full-text extraction
-- [ ] Design Claude analysis prompts
-- [ ] Implement priority ranking algorithm
-- [ ] Store deep dive results
+- [x] Create PDF text extraction pipeline (pypdf, first 20 pages, 15K char limit)
+- [x] Create YouTube transcript pipeline (youtube-transcript-api)
+- [x] Create article full-text extraction (Tavily extract API)
+- [x] Design Claude analysis prompts (key contribution, techniques, code snippets, site relevance)
+- [x] Implement priority ranking algorithm (relevance_score + deep_dive_priority + type boost)
+- [x] Store deep dive results in `src/data/deep-dives/YYYY-WNN.json`
+
+**Tiered Processing:**
+- **Tier 1 (Together API):** Bulk analyze ALL items with GPT-OSS 120B (~$0.50/1M tokens)
+- **Tier 2 (Claude):** Deep analyze TOP items (bulk_score >= 7) with Claude Sonnet
+
+**Usage:**
+```bash
+# Dry-run
+python scripts/deep-dive-agent.py --dry-run
+
+# Tier 1 only (bulk processing)
+python scripts/deep-dive-agent.py --tier1-only --limit 5
+
+# Full pipeline
+export TOGETHER_API_KEY="xxx"
+export ANTHROPIC_API_KEY="xxx"
+export TAVILY_API_KEY="xxx"
+python scripts/deep-dive-agent.py
+
+# Specific week
+python scripts/deep-dive-agent.py --week 2026-W05
+```
+
+**Required GitHub Secrets:**
+- `TOGETHER_API_KEY` (Tier 1)
+- `ANTHROPIC_API_KEY` (Tier 2)
+- `TAVILY_API_KEY` (article extraction)
 
 **Deep Dive Output Format:**
 ```json
@@ -502,15 +468,39 @@ def analyze_video(item):
 }
 ```
 
-### Phase 3: Auto-Update Resources (Week 5-6)
+### Phase 3: Auto-Update Resources (Week 5-6) - COMPLETED
 
 **Goal:** Automatically add new tools, papers, and links
 
+**Status:** Implemented and tested.
+
+**Files Created/Modified:**
+- `scripts/update-resources.py` - Extracts resources from deep dive analyses
+- `src/data/resources.json` - Auto-discovered resources data
+- `src/pages/resources/index.astro` - Updated to display auto-discovered resources
+- `.github/workflows/update-resources.yml` - Runs after deep-dive workflow
+
 **Tasks:**
-- [ ] Create `scripts/update-resources.py`
-- [ ] Parse existing resources to avoid duplicates
-- [ ] Auto-categorize (papers, tools, frameworks, tutorials)
-- [ ] Auto-commit with source attribution
+- [x] Create `scripts/update-resources.py`
+- [x] Parse existing resources to avoid duplicates (checks URLs + hardcoded foundational papers)
+- [x] Auto-categorize (papers, repos, tutorials, articles)
+- [x] Auto-commit with source attribution
+
+**Usage:**
+```bash
+# Dry-run
+python scripts/update-resources.py --dry-run
+
+# Custom options
+python scripts/update-resources.py --weeks 2 --min-score 8
+
+# Full run
+python scripts/update-resources.py
+```
+
+**Workflow Trigger:**
+- Automatically runs after "Deep Dive Agent" workflow completes
+- Can also be triggered manually
 
 ### Phase 4: Content Suggestions (Week 7-8)
 
@@ -552,14 +542,14 @@ This paper introduces a novel approach that directly relates to our memory topic
 ## Python Dependencies
 
 ```txt
-# requirements.txt
-anthropic>=0.18.0
-together>=1.0.0
-tavily-python>=0.3.0
-arxiv>=2.1.0
+# scripts/requirements.txt (current - all phases)
+anthropic>=0.40.0
+feedparser>=6.0.0
+httpx>=0.27.0
 pypdf>=4.0.0
-youtube-transcript-api>=0.6.0
-requests>=2.31.0
+tavily-python>=0.5.0
+together>=1.3.0
+youtube-transcript-api>=0.6.2
 ```
 
 ## GitHub Secrets Required
@@ -574,16 +564,23 @@ requests>=2.31.0
 ## Workflow Schedule
 
 ```yaml
-# .github/workflows/scout.yml
+# .github/workflows/scout.yml - Daily discovery
 on:
   schedule:
-    - cron: '0 8 * * *'  # Daily at 8am UTC
+    - cron: '0 7 * * *'  # Daily at 7am UTC
   workflow_dispatch:
 
-# .github/workflows/deep-dive.yml
+# .github/workflows/deep-dive.yml - Weekly analysis
 on:
   schedule:
     - cron: '0 10 * * 0'  # Weekly on Sunday at 10am UTC
+  workflow_dispatch:
+
+# .github/workflows/update-resources.yml - After deep-dive
+on:
+  workflow_run:
+    workflows: ["Deep Dive Agent"]
+    types: [completed]
   workflow_dispatch:
 ```
 
@@ -631,24 +628,28 @@ Weekly processing:
 agent-engineering/
 ├── .github/
 │   └── workflows/
-│       ├── update-news.yml         # Existing RSS
-│       ├── scout.yml               # Daily discovery
-│       ├── deep-dive.yml           # Weekly analysis
-│       └── content-update.yml      # Weekly PRs
+│       ├── update-news.yml         # Existing RSS feed updates
+│       ├── scout.yml               # Phase 1: Daily discovery ✓
+│       ├── deep-dive.yml           # Phase 2: Weekly analysis ✓
+│       ├── update-resources.yml    # Phase 3: Auto-update resources ✓
+│       └── content-update.yml      # Phase 4: Weekly PRs (TODO)
 ├── scripts/
 │   ├── update-news.py              # Existing
-│   ├── scout-agent.py              # Phase 1
-│   ├── deep-dive-agent.py          # Phase 2
-│   ├── update-resources.py         # Phase 3
-│   └── content-agent.py            # Phase 4
+│   ├── scout-agent.py              # Phase 1 ✓
+│   ├── deep-dive-agent.py          # Phase 2 ✓
+│   ├── update-resources.py         # Phase 3 ✓
+│   └── content-agent.py            # Phase 4 (TODO)
 ├── src/
-│   └── data/
-│       ├── news.json               # Existing
-│       ├── resources.json          # Auto-updated
-│       ├── research/               # Daily scout findings
-│       │   └── YYYY-MM-DD.json
-│       └── deep-dives/             # Weekly analyses
-│           └── YYYY-WW.json
+│   ├── data/
+│   │   ├── news.json               # Existing
+│   │   ├── resources.json          # Phase 3: Auto-discovered resources ✓
+│   │   ├── research/               # Phase 1: Daily scout findings ✓
+│   │   │   └── YYYY-MM-DD.json
+│   │   └── deep-dives/             # Phase 2: Weekly analyses ✓
+│   │       └── YYYY-WW.json
+│   └── pages/
+│       └── resources/
+│           └── index.astro         # Updated with "Recently Discovered" section ✓
 └── docs/
     └── AUTOMATED-KNOWLEDGE-BASE.md
 ```
