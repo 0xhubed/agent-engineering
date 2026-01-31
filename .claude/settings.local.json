@@ -25,7 +25,9 @@
       "WebFetch(domain:www.anthropic.com)",
       "WebFetch(domain:unsloth.ai)",
       "WebFetch(domain:aws.amazon.com)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm uninstall:*)"
     ]
   }
 }

@@ -2,10 +2,53 @@
 interface Props {
   title: string;
   description?: string;
+  type?: 'website' | 'article';
+  keywords?: string[];
 }
 
-const { title, description = 'Learn about AI agent architectures, patterns, and benchmarks' } = Astro.props;
+const {
+  title,
+  description = 'Learn about AI agent architectures, patterns, and benchmarks',
+  type = 'website',
+  keywords = ['AI agents', 'LLM', 'agent engineering', 'tool use', 'ReAct', 'MCP', 'multi-agent systems']
+} = Astro.props;
 const currentPath = Astro.url.pathname;
+const canonicalUrl = new URL(currentPath, Astro.site).href;
+
+// JSON-LD structured data
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Agent Engineering",
+  "description": "A comprehensive resource for understanding AI agent architectures, design patterns, and implementation strategies.",
+  "url": "https://agents-engineering.com",
+  "author": {
+    "@type": "Person",
+    "name": "Daniel Huber"
+  },
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://agents-engineering.com/topics/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+};
+
+const articleSchema = type === 'article' ? {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": title,
+  "description": description,
+  "url": canonicalUrl,
+  "author": {
+    "@type": "Person",
+    "name": "Daniel Huber"
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Agent Engineering"
+  },
+  "keywords": keywords.join(", ")
+} : null;
 ---
 
 <!doctype html>
@@ -14,11 +57,32 @@ const currentPath = Astro.url.pathname;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <meta name="keywords" content={keywords.join(", ")} />
+    <meta name="author" content="Daniel Huber" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={canonicalUrl} />
+
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content={type} />
+    <meta property="og:title" content={`${title} | Agent Engineering`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:site_name" content="Agent Engineering" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={`${title} | Agent Engineering`} />
+    <meta name="twitter:description" content={description} />
+
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <title>{title} | Agent Engineering</title>
+
+    <!-- JSON-LD Structured Data -->
+    <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
+    {articleSchema && <script is:inline type="application/ld+json" set:html={JSON.stringify(articleSchema)} />}
   </head>
   <body class="min-h-screen flex flex-col">
     <!-- Header -->
