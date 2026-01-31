@@ -53,7 +53,7 @@ The site automatically:
 │                                                                             │
 │  TIER 1: BULK PROCESSING (Together API - Cheap Model)                       │
 │  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │  Model: Llama 3.3 70B or DeepSeek-R1 via Together API               │   │
+│  │  Model: GPT-OSS 120B or DeepSeek-R1 via Together API                │   │
 │  │  Cost: ~$0.20/million tokens (vs Claude $3-15/million)              │   │
 │  │                                                                     │   │
 │  │  Process ALL week's findings (~30-50 items):                        │   │
@@ -128,12 +128,12 @@ The key cost optimization: use **cheap open-source models** for bulk processing,
 
 | Model | Cost (per 1M tokens) | Quality | Best For |
 |-------|---------------------|---------|----------|
-| **Llama 3.3 70B** | $0.88 in / $0.88 out | Very good | General analysis |
+| **GPT-OSS 120B** | ~$0.50 in / $0.50 out | Excellent | General analysis |
 | **DeepSeek-R1** | $0.55 in / $2.19 out | Excellent reasoning | Complex papers |
 | **Qwen 2.5 72B** | $0.90 in / $0.90 out | Very good | Multilingual |
-| **Mistral Large** | $2.00 in / $6.00 out | Great | Fallback |
+| **Llama 3.3 70B** | $0.88 in / $0.88 out | Very good | Fallback |
 
-**Recommendation:** Llama 3.3 70B for bulk processing - best quality/cost ratio.
+**Recommendation:** GPT-OSS 120B for bulk processing - larger model, excellent quality/cost ratio.
 
 ### Together API Integration
 
@@ -146,7 +146,7 @@ def bulk_analyze(content: str, content_type: str) -> dict:
     """Tier 1: Cheap model for initial analysis and ranking."""
 
     response = client.chat.completions.create(
-        model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        model="togethercomputer/gpt-oss-120b",
         messages=[{
             "role": "user",
             "content": f"""Analyze this {content_type} about AI agents.
