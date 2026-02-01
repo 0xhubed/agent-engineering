@@ -1,4 +1,103 @@
 {
-  "last_updated": null,
-  "items": []
+  "last_updated": "2026-02-01T08:11:56.258956",
+  "items": [
+    {
+      "title": "Introducing NVIDIA Cosmos Policy for Advanced Robot Control",
+      "url": "https://huggingface.co/blog/nvidia/cosmos-policy-for-robot-control",
+      "summary": "NVIDIA introduces Cosmos Policy, a new framework for advanced robot control that bridges AI agent decision-making with robotic systems.",
+      "published": "2026-01-29T17:03:25",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "frameworks",
+        "tools",
+        "patterns"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258802"
+    },
+    {
+      "title": "Inside OpenAI\u2019s in-house data agent",
+      "url": "https://openai.com/index/inside-our-in-house-data-agent",
+      "summary": "OpenAI shares technical details of their internal data agent built with GPT-5, Codex, and memory systems for reasoning over large datasets and delivering insights.",
+      "published": "2026-01-29T10:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258796"
+    },
+    {
+      "title": "Introducing Daggr: Chain apps programmatically, inspect visually",
+      "url": "https://huggingface.co/blog/daggr",
+      "summary": "Hugging Face launches Daggr, a tool for programmatically chaining AI applications with visual inspection capabilities for agent workflow development.",
+      "published": "2026-01-29T00:00:00",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "frameworks",
+        "tools",
+        "patterns"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258804"
+    },
+    {
+      "title": "Context Management for Deep Agents",
+      "url": "https://www.blog.langchain.com/context-management-for-deepagents/",
+      "summary": "LangChain introduces context management techniques for deep agents to prevent context rot and handle LLMs' finite memory constraints as agents tackle longer tasks.",
+      "published": "2026-01-28T16:11:29",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258784"
+    },
+    {
+      "title": "Keeping your data safe when an AI agent clicks a link",
+      "url": "https://openai.com/index/ai-agent-link-safety",
+      "summary": "OpenAI describes safety mechanisms to protect user data when AI agents click links, including safeguards against URL-based data exfiltration and prompt injection attacks.",
+      "published": "2026-01-28T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "safety",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258798"
+    },
+    {
+      "title": "Unlocking Agentic RL Training for GPT-OSS: A Practical Retrospective",
+      "url": "https://huggingface.co/blog/LinkedIn/gpt-oss-agentic-rl",
+      "summary": "LinkedIn shares practical insights on implementing agentic reinforcement learning training for GPT-OSS, covering real-world challenges and solutions for agent training.",
+      "published": "2026-01-27T01:53:15",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "research",
+        "patterns",
+        "evaluation"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258805"
+    },
+    {
+      "title": "Powering tax donations with AI powered personalized recommendations",
+      "url": "https://openai.com/index/trustbank",
+      "summary": "TRUSTBANK implemented a multi-agent system using OpenAI models for personalized recommendations, demonstrating practical multi-agent architecture for recommendation engines.",
+      "published": "2026-01-27T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "patterns",
+        "models",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-01T08:11:56.258800"
+    }
+  ]
 }
