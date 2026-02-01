@@ -27,7 +27,9 @@
       "WebFetch(domain:aws.amazon.com)",
       "Bash(findstr:*)",
       "Bash(npm ls:*)",
-      "Bash(npm uninstall:*)"
+      "Bash(npm uninstall:*)",
+      "Bash(python -c:*)",
+      "Bash(python scripts/content-agent.py:*)"
     ]
   }
 }

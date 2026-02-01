@@ -1,0 +1,125 @@
+name: Content Update Agent
+
+on:
+  # Run after Update Resources workflow completes
+  workflow_run:
+    workflows: ["Update Resources"]
+    types:
+      - completed
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run in dry-run mode (preview only, no PR)'
+        required: false
+        default: 'true'
+        type: boolean
+      weeks:
+        description: 'Number of weeks of deep dives to process'
+        required: false
+        default: '4'
+        type: string
+      min_confidence:
+        description: 'Minimum confidence threshold (0.0-1.0)'
+        required: false
+        default: '0.7'
+        type: string
+      max_suggestions:
+        description: 'Maximum suggestions per PR'
+        required: false
+        default: '10'
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  content-update:
+    runs-on: ubuntu-latest
+    # Only run if previous workflow succeeded (for workflow_run trigger)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for branch operations
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r scripts/requirements.txt
+
+      - name: Run Content Agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_WEEKS: ${{ inputs.weeks }}
+          INPUT_MIN_CONFIDENCE: ${{ inputs.min_confidence }}
+          INPUT_MAX_SUGGESTIONS: ${{ inputs.max_suggestions }}
+        run: |
+          echo "Starting Content Update Agent..."
+
+          # Configure git for commits
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Build command with optional flags
+          ARGS=""
+
+          # Default to dry-run for workflow_run triggers (safety)
+          # For workflow_dispatch, respect the input
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "Running in dry-run mode (automatic trigger)"
+          elif [ "$INPUT_DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "Running in dry-run mode (manual trigger)"
+          else
+            # Validate API key for PR creation
+            if [ -z "$ANTHROPIC_API_KEY" ]; then
+              echo "::error::ANTHROPIC_API_KEY is empty or not set"
+              exit 1
+            fi
+            ARGS="$ARGS --create-pr"
+            echo "Running in PR creation mode"
+          fi
+
+          # Validate weeks input (must be a positive number)
+          if [ -n "$INPUT_WEEKS" ]; then
+            if echo "$INPUT_WEEKS" | grep -qE '^[0-9]+$'; then
+              ARGS="$ARGS --weeks $INPUT_WEEKS"
+            else
+              echo "::error::Invalid weeks - must be a positive number"
+              exit 1
+            fi
+          fi
+
+          # Validate min_confidence input (must be a decimal 0.0-1.0)
+          if [ -n "$INPUT_MIN_CONFIDENCE" ]; then
+            if echo "$INPUT_MIN_CONFIDENCE" | grep -qE '^(0(\.[0-9]+)?|1(\.0+)?)$'; then
+              ARGS="$ARGS --min-confidence $INPUT_MIN_CONFIDENCE"
+            else
+              echo "::error::Invalid min_confidence - must be a decimal between 0.0 and 1.0"
+              exit 1
+            fi
+          fi
+
+          # Validate max_suggestions input (must be a positive number)
+          if [ -n "$INPUT_MAX_SUGGESTIONS" ]; then
+            if echo "$INPUT_MAX_SUGGESTIONS" | grep -qE '^[0-9]+$'; then
+              ARGS="$ARGS --max-suggestions $INPUT_MAX_SUGGESTIONS"
+            else
+              echo "::error::Invalid max_suggestions - must be a positive number"
+              exit 1
+            fi
+          fi
+
+          echo "Running: python scripts/content-agent.py $ARGS"
+          python scripts/content-agent.py $ARGS
+          echo "Content Update Agent completed."
