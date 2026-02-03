@@ -1,6 +1,34 @@
 {
-  "last_updated": "2026-02-02T08:18:54.678184",
+  "last_updated": "2026-02-03T08:16:24.415075",
   "items": [
+    {
+      "title": "Snowflake and OpenAI partner to bring frontier intelligence to enterprise data",
+      "url": "https://openai.com/index/snowflake-partnership",
+      "summary": "OpenAI and Snowflake partner in a $200M agreement to enable AI agents and insights directly within Snowflake's enterprise data platform.",
+      "published": "2026-02-02T06:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "tools",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-03T08:16:24.414887"
+    },
+    {
+      "title": "Introducing the Codex app",
+      "url": "https://openai.com/index/introducing-the-codex-app",
+      "summary": "OpenAI launches Codex app for macOS featuring multiple agents, parallel workflows, and long-running tasks for AI-powered software development.",
+      "published": "2026-02-02T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-03T08:16:24.414890"
+    },
     {
       "title": "Introducing NVIDIA Cosmos Policy for Advanced Robot Control",
       "url": "https://huggingface.co/blog/nvidia/cosmos-policy-for-robot-control",
