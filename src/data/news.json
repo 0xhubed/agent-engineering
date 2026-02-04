@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-02-03T08:16:24.415075",
+  "last_updated": "2026-02-04T08:17:44.212047",
   "items": [
     {
       "title": "Snowflake and OpenAI partner to bring frontier intelligence to enterprise data",
@@ -58,6 +58,18 @@
       "processed_at": "2026-02-01T08:11:56.258796"
     },
     {
+      "title": "Retiring GPT-4o, GPT-4.1, GPT-4.1 mini, and OpenAI o4-mini in ChatGPT",
+      "url": "https://openai.com/index/retiring-gpt-4o-and-older-models",
+      "summary": "OpenAI announces retirement of older models including GPT-4o, GPT-4.1 variants, and o4-mini from ChatGPT on February 13, 2026. This affects model availability for agent developers using these models in their systems.",
+      "published": "2026-01-29T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models"
+      ],
+      "processed_at": "2026-02-04T08:17:44.211855"
+    },
+    {
       "title": "Introducing Daggr: Chain apps programmatically, inspect visually",
       "url": "https://huggingface.co/blog/daggr",
       "summary": "Hugging Face launches Daggr, a tool for programmatically chaining AI applications with visual inspection capabilities for agent workflow development.",
@@ -70,6 +82,20 @@
         "patterns"
       ],
       "processed_at": "2026-02-01T08:11:56.258804"
+    },
+    {
+      "title": "Context Management for Deep Agents",
+      "url": "https://blog.langchain.com/context-management-for-deepagents/",
+      "summary": "LangChain introduces context management techniques for deep agents to prevent context rot and handle finite memory constraints as agent task lengths grow. The post covers practical approaches for managing context in long-running agent workflows.",
+      "published": "2026-01-28T16:11:29",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns",
+        "memory"
+      ],
+      "processed_at": "2026-02-04T08:17:44.211836"
     },
     {
       "title": "Context Management for Deep Agents",
