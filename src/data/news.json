@@ -1,6 +1,34 @@
 {
-  "last_updated": "2026-02-04T08:17:44.212047",
+  "last_updated": "2026-02-05T08:18:17.790643",
   "items": [
+    {
+      "title": "Nemotron ColEmbed V2: Raising the Bar for Multimodal Retrieval with ViDoRe V3\u2019s Top Model",
+      "url": "https://huggingface.co/blog/nvidia/nemotron-colembed-v2",
+      "summary": "NVIDIA's Nemotron ColEmbed V2 achieves top performance on ViDoRe V3 benchmark for multimodal retrieval, advancing RAG capabilities for agent systems.",
+      "published": "2026-02-04T15:00:40",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "rag",
+        "models",
+        "evaluation"
+      ],
+      "processed_at": "2026-02-05T08:18:17.790466"
+    },
+    {
+      "title": "Unlocking the Codex harness: how we built the App Server",
+      "url": "https://openai.com/index/unlocking-the-codex-harness",
+      "summary": "Technical deep-dive on the Codex App Server's bidirectional JSON-RPC API that enables embedding Codex agents with streaming progress, tool use, approvals, and diff capabilities.",
+      "published": "2026-02-04T13:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "frameworks",
+        "tools",
+        "patterns"
+      ],
+      "processed_at": "2026-02-05T08:18:17.790458"
+    },
     {
       "title": "Snowflake and OpenAI partner to bring frontier intelligence to enterprise data",
       "url": "https://openai.com/index/snowflake-partnership",
@@ -28,6 +56,19 @@
         "tools"
       ],
       "processed_at": "2026-02-03T08:16:24.414890"
+    },
+    {
+      "title": "January 2026: LangChain Newsletter",
+      "url": "https://blog.langchain.com/january-2026-langchain-newsletter/",
+      "summary": "LangChain newsletter covering latest product updates and content from the leading agent framework team, likely including new features, integrations, and community developments.",
+      "published": "2026-01-30T02:27:28",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "tools"
+      ],
+      "processed_at": "2026-02-05T08:18:17.790448"
     },
     {
       "title": "Introducing NVIDIA Cosmos Policy for Advanced Robot Control",
