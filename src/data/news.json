@@ -1,6 +1,76 @@
 {
-  "last_updated": "2026-02-05T08:18:17.790643",
+  "last_updated": "2026-02-06T08:18:15.626640",
   "items": [
+    {
+      "title": "GPT-5 lowers the cost of cell-free protein synthesis",
+      "url": "https://openai.com/index/gpt-5-lowers-protein-synthesis-cost",
+      "summary": "GPT-5 powers an autonomous laboratory agent that uses closed-loop experimentation to optimize protein synthesis, demonstrating real-world agent applications in scientific domains.",
+      "published": "2026-02-05T11:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "research"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626431"
+    },
+    {
+      "title": "Introducing Trusted Access for Cyber",
+      "url": "https://openai.com/index/trusted-access-for-cyber",
+      "summary": "OpenAI introduces a trust-based framework for cyber capabilities that includes safeguards against misuse, relevant to agent safety and governance in sensitive domains.",
+      "published": "2026-02-05T10:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "safety",
+        "models",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626442"
+    },
+    {
+      "title": "Introducing OpenAI Frontier",
+      "url": "https://openai.com/index/introducing-openai-frontier",
+      "summary": "OpenAI Frontier is an enterprise platform specifically designed for building, deploying, and managing AI agents with governance features like shared context, permissions, and onboarding.",
+      "published": "2026-02-05T06:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "frameworks",
+        "tools",
+        "patterns"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626445"
+    },
+    {
+      "title": "Introducing GPT-5.3-Codex",
+      "url": "https://openai.com/index/introducing-gpt-5-3-codex",
+      "summary": "GPT-5.3-Codex is positioned as a Codex-native agent that supports long-horizon, real-world technical work by pairing advanced coding with general reasoning abilities.",
+      "published": "2026-02-05T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626448"
+    },
+    {
+      "title": "GPT-5.3-Codex System Card",
+      "url": "https://openai.com/index/gpt-5-3-codex-system-card",
+      "summary": "GPT-5.3-Codex combines frontier coding performance with reasoning capabilities, representing the most capable agentic coding model for complex development tasks.",
+      "published": "2026-02-05T00:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626446"
+    },
     {
       "title": "Nemotron ColEmbed V2: Raising the Bar for Multimodal Retrieval with ViDoRe V3\u2019s Top Model",
       "url": "https://huggingface.co/blog/nvidia/nemotron-colembed-v2",
@@ -28,6 +98,20 @@
         "patterns"
       ],
       "processed_at": "2026-02-05T08:18:17.790458"
+    },
+    {
+      "title": "Community Evals: Because we're done trusting black-box leaderboards over the community",
+      "url": "https://huggingface.co/blog/community-evals",
+      "summary": "Hugging Face introduces Community Evals as an alternative to black-box leaderboards, providing transparent evaluation methods relevant to agent benchmarking and assessment.",
+      "published": "2026-02-04T00:00:00",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "evaluation",
+        "frameworks",
+        "research"
+      ],
+      "processed_at": "2026-02-06T08:18:15.626455"
     },
     {
       "title": "Snowflake and OpenAI partner to bring frontier intelligence to enterprise data",
