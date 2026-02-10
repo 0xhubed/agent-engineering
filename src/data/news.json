@@ -1,6 +1,19 @@
 {
-  "last_updated": "2026-02-09T08:21:44.683381",
+  "last_updated": "2026-02-10T08:21:08.937244",
   "items": [
+    {
+      "title": "LangSmith is Now Available in Google Cloud Marketplace",
+      "url": "https://blog.langchain.com/langsmith-is-now-available-in-google-cloud-marketplace/",
+      "summary": "LangSmith, the agent engineering platform from LangChain, is now available in Google Cloud Marketplace, enabling streamlined procurement and billing for agent development and monitoring tools.",
+      "published": "2026-02-10T02:47:44",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "tools"
+      ],
+      "processed_at": "2026-02-10T08:21:08.937031"
+    },
     {
       "title": "GPT-5 lowers the cost of cell-free protein synthesis",
       "url": "https://openai.com/index/gpt-5-lowers-protein-synthesis-cost",
@@ -263,20 +276,6 @@
         "evaluation"
       ],
       "processed_at": "2026-02-01T08:11:56.258805"
-    },
-    {
-      "title": "Powering tax donations with AI powered personalized recommendations",
-      "url": "https://openai.com/index/trustbank",
-      "summary": "TRUSTBANK implemented a multi-agent system using OpenAI models for personalized recommendations, demonstrating practical multi-agent architecture for recommendation engines.",
-      "published": "2026-01-27T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "patterns",
-        "models",
-        "frameworks"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258800"
     }
   ]
 }
