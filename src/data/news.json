@@ -1,6 +1,20 @@
 {
-  "last_updated": "2026-02-10T08:21:08.937244",
+  "last_updated": "2026-02-11T08:20:02.592524",
   "items": [
+    {
+      "title": "The two patterns by which agents connect sandboxes",
+      "url": "https://blog.langchain.com/the-two-patterns-by-which-agents-connect-sandboxes/",
+      "summary": "LangChain explores two key architectural patterns for connecting AI agents to sandbox environments where they can execute code, install packages, and maintain persistent workspaces.",
+      "published": "2026-02-10T16:32:35",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-11T08:20:02.592306"
+    },
     {
       "title": "LangSmith is Now Available in Google Cloud Marketplace",
       "url": "https://blog.langchain.com/langsmith-is-now-available-in-google-cloud-marketplace/",
@@ -262,20 +276,6 @@
         "tools"
       ],
       "processed_at": "2026-02-01T08:11:56.258798"
-    },
-    {
-      "title": "Unlocking Agentic RL Training for GPT-OSS: A Practical Retrospective",
-      "url": "https://huggingface.co/blog/LinkedIn/gpt-oss-agentic-rl",
-      "summary": "LinkedIn shares practical insights on implementing agentic reinforcement learning training for GPT-OSS, covering real-world challenges and solutions for agent training.",
-      "published": "2026-01-27T01:53:15",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "research",
-        "patterns",
-        "evaluation"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258805"
     }
   ]
 }
