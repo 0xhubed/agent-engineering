@@ -1,6 +1,20 @@
 {
-  "last_updated": "2026-02-11T08:20:02.592524",
+  "last_updated": "2026-02-12T08:19:16.183138",
   "items": [
+    {
+      "title": "Harness engineering: leveraging Codex in an agent-first world",
+      "url": "https://openai.com/index/harness-engineering",
+      "summary": "OpenAI discusses leveraging Codex in an 'agent-first world' for harness engineering, indicating practical applications of code-generation models in agent architectures. This explores how code generation capabilities integrate with agent development workflows.",
+      "published": "2026-02-11T09:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns",
+        "tools"
+      ],
+      "processed_at": "2026-02-12T08:19:16.182950"
+    },
     {
       "title": "The two patterns by which agents connect sandboxes",
       "url": "https://blog.langchain.com/the-two-patterns-by-which-agents-connect-sandboxes/",
@@ -27,6 +41,34 @@
         "tools"
       ],
       "processed_at": "2026-02-10T08:21:08.937031"
+    },
+    {
+      "title": "Accelerating Mathematical and Scientific Discovery with Gemini Deep Think",
+      "url": "https://deepmind.google/blog/accelerating-mathematical-and-scientific-discovery-with-gemini-deep-think/",
+      "summary": "Google introduces Gemini Deep Think, focusing on mathematical and scientific discovery applications with enhanced reasoning capabilities. This represents advances in model reasoning that could significantly impact agent performance in complex analytical tasks.",
+      "published": "2026-02-09T16:12:06",
+      "source": "Google DeepMind Blog",
+      "category": "providers",
+      "tags": [
+        "models",
+        "research",
+        "patterns"
+      ],
+      "processed_at": "2026-02-12T08:19:16.182955"
+    },
+    {
+      "title": "Transformers.js v4 Preview: Now Available on NPM!",
+      "url": "https://huggingface.co/blog/transformersjs-v4",
+      "summary": "Transformers.js v4 preview is now available on NPM, enabling client-side transformer model execution in JavaScript environments. This provides important infrastructure for building browser-based AI agents and edge deployment scenarios.",
+      "published": "2026-02-09T00:00:00",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "frameworks",
+        "tools",
+        "models"
+      ],
+      "processed_at": "2026-02-12T08:19:16.182957"
     },
     {
       "title": "GPT-5 lowers the cost of cell-free protein synthesis",
@@ -234,48 +276,6 @@
         "patterns"
       ],
       "processed_at": "2026-02-01T08:11:56.258804"
-    },
-    {
-      "title": "Context Management for Deep Agents",
-      "url": "https://blog.langchain.com/context-management-for-deepagents/",
-      "summary": "LangChain introduces context management techniques for deep agents to prevent context rot and handle finite memory constraints as agent task lengths grow. The post covers practical approaches for managing context in long-running agent workflows.",
-      "published": "2026-01-28T16:11:29",
-      "source": "LangChain Blog",
-      "category": "frameworks",
-      "tags": [
-        "frameworks",
-        "patterns",
-        "memory"
-      ],
-      "processed_at": "2026-02-04T08:17:44.211836"
-    },
-    {
-      "title": "Context Management for Deep Agents",
-      "url": "https://www.blog.langchain.com/context-management-for-deepagents/",
-      "summary": "LangChain introduces context management techniques for deep agents to prevent context rot and handle LLMs' finite memory constraints as agents tackle longer tasks.",
-      "published": "2026-01-28T16:11:29",
-      "source": "LangChain Blog",
-      "category": "frameworks",
-      "tags": [
-        "frameworks",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258784"
-    },
-    {
-      "title": "Keeping your data safe when an AI agent clicks a link",
-      "url": "https://openai.com/index/ai-agent-link-safety",
-      "summary": "OpenAI describes safety mechanisms to protect user data when AI agents click links, including safeguards against URL-based data exfiltration and prompt injection attacks.",
-      "published": "2026-01-28T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "safety",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258798"
     }
   ]
 }
