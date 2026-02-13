@@ -1,6 +1,60 @@
 {
-  "last_updated": "2026-02-12T08:19:16.183138",
+  "last_updated": "2026-02-13T08:19:19.687149",
   "items": [
+    {
+      "title": "On Agent Frameworks and Agent Observability",
+      "url": "https://blog.langchain.com/on-agent-frameworks-and-agent-observability/",
+      "summary": "LangChain discusses the evolving role of agent frameworks as LLMs improve, emphasizing that agents are systems around models that still require frameworks for orchestration and observability.",
+      "published": "2026-02-13T02:23:40",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns",
+        "research"
+      ],
+      "processed_at": "2026-02-13T08:19:19.686921"
+    },
+    {
+      "title": "Gemini 3 Deep Think: Advancing science, research and engineering",
+      "url": "https://deepmind.google/blog/gemini-3-deep-think-advancing-science-research-and-engineering/",
+      "summary": "Google introduces Gemini 3 Deep Think with specialized reasoning capabilities designed for complex science, research and engineering challenges that agents might tackle.",
+      "published": "2026-02-12T16:15:09",
+      "source": "Google DeepMind Blog",
+      "category": "providers",
+      "tags": [
+        "models",
+        "patterns"
+      ],
+      "processed_at": "2026-02-13T08:19:19.686938"
+    },
+    {
+      "title": "Introducing GPT-5.3-Codex-Spark",
+      "url": "https://openai.com/index/introducing-gpt-5-3-codex-spark",
+      "summary": "OpenAI releases GPT-5.3-Codex-Spark, a real-time coding model with 15x faster generation and 128k context, enabling more efficient code generation for agents.",
+      "published": "2026-02-12T10:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "models",
+        "tools"
+      ],
+      "processed_at": "2026-02-13T08:19:19.686937"
+    },
+    {
+      "title": "OpenEnv in Practice: Evaluating Tool-Using Agents in Real-World Environments",
+      "url": "https://huggingface.co/blog/openenv-turing",
+      "summary": "Hugging Face presents OpenEnv, a framework for evaluating tool-using agents in real-world environments, addressing the critical need for agent benchmarking.",
+      "published": "2026-02-12T00:00:00",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "evaluation",
+        "tools",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-13T08:19:19.686940"
+    },
     {
       "title": "Harness engineering: leveraging Codex in an agent-first world",
       "url": "https://openai.com/index/harness-engineering",
@@ -222,60 +276,6 @@
         "tools"
       ],
       "processed_at": "2026-02-05T08:18:17.790448"
-    },
-    {
-      "title": "Introducing NVIDIA Cosmos Policy for Advanced Robot Control",
-      "url": "https://huggingface.co/blog/nvidia/cosmos-policy-for-robot-control",
-      "summary": "NVIDIA introduces Cosmos Policy, a new framework for advanced robot control that bridges AI agent decision-making with robotic systems.",
-      "published": "2026-01-29T17:03:25",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "frameworks",
-        "tools",
-        "patterns"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258802"
-    },
-    {
-      "title": "Inside OpenAI\u2019s in-house data agent",
-      "url": "https://openai.com/index/inside-our-in-house-data-agent",
-      "summary": "OpenAI shares technical details of their internal data agent built with GPT-5, Codex, and memory systems for reasoning over large datasets and delivering insights.",
-      "published": "2026-01-29T10:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258796"
-    },
-    {
-      "title": "Retiring GPT-4o, GPT-4.1, GPT-4.1 mini, and OpenAI o4-mini in ChatGPT",
-      "url": "https://openai.com/index/retiring-gpt-4o-and-older-models",
-      "summary": "OpenAI announces retirement of older models including GPT-4o, GPT-4.1 variants, and o4-mini from ChatGPT on February 13, 2026. This affects model availability for agent developers using these models in their systems.",
-      "published": "2026-01-29T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models"
-      ],
-      "processed_at": "2026-02-04T08:17:44.211855"
-    },
-    {
-      "title": "Introducing Daggr: Chain apps programmatically, inspect visually",
-      "url": "https://huggingface.co/blog/daggr",
-      "summary": "Hugging Face launches Daggr, a tool for programmatically chaining AI applications with visual inspection capabilities for agent workflow development.",
-      "published": "2026-01-29T00:00:00",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "frameworks",
-        "tools",
-        "patterns"
-      ],
-      "processed_at": "2026-02-01T08:11:56.258804"
     }
   ]
 }
