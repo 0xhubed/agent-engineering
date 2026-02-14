@@ -1,6 +1,20 @@
 {
-  "last_updated": "2026-02-13T08:19:19.687149",
+  "last_updated": "2026-02-14T08:10:40.747282",
   "items": [
+    {
+      "title": "Introducing Lockdown Mode and Elevated Risk labels in ChatGPT",
+      "url": "https://openai.com/index/introducing-lockdown-mode-and-elevated-risk-labels-in-chatgpt",
+      "summary": "OpenAI introduces Lockdown Mode and Elevated Risk labels in ChatGPT to help organizations defend against prompt injection and AI-driven data exfiltration in agent deployments.",
+      "published": "2026-02-13T10:00:00",
+      "source": "OpenAI News",
+      "category": "providers",
+      "tags": [
+        "safety",
+        "models",
+        "evaluation"
+      ],
+      "processed_at": "2026-02-14T08:10:40.747059"
+    },
     {
       "title": "On Agent Frameworks and Agent Observability",
       "url": "https://blog.langchain.com/on-agent-frameworks-and-agent-observability/",
@@ -14,6 +28,20 @@
         "research"
       ],
       "processed_at": "2026-02-13T08:19:19.686921"
+    },
+    {
+      "title": "Custom Kernels for All from Codex and Claude",
+      "url": "https://huggingface.co/blog/custom-cuda-kernels-agent-skills",
+      "summary": "Hugging Face introduces custom CUDA kernels as agent skills, allowing agents to leverage Codex and Claude for specialized computational tasks and performance optimization.",
+      "published": "2026-02-13T00:00:00",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "tools",
+        "models",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-14T08:10:40.747065"
     },
     {
       "title": "Gemini 3 Deep Think: Advancing science, research and engineering",
@@ -249,33 +277,6 @@
         "frameworks"
       ],
       "processed_at": "2026-02-03T08:16:24.414887"
-    },
-    {
-      "title": "Introducing the Codex app",
-      "url": "https://openai.com/index/introducing-the-codex-app",
-      "summary": "OpenAI launches Codex app for macOS featuring multiple agents, parallel workflows, and long-running tasks for AI-powered software development.",
-      "published": "2026-02-02T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-03T08:16:24.414890"
-    },
-    {
-      "title": "January 2026: LangChain Newsletter",
-      "url": "https://blog.langchain.com/january-2026-langchain-newsletter/",
-      "summary": "LangChain newsletter covering latest product updates and content from the leading agent framework team, likely including new features, integrations, and community developments.",
-      "published": "2026-01-30T02:27:28",
-      "source": "LangChain Blog",
-      "category": "frameworks",
-      "tags": [
-        "frameworks",
-        "tools"
-      ],
-      "processed_at": "2026-02-05T08:18:17.790448"
     }
   ]
 }
