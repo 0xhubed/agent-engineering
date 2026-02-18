@@ -96,7 +96,7 @@ const articleSchema = type === 'article' ? {
     <!-- Dateline bar -->
     <div class="border-b border-newsprint-300 bg-newsprint-100">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-1 flex items-center justify-between">
-        <span class="font-serif text-xs text-ink-muted italic">agentengineering.dev</span>
+        <span class="font-serif text-xs text-ink-muted italic">danielhuber.dev@proton.me</span>
         <span class="font-serif text-xs text-ink-muted">{dateStr}</span>
       </div>
     </div>
@@ -105,7 +105,7 @@ const articleSchema = type === 'article' ? {
       <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4">
         <div class="masthead">
           <div class="masthead-title">Agent Engineering</div>
-          <div class="masthead-subtitle">The Practitioner's Journal of AI Agent Architecture</div>
+          <div class="masthead-subtitle">The Practitioner's Journal of AI Agent Engineering</div>
           <div class="masthead-dateline">Vol. I &nbsp;·&nbsp; {dateStr}</div>
         </div>
       </div>
@@ -147,6 +147,14 @@ const articleSchema = type === 'article' ? {
             ]}>
               Resources
             </a>
+            <a href={`${base}about/`} class:list={[
+              "font-serif text-sm no-underline hover:no-underline transition-colors",
+              currentPath.startsWith('/about')
+                ? "text-ink font-medium"
+                : "text-ink-muted hover:text-ink"
+            ]}>
+              About
+            </a>
           </nav>
 
           <!-- Mobile Menu Button -->
@@ -169,6 +177,7 @@ const articleSchema = type === 'article' ? {
         <a href={`${base}articles/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Articles</a>
         <a href={`${base}benchmarks/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Benchmarks</a>
         <a href={`${base}resources/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Resources</a>
+        <a href={`${base}about/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">About</a>
       </div>
     </nav>
 

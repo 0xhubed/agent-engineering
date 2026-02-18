@@ -139,10 +139,21 @@ For each relevant item, provide:
 2. A concise 1-2 sentence summary focused on what's relevant to agent engineering
 3. Tags (2-4 relevant tags from: frameworks, models, protocols, patterns, rag, evaluation, safety, tools, research)
 
+## Summarisation standards
+
+These apply to every summary you write:
+
+- **Stick to what the source says.** Do not add interpretation, context, or implications that are not stated in the original item. If the source is vague, your summary should reflect that vagueness rather than fill in the gaps.
+- **No hype or promotional language.** Strip any marketing tone from the original. Avoid words like "revolutionary", "groundbreaking", "game-changing", or "powerful" unless the source provides concrete evidence that justifies them — and even then, attribute the claim to the source, not as your own assertion.
+- **Use measured language.** Prefer "may improve", "is reported to", "according to", "aims to" over definitive claims. A benchmark result is a data point, not a proof.
+- **If the item is thin, say so or skip it.** A vague blog post announcing a feature without technical detail is not worth summarising. Skip it rather than inflating it.
+- **Do not infer impact.** Do not write "this will change how agents handle memory" unless the source explicitly makes that claim. Describe what the thing is and does, not what it might mean.
+
 Skip items that are:
 - General AI/ML news not specific to agents
 - Product announcements without technical substance
 - Duplicate or very similar to other items
+- Too vague or speculative to summarise accurately
 
 NEWS ITEMS:
 {items_text}
@@ -158,7 +169,7 @@ Respond in JSON format:
   ]
 }}
 
-Select the top 5-10 most relevant items."""
+Select the top 5-10 most relevant items. It is better to select fewer high-quality items than to pad the list with weak ones."""
 
     response = client.messages.create(
         model="claude-sonnet-4-20250514",

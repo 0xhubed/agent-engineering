@@ -2,7 +2,7 @@
 title: "Agent Memory Systems"
 description: "How agents maintain context, learn from past interactions, and build persistent knowledge across sessions using layered memory architectures."
 category: "Foundational"
-date: "2024-02-01"
+date: "2026-02-18"
 type: "topic"
 tags:
   - memory
@@ -11,12 +11,12 @@ tags:
 featured: false
 ---
 
-Without memory, every agent interaction starts from scratch. The model has no knowledge of prior conversations, no record of user preferences, and no way to learn from past successes or failures. Memory systems address this by providing structured persistence at multiple timescales: the current conversation turn, the current session, across sessions, and across entire workflows. Well-designed memory architectures can reduce token consumption by 80% compared to naive full-history approaches while preserving the information the agent actually needs.
+Without memory, every agent interaction starts from scratch. The model has no knowledge of prior conversations, no record of user preferences, and no way to learn from past successes or failures. Memory systems address this by providing structured persistence at multiple timescales: the current conversation turn, the current session, across sessions, and across entire workflows. Well-designed memory architectures can significantly reduce token consumption compared to naive full-history approaches while preserving the information the agent actually needs.
 
 The four canonical types — working, short-term, long-term, and episodic — are not mutually exclusive but complementary. Most production systems use at least two in combination. The choice of implementation for each layer involves meaningful trade-offs between latency, cost, retrieval fidelity, and engineering complexity.
 
 <Callout type="info" title="Key Insight">
-Memory systems like Mem0 achieve **80% token reduction** while preserving fidelity through intelligent summarization and retrieval. Instead of keeping entire conversation history, store and retrieve relevant facts.
+Memory systems like Mem0 can achieve significant token reductions while preserving fidelity through intelligent summarization and retrieval. Instead of keeping entire conversation history, store and retrieve relevant facts.
 </Callout>
 
 ## Types of Agent Memory

@@ -2,7 +2,7 @@
 title: "Skills Pattern"
 description: "A filesystem-based approach to tool management that achieves 98% token savings by loading tool definitions on-demand rather than sending all tools on every request."
 category: "Advanced"
-date: "2024-03-01"
+date: "2026-02-18"
 type: "topic"
 tags: [skills, tool-management, token-savings]
 featured: false
@@ -499,14 +499,6 @@ def evaluate_skill_discovery(
     </tr>
   </tbody>
 </Table>
-
-## Real-World Example: Claude Code
-
-Anthropic's Claude Code uses a variant of the Skills Pattern to manage its extensive toolset. Skills are stored as markdown files in a `.claude/skills/` directory. The agent can list, read, and search skill files using the same filesystem tools it uses for code. Skills include triggers, instructions, and examples. New skills can be added by users without redeploying — just create a new `SKILL.md` file.
-
-<Callout type="info" title="User-Extensible Skills">
-A key benefit of filesystem-based skills: users can add custom skills by creating new SKILL.md files. No code changes or redeployment required.
-</Callout>
 
 ## Common Pitfalls
 

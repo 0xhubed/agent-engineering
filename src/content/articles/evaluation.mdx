@@ -2,7 +2,7 @@
 title: "Evaluation & Metrics"
 description: "Measuring agent performance across component accuracy, task completion, trajectory quality, and system-level metrics with benchmarks and LLM-as-judge."
 category: "Evaluation"
-date: "2024-05-10"
+date: "2026-02-18"
 type: "topic"
 tags:
   - evaluation
@@ -272,7 +272,6 @@ Benchmarks provide standardized tasks for comparing agent capabilities across re
       <th>Domain</th>
       <th>Tasks</th>
       <th>Primary Metric</th>
-      <th>Top Score (2025)</th>
     </tr>
   </thead>
   <tbody>
@@ -281,56 +280,48 @@ Benchmarks provide standardized tasks for comparing agent capabilities across re
       <td>Software Engineering</td>
       <td>500</td>
       <td>Resolved Rate</td>
-      <td>~72% (Claude 3.5 Sonnet)</td>
     </tr>
     <tr>
       <td>SWE-bench Full</td>
       <td>Software Engineering</td>
       <td>2,294</td>
       <td>Resolved Rate</td>
-      <td>~51%</td>
     </tr>
     <tr>
       <td>WebArena</td>
       <td>Web Navigation</td>
       <td>812</td>
       <td>Task Success Rate</td>
-      <td>~42%</td>
     </tr>
     <tr>
       <td>GAIA Level 1</td>
       <td>General Assistant</td>
       <td>~165</td>
       <td>Exact Match</td>
-      <td>~75%</td>
     </tr>
     <tr>
       <td>GAIA Level 2</td>
       <td>General Assistant</td>
       <td>~186</td>
       <td>Exact Match</td>
-      <td>~60%</td>
     </tr>
     <tr>
       <td>GAIA Level 3</td>
       <td>General Assistant</td>
       <td>~115</td>
       <td>Exact Match</td>
-      <td>~40%</td>
     </tr>
     <tr>
       <td>τ-bench</td>
       <td>Tool + Conversation</td>
       <td>680</td>
       <td>Pass Rate</td>
-      <td>~45% (Retail)</td>
     </tr>
     <tr>
       <td>HumanEval</td>
       <td>Code Generation</td>
       <td>164</td>
       <td>Pass@1</td>
-      <td>~95%</td>
     </tr>
   </tbody>
 </Table>
@@ -358,7 +349,7 @@ Many agent behaviors resist deterministic evaluation. Response helpfulness, reas
 │   │ (optional)  │                                                │
 │   └─────────────┘                                                │
 │                                                                   │
-│   Judge Models: GPT-4, Claude 3 Opus, Gemini 1.5 Pro             │
+│   Judge Models: any capable frontier model                        │
 └──────────────────────────────────────────────────────────────────┘`}
 </Diagram>
 

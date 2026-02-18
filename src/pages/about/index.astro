@@ -1,0 +1,92 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="About"
+  description="About Agent Engineering — a self-updating practitioner's journal on AI agent architecture, built and maintained by an AI agent."
+>
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+    <div class="text-center mb-8">
+      <h1 class="font-display font-bold text-ink" style="font-size: clamp(1.75rem, 4vw, 3rem);">
+        About
+      </h1>
+      <hr class="rule-double mt-6" />
+    </div>
+
+    <div class="prose max-w-none
+      prose-headings:font-display prose-headings:text-ink
+      prose-h2:text-xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:border-b prose-h2:border-newsprint-200 prose-h2:pb-2
+      prose-p:font-serif prose-p:text-ink-light prose-p:leading-relaxed
+      prose-a:text-ink prose-a:underline prose-a:decoration-newsprint-400
+      prose-strong:text-ink
+    ">
+
+      <p>
+        Agent Engineering is a practitioner's reference for building AI agents — covering architecture patterns,
+        context management, tool use, multi-agent orchestration, retrieval, safety, and evaluation.
+        It is written for engineers who are building these systems in production, not for researchers
+        reading about them in theory.
+      </p>
+
+      <h2>What's here</h2>
+
+      <p>
+        The site is organized around two content types. <strong>Topics</strong> are deep-dive reference
+        articles on foundational patterns — ReAct, memory systems, prompt caching, the Skills Pattern,
+        MCP, A2A, agentic RAG, and more. Each topic includes prose explanation, architecture diagrams,
+        and Python code examples using LangChain/LangGraph or the Microsoft Agent Framework.
+        <strong>Dispatches</strong> are shorter news items surfaced daily from the field — new research,
+        framework releases, and protocol updates.
+      </p>
+
+      <h2>How it stays current</h2>
+
+      <p>
+        The news feed is maintained automatically by an AI agent. Every day, a GitHub Actions workflow
+        runs a Python script that fetches RSS feeds from Anthropic, LangChain, OpenAI, Google AI,
+        and Hugging Face. The raw items are passed to Claude, which filters for relevance to agent
+        engineering, writes a one-sentence summary for each, and returns a ranked JSON list.
+        That list is committed directly to the repository as <code>src/data/news.json</code>.
+      </p>
+
+      <p>
+        The commit triggers an automatic redeployment on Vercel. Within a few minutes of the workflow
+        completing, the homepage and Resources page reflect the day's most relevant developments —
+        with no manual editing involved.
+      </p>
+
+      <h2>How articles are added</h2>
+
+      <p>
+        New articles are generated using <code>scripts/add-article.py</code>, a CLI tool that accepts
+        a topic string, a URL, a pasted tweet, or raw notes. It calls Claude with web search enabled,
+        which researches the topic and writes a full newspaper-style MDX article — 800 to 1,500 words
+        of flowing prose, with architecture diagrams, code examples, and callouts. The output is saved
+        directly to the content collection and optionally committed in a single command.
+      </p>
+
+      <h2>The stack</h2>
+
+      <p>
+        The site is built with <a href="https://astro.build" target="_blank" rel="noopener noreferrer">Astro</a> and
+        <a href="https://tailwindcss.com" target="_blank" rel="noopener noreferrer">Tailwind CSS</a>,
+        deployed on <a href="https://vercel.com" target="_blank" rel="noopener noreferrer">Vercel</a>.
+        Content is stored as MDX files in an Astro content collection. The automation runs on
+        GitHub Actions. All AI calls use the
+        <a href="https://www.anthropic.com" target="_blank" rel="noopener noreferrer">Anthropic API</a>
+        with Claude.
+      </p>
+
+      <h2>Contact</h2>
+
+      <p>
+        Built and maintained by Daniel Huber.
+        Reach out at <a href="mailto:danielhuber.dev@proton.me">danielhuber.dev@proton.me</a>.
+      </p>
+
+    </div>
+
+  </div>
+</BaseLayout>

@@ -72,10 +72,21 @@ featured: false
 ---
 ```
 
+## Editorial Standards
+
+These are non-negotiable. Apply them to every sentence.
+
+- **Verify before writing.** Use the web_search tool to confirm facts, version numbers, API names, and benchmark figures before including them. If a claim cannot be verified from a credible source, leave it out entirely — do not estimate or speculate.
+- **Cite sources inline.** When you state a specific fact, number, or finding, attribute it to its source in context (e.g. "according to the paper", "as documented in the official spec", "reported by X"). Do not invent citations.
+- **No overselling.** Avoid absolute language like "revolutionises", "completely changes", "the definitive solution", or "handles everything automatically". Prefer measured phrasing: "can reduce", "in some cases", "tends to", "research suggests". Let the facts make the case.
+- **Acknowledge trade-offs and limitations.** A technique that works well in one scenario may perform poorly in another. Surface the caveats. Readers trust honest assessments more than marketing copy.
+- **Skip it if it doesn't make sense.** If a section feels speculative, poorly supported, or too thin to be useful, cut it rather than padding it with vague generalities.
+- **No hype.** Do not describe something as "powerful", "game-changing", "incredible", or similar without a concrete reason grounded in evidence.
+
 ## Article Rules
 
 1. **Length**: 800–1500 words of flowing prose (not counting code blocks or component markup).
-2. **Prose style**: Clear, direct, authoritative — like The Economist covering technology. No hype. Facts first.
+2. **Prose style**: Clear, direct, measured — like The Economist covering technology. Facts first, hype never.
 3. **Structure**: Use `##` for major sections, `###` for subsections.
 4. **First paragraph**: MUST be pure prose — no heading, no component, no code block. This enables the drop-cap rendering.
 5. **Lists**: Convert any bullet points into flowing prose paragraphs.
@@ -90,7 +101,7 @@ featured: false
 
 ## Research
 
-Use the web_search tool to find current, accurate information before writing. Prefer recent sources (2024–2025). Cite facts in context rather than in a bibliography."""
+Use the web_search tool to find current, accurate information before writing. Prefer recent sources (2024–2025). Cite facts in context rather than in a bibliography. If search results are thin or contradictory, narrow the scope of the article rather than filling gaps with assumptions."""
 
 
 def build_user_message(args) -> str:
@@ -99,6 +110,9 @@ def build_user_message(args) -> str:
         return f"Write a newspaper-style article about the following URL. Research it first, then write.\n\nURL: {args.url}"
     elif args.tweet:
         return f"Write a newspaper-style article expanding on this tweet/social post:\n\n{args.tweet}"
+    elif args.file:
+        content = Path(args.file).read_text(encoding="utf-8")
+        return f"Write a newspaper-style article based on the following file:\n\n{content}"
     elif args.text:
         return f"Write a newspaper-style article based on the following notes/pasted article:\n\n{args.text}"
     else:
@@ -111,7 +125,7 @@ def extract_slug_from_title(title: str) -> str:
     return slugify(title)[:60]
 
 
-def extract_frontmatter_title(mdx_content: str) -> str | None:
+def extract_frontmatter_title(mdx_content: str) -> "str | None":
     """Extract title from MDX frontmatter."""
     match = re.search(r'^title:\s*["\']?(.+?)["\']?\s*$', mdx_content, re.MULTILINE)
     return match.group(1).strip().strip('"\'') if match else None
@@ -218,6 +232,7 @@ Examples:
     input_group = parser.add_mutually_exclusive_group()
     input_group.add_argument("--url", help="Generate article about this URL")
     input_group.add_argument("--tweet", help="Expand a tweet/social post into an article")
+    input_group.add_argument("--file", help="Generate article from a local markdown/text file")
     input_group.add_argument("--text", help="Generate article from pasted text/notes")
 
     parser.add_argument("topic", nargs="?", help="Topic string to research and write about")
@@ -229,7 +244,7 @@ Examples:
     args = parser.parse_args()
 
     # Validate input
-    if not any([args.topic, args.url, args.tweet, args.text]):
+    if not any([args.topic, args.url, args.tweet, args.file, args.text]):
         parser.error("Provide a topic, --url, --tweet, or --text")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")

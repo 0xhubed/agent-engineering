@@ -1,0 +1,167 @@
+---
+title: "The Harness Is the Product: How LangChain Gained 13.7 Points on a Coding Benchmark Without Changing the Model"
+description: "*LangChain's coding agent vaulted from outside the Top 30 to the Top 5 on Terminal Bench 2.0 by engineering the scaffolding, not the AI.*"
+category: "Advanced"
+date: "2026-02-18"
+source_url: "https://blog.langchain.com/improving-deep-agents-with-harness-engineering/"
+tags:
+  - harness-engineering
+  - context-engineering
+  - coding-agents
+  - benchmarks
+  - agent-evaluation
+featured: false
+---
+
+In the race to build better AI coding agents, the instinct is to reach for a bigger model. LangChain's latest experiment suggests a different lever may matter more. 
+The team iteratively improved its open-source coding agent, `deepagents-cli`, by 13.7 percentage points — from 52.8% to 66.5% on Terminal Bench 2.0 — while keeping the model fixed at GPT-5.2-Codex.
+ 
+What the team calls "harness engineering" — essentially optimizing everything around the AI rather than the AI itself
+ — delivered the gains. The result is a case study in a discipline that is rapidly becoming central to production agent work: designing the systems, prompts, tools, and middleware that channel a model's raw capability toward reliable task completion.
+
+## What Is Harness Engineering?
+
+
+The goal of a harness is to "mold the inherently spiky intelligence of a model" for tasks we care about. Harness engineering is about systems — building tooling around the model to optimize goals like task performance, token efficiency, and latency. Design decisions include the system prompt, tool choice, and execution flow.
+
+
+The term has gained currency across the industry. 
+OpenAI's own harness engineering guide describes the shift: understanding what changes "when a software engineering team's primary job is no longer to write code, but to design environments, specify intent, and build feedback loops that allow Codex agents to do reliable work."
+ 
+Anthropic, meanwhile, published research on effective harnesses for long-running agents, noting that agents still face challenges working across many context windows and looking to human engineers for inspiration.
+
+
+
+Phil Schmid, in a widely-read analysis, defines the agent harness as "the software that wraps the model, executing tool calls, managing the message history loop, and handling Context Engineering logic."
+ The model reasons. The harness acts.
+
+## The Benchmark and the Baseline
+
+
+Terminal Bench 2.0 includes 89 tasks, each subjected to several hours of manual and LLM-assisted validation.
+ 
+Unlike traditional coding benchmarks that test isolated functions or algorithms, Terminal-Bench evaluates agents on complete, end-to-end tasks that mirror the challenges faced by actual software engineers and system administrators.
+ 
+It is an open-source project led by Stanford University and Laude Institute.
+
+
+LangChain's starting point was a default prompt with standard tools, which scored 52.8%. The team deliberately compressed its optimization space to three variables: system prompts, tools, and middleware hooks. 
+At LangChain, the team uses traces — logged in LangSmith — to understand agent failure modes at scale. Models today are largely black boxes; their inner mechanisms are hard to interpret. But the team can see their inputs and outputs in text space, then use those in improvement loops.
+
+
+<Callout type="info" title="Trace-Driven Improvement">
+The team built an "Agent Skill" that fetches experiment traces from LangSmith, spawns parallel error-analysis agents, and synthesizes targeted harness changes. This works similarly to boosting in machine learning — each iteration focuses on the mistakes from the last run.
+</Callout>
+
+## Four Interventions That Moved the Needle
+
+### Self-Verification Loops
+
+
+The most common failure pattern the team identified was almost comically human. Agents would write a solution, re-read their own code, decide it looked fine, and stop. No actual testing.
+
+
+The fix was twofold. First, structured system-prompt guidance breaks agent work into four phases: planning and discovery, building with tests in mind, verifying against the original specification, and fixing errors. Second, 
+deterministic context injection helps agents verify their work — a `PreCompletionChecklistMiddleware` intercepts the agent before it exits and reminds it to run a verification pass against the task spec. This is similar to a "Ralph Wiggum Loop," where a hook forces the agent to continue executing on exit.
+
+
+
+The Ralph Wiggum Loop is an informal label for a practical pattern used in AI agent implementations: run an AI agent in an iterative loop that repeatedly attempts a task, executes or checks the attempt against a concrete criterion, and feeds the resulting feedback back into the next attempt.
+ It has become a widely adopted technique in agentic coding, with implementations appearing in frameworks from Vercel, Block's Goose, and others.
+
+### Context Delivery at Startup
+
+
+Another key finding: agents waste significant effort — and make errors — trying to figure out their working environment. Directory structures, available tools, Python installations. LangChain's `LocalContextMiddleware` now maps all of this upfront and injects it directly.
+
+
+
+The team also discovered agents don't naturally understand how their code will be evaluated. Adding explicit prompting about programmatic testing standards and edge cases reduced what they call "slop buildup" over time.
+ 
+Time budgeting proved critical for Terminal Bench's strict timeouts. Agents are "famously bad at time estimation," so injecting warnings nudges them toward finishing and verifying rather than endlessly iterating.
+
+
+### Loop Detection and Plan Reconsideration
+
+
+Agents can be myopic once they've decided on a plan, resulting in "doom loops" that make small variations to the same broken approach — 10+ times in some traces. A `LoopDetectionMiddleware` tracks per-file edit counts via tool call hooks and adds context like "consider reconsidering your approach" after N edits to the same file.
+
+
+
+This is a design heuristic that engineers around today's perceived model issues. As models improve, these guardrails will likely be unnecessary, but today they help agents execute correctly and autonomously.
+
+
+### The Reasoning Sandwich
+
+
+Perhaps the most counterintuitive finding involved compute allocation. Running at maximum reasoning budget (`xhigh`) actually scored poorly at 53.9% due to timeouts, compared to 63.6% at `high` settings.
+
+
+The team settled on an `xhigh-high-xhigh` "reasoning sandwich" — heavy compute for planning and final verification, lighter compute for implementation. This pushed the final score to 66.5%.
+
+<Table caption="Reasoning Budget Allocation by Phase">
+<thead>
+<tr><th>Phase</th><th>Reasoning Level</th><th>Rationale</th></tr>
+</thead>
+<tbody>
+<tr><td>Planning</td><td><code>xhigh</code></td><td>Complex analysis of task requirements and codebase</td></tr>
+<tr><td>Implementation</td><td><code>high</code></td><td>Speed matters; prevents timeout on strict benchmarks</td></tr>
+<tr><td>Verification</td><td><code>xhigh</code></td><td>Careful comparison of output against original spec</td></tr>
+</tbody>
+</Table>
+
+## How This Fits the Broader Landscape
+
+LangChain's results land in a field where harness quality is increasingly the differentiator. 
+The Terminal-Bench paper shows that Codex CLI paired with GPT-5.2 achieves the highest average resolution rate of 63%, followed by Terminus 2 with Claude Opus 4.5 at 58% and Gemini 3 Pro at 57%.
+ 
+Scaffold and harness differences affect results
+ — a recurring theme across benchmarks.
+
+
+As of February 2026, GPT-5.3-Codex leads Terminal-Bench 2.0 at 75.1%, though Codex CLI pushes that to 77.3% with agent-level scaffolding.
+ The gap between a model's raw score and its scaffolded score underscores the argument: the harness is not incidental. It is the product.
+
+
+Manus rewrote their harness five times in six months — same models, five architectures. Each rewrite improved reliability and task completion. The model didn't change. The harness did.
+ 
+As models get stronger, the argument goes, teams should not be building more scaffolding — they should be getting out of the model's way.
+
+
+<Callout type="warning" title="Harnesses Must Be Tailored to Models">
+
+The Codex and Claude prompting guides show that models require different prompting strategies. A test run with Claude Opus 4.6 scored 59.6% with an earlier harness version — competitive but worse than Codex because the same improvement loop wasn't run with Claude. Many principles generalize, but running a few rounds of harness iterations for your specific model and task maximizes performance.
+
+</Callout>
+
+## Practical Principles for Practitioners
+
+The LangChain experiment distills into a set of principles that extend beyond any single benchmark.
+
+First, assemble context on behalf of your agent. 
+Context assembly is still difficult for agents today, especially in unseen environments. Onboarding models with directory structures, available tools, coding best practices, and problem-solving strategies reduces the error surface for poor search and avoidable planning errors.
+
+
+Second, force verification. 
+Models are biased toward their first plausible solution. Prompt them aggressively to verify their work by running tests and refining solutions. This is especially important in autonomous coding systems that don't have humans in the loop.
+
+
+Third, use traces as a feedback signal. 
+Regardless of your agent framework, traces are critical to understanding agent behavior.
+ 
+With agents, your app logic is documented in traces, not code.
+
+
+Fourth, design for today's model limitations while planning for tomorrow's. 
+Models today aren't perfect. The job of the harness designer is to design around today's shortcomings while planning for smarter models in the future. Blind retries and not verifying work are good examples. These guardrails will almost surely dissolve over time, but to build robust agent applications today, they're useful tools to experiment with.
+
+
+## What Comes Next
+
+The LangChain team points to several open research directions: multi-model systems that combine Codex, Gemini, and Claude; memory primitives for continual learning so agents can improve autonomously across tasks; and methods like reinforcement learning from model traces to more efficiently mine improvement signals.
+
+
+Deep Agents is an agent harness — an opinionated, ready-to-run agent out of the box. Instead of wiring up prompts, tools, and context management yourself, you get a working agent immediately and customize what you need.
+ The project is open source, available in both Python and JavaScript, with a published dataset of traces for the community to build on.
+
+The lesson is straightforward but easy to overlook. When your agent underperforms, the bottleneck may not be intelligence. It may be the scaffolding that shapes how that intelligence is deployed. In 2026, harness engineering is not an afterthought. It is the work.
