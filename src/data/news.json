@@ -1,6 +1,34 @@
 {
-  "last_updated": "2026-02-17T08:19:49.978372",
+  "last_updated": "2026-02-18T08:18:46.362982",
   "items": [
+    {
+      "title": "monday Service + LangSmith: Building a Code-First Evaluation Strategy from Day 1",
+      "url": "https://blog.langchain.com/customers-monday/",
+      "summary": "Monday Service shares their approach to building a code-first evaluation strategy for customer-facing service agents using LangSmith, demonstrating production evaluation practices for agent systems.",
+      "published": "2026-02-18T08:05:53",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "evaluation",
+        "frameworks",
+        "tools"
+      ],
+      "processed_at": "2026-02-18T08:18:46.362738"
+    },
+    {
+      "title": "Improving Deep Agents with harness engineering",
+      "url": "https://blog.langchain.com/improving-deep-agents-with-harness-engineering/",
+      "summary": "LangChain's coding agent improved from Top 30 to Top 5 on Terminal Bench 2.0 through harness engineering techniques including self-verification and tracing, showing practical agent performance optimization methods.",
+      "published": "2026-02-17T16:15:28",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "evaluation",
+        "patterns",
+        "frameworks"
+      ],
+      "processed_at": "2026-02-18T08:18:46.362749"
+    },
     {
       "title": "Introducing Lockdown Mode and Elevated Risk labels in ChatGPT",
       "url": "https://openai.com/index/introducing-lockdown-mode-and-elevated-risk-labels-in-chatgpt",
@@ -249,34 +277,6 @@
         "patterns"
       ],
       "processed_at": "2026-02-05T08:18:17.790458"
-    },
-    {
-      "title": "Community Evals: Because we're done trusting black-box leaderboards over the community",
-      "url": "https://huggingface.co/blog/community-evals",
-      "summary": "Hugging Face introduces Community Evals as an alternative to black-box leaderboards, providing transparent evaluation methods relevant to agent benchmarking and assessment.",
-      "published": "2026-02-04T00:00:00",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "evaluation",
-        "frameworks",
-        "research"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626455"
-    },
-    {
-      "title": "Snowflake and OpenAI partner to bring frontier intelligence to enterprise data",
-      "url": "https://openai.com/index/snowflake-partnership",
-      "summary": "OpenAI and Snowflake partner in a $200M agreement to enable AI agents and insights directly within Snowflake's enterprise data platform.",
-      "published": "2026-02-02T06:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "tools",
-        "frameworks"
-      ],
-      "processed_at": "2026-02-03T08:16:24.414887"
     }
   ]
 }
