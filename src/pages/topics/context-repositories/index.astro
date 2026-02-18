@@ -1,0 +1,1599 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+const memoryFileStructureExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Context Repository file structure
+# Each file is a plain-text memory the agent can read/write
+
+memory/
+├── core/
+│   ├── user_preferences.md        # Frontmatter: priority=high
+│   ├── project_context.md         # Frontmatter: priority=high
+│   └── system_notes.md            # Frontmatter: priority=medium
+├── people/
+│   ├── alice.md                   # Contact details, interaction history
+│   └── bob.md
+├── topics/
+│   ├── ml_pipeline.md             # Domain knowledge
+│   └── deployment_checklist.md
+├── episodes/
+│   ├── 2026-01-15_debug_session.md
+│   └── 2026-02-01_architecture_review.md
+└── .git/                          # Auto-versioned by git
+
+# Progressive loading based on frontmatter metadata
+function loadMemory(query, tokenBudget):
+    # Stage 1: Read directory listing + frontmatter only
+    index = scanFrontmatter("memory/")
+    # ~20 tokens per file: title, priority, last_modified
+
+    # Stage 2: Rank by relevance to current query
+    ranked = rankFiles(index, query)
+
+    # Stage 3: Load full content within token budget
+    loaded = []
+    tokensUsed = 0
+    for file in ranked:
+        content = readFile(file.path)
+        if tokensUsed + tokenCount(content) > tokenBudget:
+            break
+        loaded.append(content)
+        tokensUsed += tokenCount(content)
+
+    return loaded`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `from pathlib import Path
+from dataclasses import dataclass, field
+import yaml
+import tiktoken
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
+
+@dataclass
+class MemoryFile:
+    path: Path
+    title: str
+    priority: str = "medium"
+    tags: list[str] = field(default_factory=list)
+    last_modified: str = ""
+    content: str = ""
+
+class ContextRepository:
+    def __init__(self, repo_path: Path):
+        self.repo_path = repo_path
+        self.encoder = tiktoken.encoding_for_model("gpt-4")
+
+    def scan_frontmatter(self) -> list[MemoryFile]:
+        """Stage 1: Scan all files for frontmatter metadata only."""
+        files = []
+        for md_file in self.repo_path.rglob("*.md"):
+            if md_file.parts[-2] == ".git":
+                continue
+
+            content = md_file.read_text()
+            meta = self._parse_frontmatter(content)
+
+            files.append(MemoryFile(
+                path=md_file,
+                title=meta.get("title", md_file.stem),
+                priority=meta.get("priority", "medium"),
+                tags=meta.get("tags", []),
+                last_modified=meta.get("last_modified", ""),
+            ))
+        return files
+
+    def load_within_budget(
+        self, query: str, token_budget: int = 4000
+    ) -> list[MemoryFile]:
+        """Progressive loading: frontmatter scan -> rank -> load."""
+        index = self.scan_frontmatter()
+        ranked = self._rank_by_relevance(index, query)
+
+        loaded = []
+        tokens_used = 0
+
+        for mem_file in ranked:
+            content = mem_file.path.read_text()
+            body = self._strip_frontmatter(content)
+            token_count = len(self.encoder.encode(body))
+
+            if tokens_used + token_count > token_budget:
+                break
+
+            mem_file.content = body
+            loaded.append(mem_file)
+            tokens_used += token_count
+
+        return loaded
+
+    def _rank_by_relevance(
+        self, files: list[MemoryFile], query: str
+    ) -> list[MemoryFile]:
+        """Rank files by priority then tag overlap with query."""
+        priority_order = {"high": 0, "medium": 1, "low": 2}
+        query_terms = set(query.lower().split())
+
+        def score(f: MemoryFile) -> tuple:
+            tag_overlap = len(set(f.tags) & query_terms)
+            return (priority_order.get(f.priority, 1), -tag_overlap)
+
+        return sorted(files, key=score)
+
+    def _parse_frontmatter(self, content: str) -> dict:
+        if not content.startswith("---"):
+            return {}
+        end = content.find("---", 3)
+        if end == -1:
+            return {}
+        return yaml.safe_load(content[3:end]) or {}
+
+    def _strip_frontmatter(self, content: str) -> str:
+        if not content.startswith("---"):
+            return content
+        end = content.find("---", 3)
+        return content[end + 3:].strip() if end != -1 else content`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using System.IO;
+using YamlDotNet.Serialization;
+
+public record MemoryFile(
+    string Path,
+    string Title,
+    string Priority = "medium",
+    List<string> Tags = null,
+    string LastModified = "",
+    string Content = ""
+)
+{
+    public List<string> Tags { get; init; } = Tags ?? new();
+}
+
+public class ContextRepository
+{
+    private readonly string _repoPath;
+    private readonly IDeserializer _yaml;
+
+    public ContextRepository(string repoPath)
+    {
+        _repoPath = repoPath;
+        _yaml = new DeserializerBuilder().Build();
+    }
+
+    /// <summary>
+    /// Stage 1: Scan all memory files for frontmatter metadata.
+    /// </summary>
+    public List<MemoryFile> ScanFrontmatter()
+    {
+        var files = new List<MemoryFile>();
+
+        foreach (var mdFile in Directory.GetFiles(
+            _repoPath, "*.md", SearchOption.AllDirectories))
+        {
+            if (mdFile.Contains(".git")) continue;
+
+            var content = File.ReadAllText(mdFile);
+            var meta = ParseFrontmatter(content);
+
+            files.Add(new MemoryFile(
+                Path: mdFile,
+                Title: meta.GetValueOrDefault("title",
+                    System.IO.Path.GetFileNameWithoutExtension(mdFile)),
+                Priority: meta.GetValueOrDefault("priority", "medium"),
+                Tags: meta.GetValueOrDefault("tags", "")
+                    .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(t => t.Trim()).ToList()
+            ));
+        }
+
+        return files;
+    }
+
+    /// <summary>
+    /// Progressive loading within a token budget.
+    /// </summary>
+    public List<MemoryFile> LoadWithinBudget(
+        string query, int tokenBudget = 4000)
+    {
+        var index = ScanFrontmatter();
+        var ranked = RankByRelevance(index, query);
+
+        var loaded = new List<MemoryFile>();
+        var tokensUsed = 0;
+
+        foreach (var memFile in ranked)
+        {
+            var content = File.ReadAllText(memFile.Path);
+            var body = StripFrontmatter(content);
+            var tokenCount = EstimateTokens(body);
+
+            if (tokensUsed + tokenCount > tokenBudget) break;
+
+            loaded.Add(memFile with { Content = body });
+            tokensUsed += tokenCount;
+        }
+
+        return loaded;
+    }
+
+    private List<MemoryFile> RankByRelevance(
+        List<MemoryFile> files, string query)
+    {
+        var queryTerms = query.ToLower()
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .ToHashSet();
+
+        var priorityOrder = new Dictionary<string, int>
+        {
+            ["high"] = 0, ["medium"] = 1, ["low"] = 2
+        };
+
+        return files.OrderBy(f =>
+                priorityOrder.GetValueOrDefault(f.Priority, 1))
+            .ThenByDescending(f =>
+                f.Tags.Count(t => queryTerms.Contains(t.ToLower())))
+            .ToList();
+    }
+
+    private Dictionary<string, string> ParseFrontmatter(string content)
+    {
+        if (!content.StartsWith("---")) return new();
+        var end = content.IndexOf("---", 3);
+        if (end == -1) return new();
+        var frontmatter = content.Substring(3, end - 3).Trim();
+        return _yaml.Deserialize<Dictionary<string, string>>(
+            frontmatter) ?? new();
+    }
+
+    private int EstimateTokens(string text) => text.Length / 4;
+
+    private string StripFrontmatter(string content)
+    {
+        if (!content.StartsWith("---")) return content;
+        var end = content.IndexOf("---", 3);
+        return end == -1 ? content : content[(end + 3)..].Trim();
+    }
+}`,
+  },
+];
+
+const autoVersionedOpsExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Every memory write is automatically versioned via git
+
+function writeMemory(filePath, content, commitMessage = "auto"):
+    # Write the file
+    writeFile("memory/" + filePath, content)
+
+    # Auto-commit the change
+    git.add(filePath)
+
+    if commitMessage == "auto":
+        commitMessage = generateCommitMessage(filePath, content)
+
+    git.commit(commitMessage)
+    # Git log now serves as a changelog of memory evolution
+
+function readMemoryHistory(filePath, limit = 10):
+    # Git log gives us full history of a memory file
+    commits = git.log("memory/" + filePath, limit)
+
+    history = []
+    for commit in commits:
+        history.append({
+            date: commit.date,
+            message: commit.message,
+            diff: git.diff(commit.parent, commit, filePath),
+            content: git.show(commit, filePath)
+        })
+    return history
+
+function rollbackMemory(filePath, commitHash):
+    # Restore a previous version of a memory file
+    previousContent = git.show(commitHash, filePath)
+    writeFile("memory/" + filePath, previousContent)
+    git.add(filePath)
+    git.commit("rollback " + filePath + " to " + commitHash[:7])
+
+# Agent can inspect its own memory evolution
+function reflectOnChanges(filePath):
+    history = readMemoryHistory(filePath, limit = 5)
+    prompt = "Here is how this memory has evolved:\\n"
+    for entry in history:
+        prompt += entry.date + ": " + entry.message + "\\n"
+        prompt += entry.diff + "\\n"
+    return llm.analyze(prompt + "\\nWhat patterns do you see?")`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `import subprocess
+from pathlib import Path
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class MemoryVersion:
+    commit_hash: str
+    date: str
+    message: str
+    diff: str
+
+class GitVersionedMemory:
+    def __init__(self, repo_path: Path):
+        self.repo_path = repo_path
+        self._ensure_git_repo()
+
+    def write(self, file_path: str, content: str,
+              message: str | None = None) -> str:
+        """Write memory file and auto-commit."""
+        full_path = self.repo_path / file_path
+        full_path.parent.mkdir(parents=True, exist_ok=True)
+        full_path.write_text(content)
+
+        self._git("add", file_path)
+
+        if message is None:
+            message = f"update {file_path} at {datetime.now():%Y-%m-%d %H:%M}"
+
+        self._git("commit", "-m", message)
+        return self._git("rev-parse", "HEAD").strip()
+
+    def history(self, file_path: str,
+                limit: int = 10) -> list[MemoryVersion]:
+        """Get version history for a memory file."""
+        log_output = self._git(
+            "log", f"-{limit}",
+            "--format=%H|%ai|%s", "--", file_path
+        )
+
+        versions = []
+        for line in log_output.strip().split("\\n"):
+            if not line:
+                continue
+            hash_, date, msg = line.split("|", 2)
+            diff = self._git("diff", f"{hash_}~1", hash_,
+                             "--", file_path)
+            versions.append(MemoryVersion(
+                commit_hash=hash_,
+                date=date,
+                message=msg,
+                diff=diff
+            ))
+        return versions
+
+    def rollback(self, file_path: str, commit_hash: str) -> str:
+        """Restore a memory file to a previous version."""
+        content = self._git("show", f"{commit_hash}:{file_path}")
+        return self.write(
+            file_path, content,
+            f"rollback {file_path} to {commit_hash[:7]}"
+        )
+
+    def _git(self, *args: str) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=self.repo_path,
+            capture_output=True, text=True, check=True
+        )
+        return result.stdout
+
+    def _ensure_git_repo(self):
+        git_dir = self.repo_path / ".git"
+        if not git_dir.exists():
+            self._git("init")
+            self.write(".gitkeep", "", "init context repository")`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using System.Diagnostics;
+
+public record MemoryVersion(
+    string CommitHash,
+    string Date,
+    string Message,
+    string Diff
+);
+
+public class GitVersionedMemory
+{
+    private readonly string _repoPath;
+
+    public GitVersionedMemory(string repoPath)
+    {
+        _repoPath = repoPath;
+        EnsureGitRepo();
+    }
+
+    /// <summary>
+    /// Write a memory file and auto-commit the change.
+    /// </summary>
+    public string Write(string filePath, string content,
+        string? message = null)
+    {
+        var fullPath = Path.Combine(_repoPath, filePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        File.WriteAllText(fullPath, content);
+
+        Git("add", filePath);
+
+        message ??= $"update {filePath} at {DateTime.Now:yyyy-MM-dd HH:mm}";
+        Git("commit", "-m", message);
+
+        return Git("rev-parse", "HEAD").Trim();
+    }
+
+    /// <summary>
+    /// Get version history for a memory file.
+    /// </summary>
+    public List<MemoryVersion> History(string filePath, int limit = 10)
+    {
+        var log = Git("log", $"-{limit}",
+            "--format=%H|%ai|%s", "--", filePath);
+
+        var versions = new List<MemoryVersion>();
+
+        foreach (var line in log.Split('\\n',
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.Split('|', 3);
+            var diff = Git("diff", $"{parts[0]}~1", parts[0],
+                "--", filePath);
+
+            versions.Add(new MemoryVersion(
+                CommitHash: parts[0],
+                Date: parts[1],
+                Message: parts[2],
+                Diff: diff
+            ));
+        }
+
+        return versions;
+    }
+
+    /// <summary>
+    /// Restore a memory file to a previous version.
+    /// </summary>
+    public string Rollback(string filePath, string commitHash)
+    {
+        var content = Git("show", $"{commitHash}:{filePath}");
+        return Write(filePath, content,
+            $"rollback {filePath} to {commitHash[..7]}");
+    }
+
+    private string Git(params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = _repoPath,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
+
+        using var process = Process.Start(psi)!;
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        return output;
+    }
+
+    private void EnsureGitRepo()
+    {
+        if (!Directory.Exists(Path.Combine(_repoPath, ".git")))
+        {
+            Git("init");
+            Write(".gitkeep", "", "init context repository");
+        }
+    }
+}`,
+  },
+];
+
+const memorySwarmsExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Memory Swarms: Parallel agents working on separate memory branches
+# Uses git worktrees for isolation, merges results back
+
+function memorySwarm(task, numAgents = 3):
+    mainBranch = git.currentBranch()
+
+    # Create isolated worktrees for each agent
+    worktrees = []
+    for i in range(numAgents):
+        branchName = "swarm/agent-" + i
+        worktreePath = "memory-worktrees/agent-" + i
+
+        git.worktree.add(worktreePath, branchName)
+        worktrees.append({
+            path: worktreePath,
+            branch: branchName,
+            agent: createAgent(i)
+        })
+
+    # Fan-out: Each agent works on its subtask independently
+    results = parallel.map(worktrees, (wt) =>
+        wt.agent.process(task, memoryPath = wt.path)
+        # Agent reads/writes to its own worktree
+        # No conflicts possible - each has its own copy
+    )
+
+    # Fan-in: Merge results back to main branch
+    for wt in worktrees:
+        git.checkout(mainBranch)
+        git.merge(wt.branch, strategy = "ours-then-theirs")
+        git.worktree.remove(wt.path)
+
+    # Resolve any semantic conflicts
+    conflicts = detectSemanticConflicts(results)
+    if conflicts:
+        resolveWithLLM(conflicts)
+
+    return mergedResults(results)`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `import asyncio
+import subprocess
+from pathlib import Path
+from dataclasses import dataclass
+
+@dataclass
+class SwarmAgent:
+    agent_id: int
+    worktree_path: Path
+    branch_name: str
+
+class MemorySwarm:
+    def __init__(self, repo_path: Path):
+        self.repo_path = repo_path
+        self.worktree_base = repo_path.parent / "memory-worktrees"
+
+    async def run_swarm(
+        self, task: str, num_agents: int = 3
+    ) -> list[dict]:
+        """Fan-out task to parallel agents, each with isolated memory."""
+        agents = self._create_worktrees(num_agents)
+
+        try:
+            # Fan-out: run agents in parallel
+            results = await asyncio.gather(*[
+                self._run_agent(agent, task) for agent in agents
+            ])
+
+            # Fan-in: merge all branches back
+            self._merge_results(agents)
+
+            return list(results)
+
+        finally:
+            self._cleanup_worktrees(agents)
+
+    def _create_worktrees(self, count: int) -> list[SwarmAgent]:
+        self.worktree_base.mkdir(exist_ok=True)
+        agents = []
+
+        for i in range(count):
+            branch = f"swarm/agent-{i}"
+            wt_path = self.worktree_base / f"agent-{i}"
+
+            self._git("branch", branch, check=False)
+            self._git("worktree", "add", str(wt_path), branch)
+
+            agents.append(SwarmAgent(
+                agent_id=i,
+                worktree_path=wt_path,
+                branch_name=branch
+            ))
+
+        return agents
+
+    async def _run_agent(
+        self, agent: SwarmAgent, task: str
+    ) -> dict:
+        """Each agent works in its own worktree (isolated copy)."""
+        memory = GitVersionedMemory(agent.worktree_path)
+
+        # Agent reads existing memory from its worktree
+        context = memory.scan_frontmatter()
+
+        # Agent processes task and writes new memories
+        result = await process_with_llm(task, context, agent.agent_id)
+
+        # Writes go to the agent's isolated worktree
+        memory.write(
+            f"swarm_results/agent_{agent.agent_id}.md",
+            result["output"],
+            f"agent-{agent.agent_id}: {result['summary']}"
+        )
+
+        return result
+
+    def _merge_results(self, agents: list[SwarmAgent]):
+        """Merge all agent branches back to main."""
+        main_branch = self._git(
+            "rev-parse", "--abbrev-ref", "HEAD").strip()
+
+        for agent in agents:
+            self._git("merge", agent.branch_name,
+                       "--no-edit", "-m",
+                       f"merge swarm agent-{agent.agent_id}")
+
+    def _cleanup_worktrees(self, agents: list[SwarmAgent]):
+        for agent in agents:
+            self._git("worktree", "remove",
+                       str(agent.worktree_path), "--force",
+                       check=False)
+            self._git("branch", "-D", agent.branch_name,
+                       check=False)
+
+    def _git(self, *args: str, check: bool = True) -> str:
+        result = subprocess.run(
+            ["git", *args], cwd=self.repo_path,
+            capture_output=True, text=True, check=check
+        )
+        return result.stdout`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `public record SwarmAgent(
+    int AgentId,
+    string WorktreePath,
+    string BranchName
+);
+
+public class MemorySwarm
+{
+    private readonly string _repoPath;
+    private readonly string _worktreeBase;
+
+    public MemorySwarm(string repoPath)
+    {
+        _repoPath = repoPath;
+        _worktreeBase = Path.Combine(
+            Directory.GetParent(repoPath)!.FullName,
+            "memory-worktrees"
+        );
+    }
+
+    /// <summary>
+    /// Fan-out task to parallel agents with isolated memory.
+    /// </summary>
+    public async Task<List<Dictionary<string, string>>> RunSwarmAsync(
+        string task, int numAgents = 3)
+    {
+        var agents = CreateWorktrees(numAgents);
+
+        try
+        {
+            // Fan-out: run agents in parallel
+            var tasks = agents.Select(
+                a => RunAgentAsync(a, task)).ToArray();
+            var results = await Task.WhenAll(tasks);
+
+            // Fan-in: merge branches back
+            MergeResults(agents);
+
+            return results.ToList();
+        }
+        finally
+        {
+            CleanupWorktrees(agents);
+        }
+    }
+
+    private List<SwarmAgent> CreateWorktrees(int count)
+    {
+        Directory.CreateDirectory(_worktreeBase);
+        var agents = new List<SwarmAgent>();
+
+        for (var i = 0; i < count; i++)
+        {
+            var branch = $"swarm/agent-{i}";
+            var wtPath = Path.Combine(_worktreeBase, $"agent-{i}");
+
+            Git("branch", branch);
+            Git("worktree", "add", wtPath, branch);
+
+            agents.Add(new SwarmAgent(i, wtPath, branch));
+        }
+
+        return agents;
+    }
+
+    private async Task<Dictionary<string, string>> RunAgentAsync(
+        SwarmAgent agent, string task)
+    {
+        var memory = new GitVersionedMemory(agent.WorktreePath);
+        var context = new ContextRepository(agent.WorktreePath)
+            .ScanFrontmatter();
+
+        var result = await ProcessWithLlmAsync(
+            task, context, agent.AgentId);
+
+        memory.Write(
+            $"swarm_results/agent_{agent.AgentId}.md",
+            result["output"],
+            $"agent-{agent.AgentId}: {result["summary"]}"
+        );
+
+        return result;
+    }
+
+    private void MergeResults(List<SwarmAgent> agents)
+    {
+        var mainBranch = Git("rev-parse", "--abbrev-ref", "HEAD")
+            .Trim();
+
+        foreach (var agent in agents)
+        {
+            Git("merge", agent.BranchName, "--no-edit",
+                "-m", $"merge swarm agent-{agent.AgentId}");
+        }
+    }
+
+    private void CleanupWorktrees(List<SwarmAgent> agents)
+    {
+        foreach (var agent in agents)
+        {
+            Git("worktree", "remove", agent.WorktreePath,
+                "--force");
+            Git("branch", "-D", agent.BranchName);
+        }
+    }
+
+    private string Git(params string[] args)
+    {
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = _repoPath,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
+
+        using var process = Process.Start(psi)!;
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        return output;
+    }
+}`,
+  },
+];
+
+const memorySkillsExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Built-in memory skills: operations the agent can perform on its memory
+
+# INIT: Bootstrap memory structure for a new context
+function memoryInit(userProfile):
+    createDirectory("memory/core/")
+    createDirectory("memory/people/")
+    createDirectory("memory/topics/")
+    createDirectory("memory/episodes/")
+
+    writeMemory("core/user_preferences.md", formatFrontmatter({
+        title: "User Preferences",
+        priority: "high",
+        tags: ["user", "preferences"]
+    }) + userProfile)
+
+    git.init()
+    git.commit("initialize context repository")
+
+# REFLECT: Agent reviews recent memories and synthesizes insights
+function memoryReflect(lookbackDays = 7):
+    recentCommits = git.log(since = daysAgo(lookbackDays))
+    recentChanges = []
+    for commit in recentCommits:
+        recentChanges.append(git.show(commit))
+
+    reflection = llm.analyze(
+        "Review these recent memory changes and identify:\\n"
+        + "1. Key patterns or recurring themes\\n"
+        + "2. Contradictions or outdated information\\n"
+        + "3. Connections between different memories\\n"
+        + join(recentChanges, "\\n---\\n")
+    )
+
+    writeMemory("episodes/reflection_" + today() + ".md", reflection)
+
+# DEFRAG: Consolidate scattered memories into coherent files
+function memoryDefrag():
+    allFiles = scanAllMemoryFiles()
+
+    # Find related files that should be merged
+    clusters = clusterBySimilarity(allFiles, threshold = 0.8)
+
+    for cluster in clusters:
+        if len(cluster) > 1:
+            merged = llm.merge(
+                "Consolidate these related memories into one "
+                + "coherent document:\\n"
+                + join(cluster.contents, "\\n---\\n")
+            )
+            writeMemory(cluster.bestPath, merged)
+            for obsolete in cluster.otherPaths:
+                deleteFile(obsolete)
+
+    git.commit("defrag: consolidated " + len(clusters) + " clusters")`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `from pathlib import Path
+from datetime import datetime, timedelta
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
+
+class MemorySkills:
+    """Built-in skills the agent uses to manage its own memory."""
+
+    def __init__(self, memory: GitVersionedMemory):
+        self.memory = memory
+        self.llm = ChatOpenAI(model="gpt-4")
+
+    def init(self, user_profile: str) -> None:
+        """Bootstrap memory structure for a new user."""
+        dirs = ["core", "people", "topics", "episodes"]
+        for d in dirs:
+            (self.memory.repo_path / d).mkdir(
+                parents=True, exist_ok=True)
+
+        frontmatter = (
+            "---\\n"
+            "title: User Preferences\\n"
+            "priority: high\\n"
+            "tags: [user, preferences]\\n"
+            "---\\n\\n"
+        )
+        self.memory.write(
+            "core/user_preferences.md",
+            frontmatter + user_profile,
+            "initialize context repository"
+        )
+
+    def reflect(self, lookback_days: int = 7) -> str:
+        """Review recent changes and synthesize insights."""
+        since = datetime.now() - timedelta(days=lookback_days)
+        since_str = since.strftime("%Y-%m-%d")
+
+        log = self.memory._git(
+            "log", f"--since={since_str}",
+            "--format=%H|%s", "--diff-filter=M"
+        )
+
+        changes = []
+        for line in log.strip().split("\\n"):
+            if not line:
+                continue
+            hash_, msg = line.split("|", 1)
+            diff = self.memory._git(
+                "diff", f"{hash_}~1", hash_)
+            changes.append(f"## {msg}\\n{diff}")
+
+        prompt = (
+            "Review these recent memory changes and identify:\\n"
+            "1. Key patterns or recurring themes\\n"
+            "2. Contradictions or outdated info\\n"
+            "3. Connections between memories\\n\\n"
+            + "\\n---\\n".join(changes)
+        )
+
+        response = self.llm.invoke([
+            SystemMessage(content="You are a memory analyst."),
+            HumanMessage(content=prompt)
+        ])
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        self.memory.write(
+            f"episodes/reflection_{today}.md",
+            response.content,
+            f"reflect: {today} synthesis"
+        )
+        return response.content
+
+    def defrag(self) -> int:
+        """Consolidate scattered memories into coherent files."""
+        repo = ContextRepository(self.memory.repo_path)
+        all_files = repo.scan_frontmatter()
+
+        # Group by tags
+        tag_groups: dict[str, list[MemoryFile]] = {}
+        for f in all_files:
+            for tag in f.tags:
+                tag_groups.setdefault(tag, []).append(f)
+
+        merged_count = 0
+        for tag, files in tag_groups.items():
+            if len(files) <= 1:
+                continue
+
+            contents = []
+            for f in files:
+                body = repo._strip_frontmatter(
+                    f.path.read_text())
+                contents.append(f"## {f.title}\\n{body}")
+
+            prompt = (
+                "Consolidate these related memories into one "
+                "coherent document. Preserve all important facts."
+                "\\n\\n" + "\\n---\\n".join(contents)
+            )
+
+            response = self.llm.invoke([
+                HumanMessage(content=prompt)
+            ])
+
+            # Write merged file, keep the first path
+            self.memory.write(
+                str(files[0].path.relative_to(
+                    self.memory.repo_path)),
+                response.content,
+                f"defrag: merged {len(files)} files for '{tag}'"
+            )
+            merged_count += 1
+
+        return merged_count`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `public class MemorySkills
+{
+    private readonly GitVersionedMemory _memory;
+    private readonly IChatClient _llm;
+
+    public MemorySkills(GitVersionedMemory memory, IChatClient llm)
+    {
+        _memory = memory;
+        _llm = llm;
+    }
+
+    /// <summary>
+    /// Bootstrap memory structure for a new user.
+    /// </summary>
+    public void Init(string userProfile)
+    {
+        var dirs = new[] { "core", "people", "topics", "episodes" };
+        foreach (var dir in dirs)
+            Directory.CreateDirectory(
+                Path.Combine(_memory.RepoPath, dir));
+
+        var frontmatter =
+            "---\\n" +
+            "title: User Preferences\\n" +
+            "priority: high\\n" +
+            "tags: [user, preferences]\\n" +
+            "---\\n\\n";
+
+        _memory.Write(
+            "core/user_preferences.md",
+            frontmatter + userProfile,
+            "initialize context repository"
+        );
+    }
+
+    /// <summary>
+    /// Review recent changes and synthesize insights.
+    /// </summary>
+    public async Task<string> ReflectAsync(int lookbackDays = 7)
+    {
+        var since = DateTime.Now
+            .AddDays(-lookbackDays).ToString("yyyy-MM-dd");
+
+        var log = _memory.Git(
+            "log", $"--since={since}", "--format=%H|%s");
+
+        var changes = new List<string>();
+        foreach (var line in log.Split('\\n',
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            var parts = line.Split('|', 2);
+            var diff = _memory.Git(
+                "diff", $"{parts[0]}~1", parts[0]);
+            changes.Add($"## {parts[1]}\\n{diff}");
+        }
+
+        var prompt =
+            "Review these recent memory changes:\\n" +
+            "1. Key patterns or recurring themes\\n" +
+            "2. Contradictions or outdated info\\n" +
+            "3. Connections between memories\\n\\n" +
+            string.Join("\\n---\\n", changes);
+
+        var response = await _llm.CompleteAsync(prompt);
+
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        _memory.Write(
+            $"episodes/reflection_{today}.md",
+            response,
+            $"reflect: {today} synthesis"
+        );
+
+        return response;
+    }
+
+    /// <summary>
+    /// Consolidate scattered memories into coherent files.
+    /// </summary>
+    public async Task<int> DefragAsync()
+    {
+        var repo = new ContextRepository(_memory.RepoPath);
+        var allFiles = repo.ScanFrontmatter();
+
+        // Group by tags
+        var tagGroups = allFiles
+            .SelectMany(f => f.Tags.Select(t => (Tag: t, File: f)))
+            .GroupBy(x => x.Tag)
+            .Where(g => g.Count() > 1);
+
+        var mergedCount = 0;
+        foreach (var group in tagGroups)
+        {
+            var contents = group.Select(g =>
+            {
+                var body = File.ReadAllText(g.File.Path);
+                return $"## {g.File.Title}\\n{body}";
+            }).ToList();
+
+            var prompt =
+                "Consolidate these related memories into one " +
+                "coherent document.\\n\\n" +
+                string.Join("\\n---\\n", contents);
+
+            var response = await _llm.CompleteAsync(prompt);
+
+            _memory.Write(
+                group.First().File.Path,
+                response,
+                $"defrag: merged {group.Count()} files"
+            );
+
+            mergedCount++;
+        }
+
+        return mergedCount;
+    }
+}`,
+  },
+];
+---
+
+<BaseLayout
+  title="Context Repositories"
+  description="Rearchitect agent memory as local filesystem files with git-based versioning, progressive disclosure, memory swarms, and built-in memory skills"
+  type="article"
+  keywords={['context repositories', 'agent memory', 'git versioning', 'memory swarms', 'progressive disclosure']}
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Context Repositories
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        A pattern that rearchitects agent memory as local filesystem files with git-based versioning. Instead of tool-based memory APIs, agents read and write plain-text files that are automatically versioned, enabling progressive disclosure, parallel memory operations, and built-in memory skills.
+      </p>
+    </header>
+
+    <!-- Section 1: The Problem with Tool-Based Memory -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Problem with Tool-Based Memory
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Traditional agent memory systems expose memory through tool calls like <code>memory_search</code>, <code>memory_insert</code>, and <code>memory_update</code>. While functional, this approach creates several friction points that limit how agents interact with their own knowledge.
+      </p>
+
+      <Table caption="Tool-based memory vs. context repositories">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Tool-Based Memory</th>
+            <th>Context Repositories</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Interface</strong></td>
+            <td>API calls with rigid schemas</td>
+            <td>Plain-text files the agent reads/writes</td>
+          </tr>
+          <tr>
+            <td><strong>Versioning</strong></td>
+            <td>Manual or none</td>
+            <td>Automatic via git commits</td>
+          </tr>
+          <tr>
+            <td><strong>Concurrency</strong></td>
+            <td>Lock-based, sequential</td>
+            <td>Git worktrees for parallel access</td>
+          </tr>
+          <tr>
+            <td><strong>Discoverability</strong></td>
+            <td>Search by query string</td>
+            <td>Browse directory tree + frontmatter scan</td>
+          </tr>
+          <tr>
+            <td><strong>Context loading</strong></td>
+            <td>All-or-nothing retrieval</td>
+            <td>Progressive disclosure within token budget</td>
+          </tr>
+          <tr>
+            <td><strong>Debugging</strong></td>
+            <td>Opaque database state</td>
+            <td>Human-readable files, git log, git diff</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="info" title="Origin">
+        The Context Repositories pattern was introduced by <strong>Letta</strong> (formerly MemGPT), which pioneered the idea of treating agent memory as a versioned filesystem rather than a database behind an API.
+      </Callout>
+    </section>
+
+    <!-- Section 2: Core Architecture -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Core Architecture
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        A context repository has three layers: the file tree (what the agent sees), the agent actions (read, write, organize), and the git repository (automatic versioning underneath).
+      </p>
+
+      <Diagram title="Context Repository Architecture" caption="Three layers: file tree for organization, agent actions for interaction, git for versioning">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                       FILE TREE                                 │
+│  memory/                                                        │
+│  ├── core/              High-priority, always loaded             │
+│  │   ├── user_prefs.md  ← frontmatter: priority=high            │
+│  │   └── project.md     ← frontmatter: priority=high            │
+│  ├── people/            Per-person interaction history           │
+│  ├── topics/            Domain knowledge files                   │
+│  └── episodes/          Dated experience records                 │
+├─────────────────────────────────────────────────────────────────┤
+│                     AGENT ACTIONS                                │
+│                                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐   │
+│  │  read    │  │  write   │  │  organize │  │  reflect     │   │
+│  │  files   │  │  files   │  │  (move,   │  │  (synthesize │   │
+│  │          │  │          │  │   merge)  │  │   insights)  │   │
+│  └────┬─────┘  └────┬─────┘  └─────┬─────┘  └──────┬───────┘   │
+│       │             │              │               │            │
+├───────┴─────────────┴──────────────┴───────────────┴────────────┤
+│                      GIT REPOSITORY                              │
+│                                                                  │
+│  Every write → auto-commit                                       │
+│  Full history → git log                                          │
+│  Rollback    → git checkout <hash>                               │
+│  Parallel    → git worktree                                      │
+│  Changelog   → git diff                                          │
+└─────────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+    </section>
+
+    <!-- Section 3: Progressive Memory Disclosure -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Progressive Memory Disclosure
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Not all memories need to be loaded into context at once. Context repositories use frontmatter metadata and directory structure to progressively disclose information within a token budget.
+      </p>
+
+      <Diagram title="Progressive Disclosure Flow" caption="Three stages: scan metadata, rank by relevance, load within budget">
+{`┌─────────────────────────────────────────────────────────────┐
+│  Stage 1: SCAN FRONTMATTER              ~20 tokens/file     │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │ user_prefs.md  │ priority=high  │ tags=[user]    │       │
+│  │ project.md     │ priority=high  │ tags=[project] │       │
+│  │ alice.md       │ priority=med   │ tags=[people]  │       │
+│  │ ml_pipeline.md │ priority=low   │ tags=[ml]      │       │
+│  └──────────────────────────────────────────────────┘       │
+│                          │                                   │
+│                          ▼                                   │
+│  Stage 2: RANK BY RELEVANCE                                  │
+│  Query: "Alice's ML preferences"                             │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │ 1. alice.md        (tag match + name match)      │       │
+│  │ 2. ml_pipeline.md  (tag match)                   │       │
+│  │ 3. user_prefs.md   (high priority)               │       │
+│  │ 4. project.md      (high priority)               │       │
+│  └──────────────────────────────────────────────────┘       │
+│                          │                                   │
+│                          ▼                                   │
+│  Stage 3: LOAD WITHIN TOKEN BUDGET (4000 tokens)             │
+│  ┌─────────────────┐  ┌─────────────────┐                   │
+│  │ alice.md        │  │ ml_pipeline.md  │  [budget reached] │
+│  │ (1200 tokens)   │  │ (2500 tokens)   │                   │
+│  └─────────────────┘  └─────────────────┘                   │
+└─────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Callout type="tip" title="Frontmatter as Index">
+        Use YAML frontmatter in every memory file to store metadata like <code>title</code>, <code>priority</code>, <code>tags</code>, and <code>last_modified</code>. This lets the agent scan the index without loading full file contents.
+      </Callout>
+
+      <div class="mt-6">
+        <CodeBlock tabs={memoryFileStructureExample} title="Memory File Structure & Progressive Loading" />
+      </div>
+    </section>
+
+    <!-- Section 4: Git-Backed Versioning -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Git-Backed Versioning
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Every memory write is automatically committed to git. This gives agents a complete changelog of how their memory has evolved, the ability to roll back mistakes, and a built-in audit trail.
+      </p>
+
+      <Diagram title="Git as Memory Timeline" caption="Every memory operation becomes a git commit, creating a queryable timeline">
+{`Time ──────────────────────────────────────────────────────────▶
+
+  ○ init repo          ○ update prefs       ○ add episode
+  │                    │                    │
+  ├── core/            ├── core/            ├── episodes/
+  │   └── user.md      │   └── user.md ★    │   └── 2026-02-14.md
+  │                    │                    │
+  │  commit: a1b2c3    │  commit: d4e5f6    │  commit: g7h8i9
+  │                    │                    │
+  │                    │   git diff d4e5f6   │
+  │                    │   shows exactly     │
+  │                    │   what changed      │
+  │                    │                    │
+  └────────────────────┴────────────────────┘
+
+  git log  → full history of memory changes
+  git diff → what changed between any two points
+  git show → exact content at any point in time
+  git checkout → rollback to any previous state`}
+      </Diagram>
+
+      <Callout type="info" title="Git as Changelog">
+        The commit history doubles as a semantic changelog. Commit messages describe <em>why</em> a memory changed (e.g., "user corrected timezone preference"), not just what changed.
+      </Callout>
+
+      <div class="mt-6">
+        <CodeBlock tabs={autoVersionedOpsExample} title="Auto-Versioned Memory Operations" />
+      </div>
+    </section>
+
+    <!-- Section 5: Memory Swarms -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Memory Swarms
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Git worktrees enable multiple agents to work on memory simultaneously without conflicts. Each agent gets an isolated copy of the repository, processes its subtask, and results are merged back.
+      </p>
+
+      <Diagram title="Memory Swarm: Fan-Out / Fan-In" caption="Each agent works in an isolated git worktree, results merge back to main">
+{`                    ┌──────────────────┐
+                    │   Orchestrator   │
+                    │   (main branch)  │
+                    └────────┬─────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │    fan-out   │              │
+              ▼              ▼              ▼
+     ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+     │  Worktree A  │ │  Worktree B  │ │  Worktree C  │
+     │  branch:     │ │  branch:     │ │  branch:     │
+     │  swarm/ag-0  │ │  swarm/ag-1  │ │  swarm/ag-2  │
+     │              │ │              │ │              │
+     │  Reads &     │ │  Reads &     │ │  Reads &     │
+     │  writes own  │ │  writes own  │ │  writes own  │
+     │  memory copy │ │  memory copy │ │  memory copy │
+     └──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+            │                │                │
+            │     fan-in     │                │
+            └──────────────┬─┘────────────────┘
+                           │
+                    ┌──────▼──────────┐
+                    │  Merge results  │
+                    │  to main branch │
+                    │                 │
+                    │  Resolve any    │
+                    │  semantic       │
+                    │  conflicts      │
+                    └─────────────────┘`}
+      </Diagram>
+
+      <Callout type="tip" title="No Lock Contention">
+        Because each agent operates on a separate git worktree, there is zero lock contention. Agents can read and write freely without coordinating access to shared state.
+      </Callout>
+
+      <div class="mt-6">
+        <CodeBlock tabs={memorySwarmsExample} title="Memory Swarms with Git Worktrees" />
+      </div>
+    </section>
+
+    <!-- Section 6: Built-in Memory Skills -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Built-in Memory Skills
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Context repositories come with built-in skills that let agents manage their own memory lifecycle: initializing structure, reflecting on changes, and consolidating fragmented knowledge.
+      </p>
+
+      <Table caption="Core memory skills that operate on the repository">
+        <thead>
+          <tr>
+            <th>Skill</th>
+            <th>Purpose</th>
+            <th>When to Trigger</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>init</strong></td>
+            <td>Bootstrap directory structure and core files</td>
+            <td>First interaction with a new user/project</td>
+          </tr>
+          <tr>
+            <td><strong>reflect</strong></td>
+            <td>Review recent changes, synthesize patterns</td>
+            <td>Periodically (daily) or after many writes</td>
+          </tr>
+          <tr>
+            <td><strong>defrag</strong></td>
+            <td>Merge scattered files, remove duplicates</td>
+            <td>When file count exceeds threshold</td>
+          </tr>
+          <tr>
+            <td><strong>rollback</strong></td>
+            <td>Restore a memory to a previous version</td>
+            <td>When agent or user detects incorrect memory</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Diagram title="Memory Skill Lifecycle" caption="Skills maintain repository health over time">
+{`  New user                 Daily/Weekly              When fragmented
+     │                         │                          │
+     ▼                         ▼                          ▼
+┌─────────┐            ┌────────────┐             ┌───────────┐
+│  INIT   │            │  REFLECT   │             │  DEFRAG   │
+│         │            │            │             │           │
+│ Create  │──commits──▶│ Read git   │──commits──▶ │ Cluster   │
+│ dirs &  │            │ log, find  │             │ related   │
+│ seed    │            │ patterns,  │             │ files,    │
+│ files   │            │ write      │             │ merge,    │
+│         │            │ synthesis  │             │ clean up  │
+└─────────┘            └────────────┘             └───────────┘
+                              │
+                      Error detected?
+                              │
+                              ▼
+                       ┌────────────┐
+                       │  ROLLBACK  │
+                       │            │
+                       │ git show   │
+                       │ <hash> to  │
+                       │ restore    │
+                       └────────────┘`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={memorySkillsExample} title="Memory Skill Implementations" />
+      </div>
+    </section>
+
+    <!-- Section 7: Design Considerations -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Design Considerations
+      </h2>
+
+      <Table caption="Key decisions when implementing context repositories">
+        <thead>
+          <tr>
+            <th>Decision</th>
+            <th>Options</th>
+            <th>Recommendation</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>File format</strong></td>
+            <td>Markdown, JSON, YAML</td>
+            <td>Markdown with YAML frontmatter (LLM-friendly, human-readable)</td>
+          </tr>
+          <tr>
+            <td><strong>Directory depth</strong></td>
+            <td>Flat vs. nested</td>
+            <td>2-3 levels max (core/, people/, topics/, episodes/)</td>
+          </tr>
+          <tr>
+            <td><strong>Commit granularity</strong></td>
+            <td>Per-write vs. batched</td>
+            <td>Per-write for audit trail; batch for high-frequency updates</td>
+          </tr>
+          <tr>
+            <td><strong>Token budget</strong></td>
+            <td>Fixed vs. dynamic</td>
+            <td>Dynamic based on available context window minus prompt/response</td>
+          </tr>
+          <tr>
+            <td><strong>Conflict resolution</strong></td>
+            <td>Git merge vs. LLM merge</td>
+            <td>Git for structure, LLM for semantic conflicts</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-4 space-y-4">
+        <Callout type="danger" title="File Tree Growth">
+          Without defrag, the file tree grows unboundedly. Set thresholds (e.g., max 50 files per directory) and trigger consolidation automatically. An oversized directory listing defeats progressive disclosure.
+        </Callout>
+
+        <Callout type="tip" title="File Size Discipline">
+          Keep individual memory files under 2000 tokens. Larger files reduce the effectiveness of progressive loading because you can't partially load a file. Split large topics into multiple focused files instead.
+        </Callout>
+      </div>
+    </section>
+
+    <!-- Section 8: Comparison with Other Patterns -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Comparison with Other Patterns
+      </h2>
+
+      <Table caption="How context repositories compare to other memory approaches">
+        <thead>
+          <tr>
+            <th>Pattern</th>
+            <th>Strengths</th>
+            <th>Weaknesses</th>
+            <th>When to Prefer Context Repos</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Vector Database</strong></td>
+            <td>Semantic search, scales to millions of records</td>
+            <td>No versioning, opaque storage, requires embeddings</td>
+            <td>When you need human-readable memory with change history</td>
+          </tr>
+          <tr>
+            <td><strong>Knowledge Graphs</strong></td>
+            <td>Relationship modeling, structured reasoning</td>
+            <td>Complex setup, rigid schema, hard to version</td>
+            <td>When memories are mostly narrative and evolving</td>
+          </tr>
+          <tr>
+            <td><strong>Conversation History</strong></td>
+            <td>Simple, automatic, preserves context</td>
+            <td>Grows linearly, no organization, context bloat</td>
+            <td>When memories need to persist across sessions</td>
+          </tr>
+          <tr>
+            <td><strong>Scratchpad / Working Memory</strong></td>
+            <td>Fast, in-context, no external deps</td>
+            <td>Lost between sessions, limited by context window</td>
+            <td>When you need persistent, organized long-term memory</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <Callout type="info" title="Complementary, Not Exclusive">
+        Context repositories work well alongside vector databases. Use the repo for human-readable, versioned memory and a vector index for fast semantic search across the same files.
+      </Callout>
+    </section>
+
+    <!-- Section 9: Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8 mb-12">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Foundational memory types that context repos implement differently
+          </p>
+        </a>
+        <a
+          href="/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Progressive disclosure is a context engineering strategy
+          </p>
+        </a>
+        <a
+          href="/topics/context-bloat/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Bloat & Context Rot</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The problem that token-budgeted loading solves
+          </p>
+        </a>
+        <a
+          href="/topics/multi-agent/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Multi-Agent Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Memory swarms use multi-agent patterns with git isolation
+          </p>
+        </a>
+        <a
+          href="/topics/skills-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Skills Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Filesystem-based tool management shares the same principles
+          </p>
+        </a>
+        <a
+          href="/topics/learning-adaptation/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Learning & Adaptation</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Reflect and defrag skills enable self-improving memory
+          </p>
+        </a>
+      </div>
+    </section>
+
+    <!-- Source -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Source
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300">
+        This topic is based on the Letta blog post:
+        <a
+          href="https://www.letta.com/blog/context-repositories"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          Context Repositories — Rethinking Agent Memory
+        </a>
+      </p>
+    </section>
+  </article>
+</BaseLayout>

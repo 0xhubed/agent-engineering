@@ -1,0 +1,57 @@
+{
+  "hardware": {
+    "name": "NVIDIA DGX Spark",
+    "gpu": "NVIDIA GB10 Grace Blackwell Superchip",
+    "gpuMemory": "128 GB unified memory",
+    "cpu": "20-core Grace CPU (Arm)",
+    "systemMemory": "128 GB LPDDR5X",
+    "storage": "4 TB NVMe SSD",
+    "connectivity": "ConnectX-7, Wi-Fi 7, Bluetooth 5.4",
+    "os": "DGX OS (Ubuntu-based)",
+    "perf": "1 PFLOPS AI performance (FP4)"
+  },
+  "runtime": {
+    "name": "Ollama",
+    "version": "0.6+",
+    "endpoint": "http://localhost:11434",
+    "features": ["Native tool calling via /api/chat", "Structured outputs", "Concurrent model loading"]
+  },
+  "models": [
+    {
+      "id": "gpt-oss-20b",
+      "name": "GPT-OSS 20B",
+      "parameters": "20B",
+      "quantization": "Q4_K_M",
+      "contextWindow": 32768,
+      "toolCallingSupport": "native",
+      "notes": "Compact general-purpose model"
+    },
+    {
+      "id": "glm-4.7-flash",
+      "name": "GLM-4.7-Flash",
+      "parameters": "Unknown",
+      "quantization": "Q4_K_M",
+      "contextWindow": 32768,
+      "toolCallingSupport": "native",
+      "notes": "Fast inference, multilingual"
+    },
+    {
+      "id": "gpt-oss-120b",
+      "name": "GPT-OSS 120B",
+      "parameters": "120B",
+      "quantization": "Q4_K_M",
+      "contextWindow": 32768,
+      "toolCallingSupport": "native",
+      "notes": "Large model for bulk processing"
+    },
+    {
+      "id": "nemotron-3-nano",
+      "name": "Nemotron-3-Nano",
+      "parameters": "Unknown",
+      "quantization": "Q4_K_M",
+      "contextWindow": 8192,
+      "toolCallingSupport": "prompt-based",
+      "notes": "NVIDIA-optimized for edge deployment"
+    }
+  ]
+}

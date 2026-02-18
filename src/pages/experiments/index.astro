@@ -1,0 +1,76 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+import experiments from '../../data/experiments.json';
+import labData from '../../data/lab.json';
+
+const modelMap = Object.fromEntries(labData.models.map(m => [m.id, m.name]));
+---
+
+<BaseLayout
+  title="Experiments"
+  description="Hands-on agent experiments with local models on a DGX Spark. Methodology, results, and reproducible code."
+  keywords={['agent experiments', 'local LLM', 'tool calling', 'benchmarks', 'DGX Spark']}
+>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="mb-12">
+      <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+        Experiments
+      </h1>
+      <p class="text-slate-600 dark:text-slate-400 max-w-2xl">
+        Each experiment tests a specific agent capability across local models running on a
+        <a href="/lab/" class="text-slate-900 dark:text-white hover:underline">DGX Spark</a>.
+        Results include success rates, latency, and reproducible code.
+      </p>
+    </div>
+
+    <div class="grid gap-px bg-slate-200 dark:bg-slate-700 sm:grid-cols-2 lg:grid-cols-3">
+      {experiments.map((exp) => (
+        <a
+          href={`/experiments/${exp.id}/`}
+          class="group block p-6 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        >
+          <div class="flex items-center gap-2 mb-3">
+            <span class:list={[
+              "px-2 py-0.5 text-xs rounded-full",
+              exp.status === 'complete'
+                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+            ]}>
+              {exp.status === 'complete' ? 'Complete' : 'In Progress'}
+            </span>
+            <span class="text-xs text-slate-400 dark:text-slate-500">{exp.date}</span>
+          </div>
+
+          <h2 class="text-base font-medium text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+            {exp.title}
+          </h2>
+
+          <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
+            {exp.description}
+          </p>
+
+          <div class="space-y-2">
+            <div class="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
+              <span>Related topic:</span>
+              <span class="text-slate-600 dark:text-slate-300">{exp.topic}</span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              {exp.models.map((modelId) => (
+                <span class="px-2 py-0.5 text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded">
+                  {modelMap[modelId] || modelId}
+                </span>
+              ))}
+            </div>
+          </div>
+        </a>
+      ))}
+    </div>
+
+    {experiments.length === 0 && (
+      <div class="text-center py-16 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+        <p class="text-slate-500 dark:text-slate-400">No experiments yet. Check back soon.</p>
+      </div>
+    )}
+  </div>
+</BaseLayout>

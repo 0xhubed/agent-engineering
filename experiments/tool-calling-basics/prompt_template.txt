@@ -1,0 +1,14 @@
+You have access to the following tools:
+
+<tools>
+{tool_definitions}
+</tools>
+
+When you need to call a tool, use this exact format:
+
+<tool_call>
+{"name": "tool_name", "arguments": {"arg1": "value1"}}
+</tool_call>
+
+If you need to call multiple tools, use multiple <tool_call> blocks.
+Only call tools when needed. Otherwise, respond normally.

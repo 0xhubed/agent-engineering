@@ -1,0 +1,124 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Callout from '../../../components/Callout.astro';
+
+import matrixData from '../../../data/model-matrix.json';
+import labData from '../../../data/lab.json';
+
+const models = labData.models;
+const capabilities = matrixData.capabilities;
+const hasData = capabilities.length > 0;
+
+function getRatingClass(score: number): string {
+  if (score >= 80) return 'text-green-600 dark:text-green-400';
+  if (score >= 40) return 'text-yellow-600 dark:text-yellow-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
+function getRatingLabel(score: number): string {
+  if (score >= 80) return 'Good';
+  if (score >= 40) return 'Partial';
+  return 'None';
+}
+---
+
+<BaseLayout
+  title="Model Matrix"
+  description="Living compatibility matrix showing how local models perform across all experiments."
+  keywords={['model comparison', 'LLM benchmark', 'local models', 'tool calling']}
+>
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="mb-8">
+      <a href="/lab/" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+        &larr; Lab
+      </a>
+    </div>
+
+    <article class="space-y-12">
+      <header>
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+          Model Matrix
+        </h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+          A living compatibility matrix that grows as experiments run. Each cell shows how a model performed on a specific capability, with links to the source experiment.
+        </p>
+      </header>
+
+      {hasData ? (
+        <section>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 dark:border-slate-700">
+                  <th class="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Capability</th>
+                  {models.map(m => (
+                    <th class="text-center py-3 px-4 font-medium text-slate-500 dark:text-slate-400">{m.name}</th>
+                  ))}
+                  <th class="text-left py-3 px-4 font-medium text-slate-500 dark:text-slate-400">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {capabilities.map((cap: any) => (
+                  <tr class="border-b border-slate-100 dark:border-slate-800">
+                    <td class="py-3 px-4 text-slate-900 dark:text-white">{cap.name}</td>
+                    {models.map(m => {
+                      const result = cap.scores?.[m.id];
+                      return (
+                        <td class="text-center py-3 px-4">
+                          {result ? (
+                            <span class={getRatingClass(result.score)}>
+                              {getRatingLabel(result.score)}
+                              <span class="text-xs ml-1">({result.score}%)</span>
+                            </span>
+                          ) : (
+                            <span class="text-slate-300 dark:text-slate-600">&mdash;</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td class="py-3 px-4">
+                      <a href={`/experiments/${cap.experimentId}/`} class="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+                        {cap.experimentId}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : (
+        <section>
+          <div class="text-center py-16 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+            <p class="text-slate-500 dark:text-slate-400 mb-2">No experiment results yet.</p>
+            <p class="text-sm text-slate-400 dark:text-slate-500">
+              Run experiments to populate the matrix. Results will appear here automatically after export.
+            </p>
+          </div>
+          <Callout type="info" title="How it works">
+            Each experiment exports scores to <code>model-matrix.json</code>. Rows = capabilities, columns = models. Ratings: Good (&gt;80%), Partial (40-80%), None (&lt;40%).
+          </Callout>
+        </section>
+      )}
+
+      <!-- Legend -->
+      <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">Rating Scale</h2>
+        <div class="flex gap-8">
+          <div class="flex items-center gap-2">
+            <span class="text-green-600 dark:text-green-400 font-medium">Good</span>
+            <span class="text-sm text-slate-500 dark:text-slate-400">&gt;80% success</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-yellow-600 dark:text-yellow-400 font-medium">Partial</span>
+            <span class="text-sm text-slate-500 dark:text-slate-400">40-80% success</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-red-600 dark:text-red-400 font-medium">None</span>
+            <span class="text-sm text-slate-500 dark:text-slate-400">&lt;40% success</span>
+          </div>
+        </div>
+      </section>
+    </article>
+  </div>
+</BaseLayout>

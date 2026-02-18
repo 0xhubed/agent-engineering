@@ -29,7 +29,21 @@
       "Bash(npm ls:*)",
       "Bash(npm uninstall:*)",
       "Bash(python -c:*)",
-      "Bash(python scripts/content-agent.py:*)"
+      "Bash(python scripts/content-agent.py:*)",
+      "Bash(gh pr list:*)",
+      "Bash(wc:*)",
+      "WebFetch(domain:www.letta.com)",
+      "Bash(git -C /Users/daniel/Documents/projects/agent-engineering log --oneline -20 --all)",
+      "Bash(git -C /Users/daniel/Documents/projects/agent-engineering branch:*)",
+      "WebFetch(domain:blog.synapticlabs.ai)",
+      "WebFetch(domain:alexop.dev)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:lethain.com)",
+      "WebFetch(domain:www.inferable.ai)",
+      "WebFetch(domain:www.speakeasy.com)",
+      "WebFetch(domain:agentic-patterns.com)",
+      "Bash(ls:*)"
     ]
-  }
+  },
+  "outputStyle": "default"
 }

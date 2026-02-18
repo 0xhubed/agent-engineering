@@ -1,0 +1,1392 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+// Code Example 1: Three-Level Progressive Loader
+const threeLevelLoaderExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Progressive Disclosure: Three-Level Context Loader
+
+function progressiveLoad(query, registry):
+    # Level 1: Metadata only (~50-100 tokens per item)
+    catalog = registry.listItems()
+    # catalog = [{ name, description, triggers }, ...]
+
+    # Ask LLM to select relevant items from catalog
+    selected = llm.select(query, catalog)
+
+    if selected is empty:
+        return llm.respond(query)  # No special context needed
+
+    # Level 2: Full instructions (~500-1000 tokens)
+    instructions = registry.loadInstructions(selected.name)
+    context = instructions.content
+
+    # Level 3: Resources (variable, on demand)
+    if needsExamples(query) or isComplexTask(query):
+        resources = registry.loadResources(selected.name)
+        context += "\\n\\n" + resources.content
+
+    return llm.respond(query, context)
+
+# Token usage at each level:
+# Level 1:  50 items × 80 tokens  =  4,000 tokens (always)
+# Level 2:  1 item  × 800 tokens  =    800 tokens (on select)
+# Level 3:  1 item  × 3000 tokens =  3,000 tokens (if complex)
+# Worst case total:                   7,800 tokens
+# vs. static: 50 × 3,800 =         190,000 tokens`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `from dataclasses import dataclass
+from enum import IntEnum
+from pathlib import Path
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+
+class DisclosureLevel(IntEnum):
+    METADATA = 1       # ~50-100 tokens per item
+    INSTRUCTIONS = 2   # ~500-1000 tokens
+    RESOURCES = 3      # Variable
+
+@dataclass
+class ContextItem:
+    name: str
+    level: DisclosureLevel
+    content: str
+    token_count: int
+
+class ProgressiveRegistry:
+    """Registry that loads context in three levels."""
+
+    def __init__(self, base_dir: Path):
+        self.base_dir = base_dir
+
+    def list_metadata(self) -> list[dict]:
+        """Level 1: Return lightweight catalog of all items."""
+        items = []
+        for item_dir in self.base_dir.iterdir():
+            if not item_dir.is_dir():
+                continue
+            meta = self._parse_frontmatter(item_dir / "README.md")
+            items.append({
+                "name": item_dir.name,
+                "description": meta.get("description", "")[:100],
+                "triggers": meta.get("triggers", [])[:5],
+            })
+        return items
+
+    def load_instructions(self, name: str) -> ContextItem:
+        """Level 2: Load full instructions for selected item."""
+        readme = self.base_dir / name / "README.md"
+        body = self._extract_body(readme.read_text())
+        return ContextItem(
+            name=name,
+            level=DisclosureLevel.INSTRUCTIONS,
+            content=body,
+            token_count=self._estimate_tokens(body),
+        )
+
+    def load_resources(self, name: str) -> ContextItem:
+        """Level 3: Load examples, templates, schemas."""
+        resources_dir = self.base_dir / name / "resources"
+        parts = []
+        if resources_dir.exists():
+            for f in sorted(resources_dir.iterdir()):
+                parts.append(f.read_text())
+        combined = "\\n---\\n".join(parts)
+        return ContextItem(
+            name=name,
+            level=DisclosureLevel.RESOURCES,
+            content=combined,
+            token_count=self._estimate_tokens(combined),
+        )
+
+# LangGraph agent state
+class AgentState(TypedDict):
+    query: str
+    catalog: list[dict]
+    selected: str
+    context: str
+    response: str
+
+llm = ChatOpenAI(model="gpt-4o")
+registry = ProgressiveRegistry(Path("./skills"))
+
+def load_catalog(state: AgentState) -> AgentState:
+    """Step 1: Load metadata catalog."""
+    return {**state, "catalog": registry.list_metadata()}
+
+def select_item(state: AgentState) -> AgentState:
+    """Step 2: LLM picks the best item from catalog."""
+    prompt = f"Query: {state['query']}\\nAvailable: {state['catalog']}"
+    result = llm.invoke(prompt)
+    return {**state, "selected": result.content.strip()}
+
+def load_context(state: AgentState) -> AgentState:
+    """Step 3: Progressively load selected item's context."""
+    instructions = registry.load_instructions(state["selected"])
+    ctx = instructions.content
+    # Load resources only if task seems complex
+    if any(w in state["query"].lower() for w in ["complex", "detailed", "example"]):
+        resources = registry.load_resources(state["selected"])
+        ctx += "\\n\\n" + resources.content
+    return {**state, "context": ctx}
+
+graph = StateGraph(AgentState)
+graph.add_node("catalog", load_catalog)
+graph.add_node("select", select_item)
+graph.add_node("load", load_context)
+graph.add_edge(START, "catalog")
+graph.add_edge("catalog", "select")
+graph.add_edge("select", "load")
+graph.add_edge("load", END)`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+
+public enum DisclosureLevel
+{
+    Metadata = 1,       // ~50-100 tokens per item
+    Instructions = 2,   // ~500-1000 tokens
+    Resources = 3       // Variable
+}
+
+public record ContextItem(
+    string Name,
+    DisclosureLevel Level,
+    string Content,
+    int TokenCount
+);
+
+public class ProgressiveRegistry
+{
+    private readonly string _baseDir;
+
+    public ProgressiveRegistry(string baseDir) => _baseDir = baseDir;
+
+    /// <summary>Level 1: Lightweight catalog of all items.</summary>
+    public List<Dictionary<string, object>> ListMetadata()
+    {
+        var items = new List<Dictionary<string, object>>();
+        foreach (var dir in Directory.GetDirectories(_baseDir))
+        {
+            var meta = ParseFrontmatter(Path.Combine(dir, "README.md"));
+            items.Add(new Dictionary<string, object>
+            {
+                ["name"] = Path.GetFileName(dir),
+                ["description"] = Truncate(meta.GetValueOrDefault("description", "")?.ToString() ?? "", 100),
+                ["triggers"] = GetTriggers(meta).Take(5).ToList()
+            });
+        }
+        return items;
+    }
+
+    /// <summary>Level 2: Full instructions for selected item.</summary>
+    public ContextItem LoadInstructions(string name)
+    {
+        var readme = Path.Combine(_baseDir, name, "README.md");
+        var body = ExtractBody(File.ReadAllText(readme));
+        return new ContextItem(name, DisclosureLevel.Instructions, body, EstimateTokens(body));
+    }
+
+    /// <summary>Level 3: Examples, templates, schemas.</summary>
+    public ContextItem LoadResources(string name)
+    {
+        var resourcesDir = Path.Combine(_baseDir, name, "resources");
+        var parts = new List<string>();
+        if (Directory.Exists(resourcesDir))
+        {
+            foreach (var file in Directory.GetFiles(resourcesDir).OrderBy(f => f))
+                parts.Add(File.ReadAllText(file));
+        }
+        var combined = string.Join("\\n---\\n", parts);
+        return new ContextItem(name, DisclosureLevel.Resources, combined, EstimateTokens(combined));
+    }
+}
+
+// Agent using progressive disclosure
+public class ProgressiveAgent
+{
+    private readonly IChatClient _llm;
+    private readonly ProgressiveRegistry _registry;
+
+    public ProgressiveAgent(IChatClient llm, ProgressiveRegistry registry)
+    {
+        _llm = llm;
+        _registry = registry;
+    }
+
+    public async Task<string> ProcessAsync(string query)
+    {
+        // Level 1: Get catalog
+        var catalog = _registry.ListMetadata();
+
+        // Level 2: Select and load instructions
+        var selected = await SelectItemAsync(query, catalog);
+        if (selected == null)
+            return await RespondAsync(query, context: "");
+
+        var instructions = _registry.LoadInstructions(selected);
+        var context = instructions.Content;
+
+        // Level 3: Load resources if complex
+        if (IsComplexQuery(query))
+        {
+            var resources = _registry.LoadResources(selected);
+            context += "\\n\\n" + resources.Content;
+        }
+
+        return await RespondAsync(query, context);
+    }
+
+    private async Task<string?> SelectItemAsync(
+        string query, List<Dictionary<string, object>> catalog)
+    {
+        var prompt = $"Query: {query}\\nAvailable: {string.Join(", ", catalog.Select(c => c["name"]))}";
+        var result = await _llm.GetResponseAsync(prompt);
+        return result.Text?.Trim();
+    }
+}`,
+  },
+];
+
+// Code Example 2: Meta-Tool Pattern
+const metaToolExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# The Meta-Tool Pattern: Two tools replace hundreds
+#
+# Instead of registering all tools in context,
+# expose just two: discover() and execute()
+
+tools = [
+    {
+        name: "discover_tools",
+        description: "Search available tools by keyword or category. " +
+                     "Returns tool names and descriptions. " +
+                     "Call this BEFORE calling execute_tool.",
+        parameters: {
+            query: "Search query describing what you need",
+            category: "Optional category filter"
+        }
+    },
+    {
+        name: "execute_tool",
+        description: "Execute a discovered tool by name with arguments. " +
+                     "You must call discover_tools first to find the tool name.",
+        parameters: {
+            tool_name: "Name of the tool (from discover_tools)",
+            arguments: "Arguments to pass to the tool"
+        }
+    }
+]
+
+# Flow:
+# 1. Agent receives user query
+# 2. Agent calls discover_tools("send email")
+#    → Returns: [{ name: "gmail_send", desc: "Send email via Gmail" }]
+# 3. Agent calls execute_tool("gmail_send", { to, subject, body })
+#    → Returns: { status: "sent", messageId: "..." }
+
+# Context cost:
+#   Static approach:  200 tools × 500 tokens = 100,000 tokens
+#   Meta-tool:        2 tools × 200 tokens   =     400 tokens
+#   Savings:          99.6%`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
+class ToolRegistry:
+    """Registry of all available tools with search capability."""
+
+    def __init__(self):
+        self._tools: dict[str, dict] = {}
+
+    def register(self, name: str, description: str, handler, schema: dict):
+        self._tools[name] = {
+            "description": description,
+            "handler": handler,
+            "schema": schema,
+        }
+
+    def search(self, query: str, limit: int = 5) -> list[dict]:
+        """Search tools by keyword matching."""
+        query_lower = query.lower()
+        matches = []
+        for name, info in self._tools.items():
+            text = f"{name} {info['description']}".lower()
+            if any(word in text for word in query_lower.split()):
+                matches.append({
+                    "name": name,
+                    "description": info["description"],
+                    "parameters": list(info["schema"].keys()),
+                })
+        return matches[:limit]
+
+    def execute(self, name: str, arguments: dict):
+        """Execute a tool by name."""
+        if name not in self._tools:
+            raise ValueError(f"Unknown tool: {name}")
+        return self._tools[name]["handler"](**arguments)
+
+registry = ToolRegistry()
+
+@tool
+def discover_tools(query: str, category: str = "") -> str:
+    """Search for available tools by keyword or category.
+    Call this BEFORE execute_tool to find the right tool name.
+
+    Args:
+        query: What you need the tool to do
+        category: Optional category filter
+    """
+    results = registry.search(query)
+    if not results:
+        return "No matching tools found."
+    lines = []
+    for r in results:
+        lines.append(f"- {r['name']}: {r['description']}")
+        lines.append(f"  Parameters: {', '.join(r['parameters'])}")
+    return "\\n".join(lines)
+
+@tool
+def execute_tool(tool_name: str, arguments: dict) -> str:
+    """Execute a previously discovered tool by name.
+
+    Args:
+        tool_name: Name from discover_tools results
+        arguments: Tool arguments as key-value pairs
+    """
+    result = registry.execute(tool_name, arguments)
+    return str(result)
+
+# Create agent with only 2 tools instead of hundreds
+llm = ChatOpenAI(model="gpt-4o")
+agent = create_react_agent(llm, [discover_tools, execute_tool])
+
+# The agent now has access to all tools in the registry
+# but only pays the token cost of 2 tool definitions
+response = agent.invoke({
+    "messages": [{"role": "user", "content": "Send an email to team@co.com"}]
+})`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using System.ComponentModel;
+using System.Text.Json;
+
+public class ToolRegistry
+{
+    private readonly Dictionary<string, ToolEntry> _tools = new();
+
+    public record ToolEntry(
+        string Description,
+        Func<JsonElement, Task<object>> Handler,
+        Dictionary<string, string> Schema
+    );
+
+    public void Register(string name, string description,
+        Func<JsonElement, Task<object>> handler,
+        Dictionary<string, string> schema)
+    {
+        _tools[name] = new ToolEntry(description, handler, schema);
+    }
+
+    public List<ToolSummary> Search(string query, int limit = 5)
+    {
+        var queryWords = query.ToLower().Split(' ');
+        return _tools
+            .Where(t => queryWords.Any(w =>
+                t.Key.Contains(w, StringComparison.OrdinalIgnoreCase) ||
+                t.Value.Description.Contains(w, StringComparison.OrdinalIgnoreCase)))
+            .Take(limit)
+            .Select(t => new ToolSummary(t.Key, t.Value.Description,
+                t.Value.Schema.Keys.ToList()))
+            .ToList();
+    }
+
+    public async Task<object> ExecuteAsync(string name, JsonElement args)
+    {
+        if (!_tools.TryGetValue(name, out var entry))
+            throw new ArgumentException($"Unknown tool: {name}");
+        return await entry.Handler(args);
+    }
+}
+
+public record ToolSummary(string Name, string Description, List<string> Parameters);
+
+// Define the two meta-tools
+public static class MetaTools
+{
+    private static ToolRegistry _registry = new();
+
+    [Description("Search for available tools by keyword or category. " +
+                 "Call this BEFORE execute_tool to find the right tool name.")]
+    public static string DiscoverTools(string query, string category = "")
+    {
+        var results = _registry.Search(query);
+        if (!results.Any()) return "No matching tools found.";
+
+        return string.Join("\\n", results.Select(r =>
+            $"- {r.Name}: {r.Description}\\n  Parameters: {string.Join(", ", r.Parameters)}"));
+    }
+
+    [Description("Execute a previously discovered tool by name. " +
+                 "You must call discover_tools first.")]
+    public static async Task<string> ExecuteToolAsync(
+        string toolName, JsonElement arguments)
+    {
+        var result = await _registry.ExecuteAsync(toolName, arguments);
+        return result.ToString() ?? "";
+    }
+}
+
+// Wire up with IChatClient — only 2 tool definitions in context
+// instead of hundreds, achieving 85-95% token reduction`,
+  },
+];
+
+// Code Example 3: Progressive File Handling
+const fileHandlingExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Progressive File Handling (Will Larson's pattern)
+# Instead of loading entire files, reveal content in layers
+
+# Tool 1: List files — overview only
+function list_files(directory, pattern = "*"):
+    files = glob(directory, pattern)
+    return files.map(f => {
+        name: f.name,
+        size: f.size,
+        modified: f.lastModified,
+        type: f.extension
+    })
+    # Cost: ~20 tokens per file
+
+# Tool 2: Peek at file — structure without full content
+function peek_file(path, lines = 50):
+    content = readFile(path)
+    return {
+        path: path,
+        totalLines: content.lineCount,
+        preview: content.firstLines(lines),
+        structure: extractStructure(content)
+        # For code: function/class names, imports
+        # For docs: heading outline
+        # For data: column names, row count
+    }
+    # Cost: ~200-500 tokens
+
+# Tool 3: Load file — full content (or section)
+function load_file(path, startLine = null, endLine = null):
+    if startLine and endLine:
+        return readLines(path, startLine, endLine)
+    return readFile(path)
+    # Cost: Variable (full file content)
+
+# Agent workflow:
+# 1. list_files("src/") → sees 47 files
+# 2. peek_file("src/auth.py") → sees class/function structure
+# 3. load_file("src/auth.py", 45, 82) → loads just the relevant function`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `import os
+import ast
+from pathlib import Path
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
+@tool
+def list_files(directory: str, pattern: str = "*") -> str:
+    """List files in a directory with size and type info.
+    Use this first to understand what files are available.
+
+    Args:
+        directory: Directory path to list
+        pattern: Glob pattern to filter files
+    """
+    base = Path(directory)
+    if not base.exists():
+        return f"Directory not found: {directory}"
+
+    entries = []
+    for f in sorted(base.glob(pattern)):
+        if f.is_file():
+            size = f.stat().st_size
+            entries.append(f"  {f.name} ({size:,} bytes, .{f.suffix})")
+
+    return f"Files in {directory}:\\n" + "\\n".join(entries[:50])
+
+@tool
+def peek_file(path: str, lines: int = 50) -> str:
+    """Preview a file's structure without loading full content.
+    Shows first N lines and structural outline (functions, classes).
+
+    Args:
+        path: File path to peek at
+        lines: Number of preview lines (default 50)
+    """
+    file_path = Path(path)
+    if not file_path.exists():
+        return f"File not found: {path}"
+
+    content = file_path.read_text()
+    all_lines = content.splitlines()
+    total = len(all_lines)
+    preview = "\\n".join(all_lines[:lines])
+
+    # Extract structure for Python files
+    structure = ""
+    if file_path.suffix == ".py":
+        try:
+            tree = ast.parse(content)
+            items = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef):
+                    items.append(f"  class {node.name} (line {node.lineno})")
+                elif isinstance(node, ast.FunctionDef):
+                    items.append(f"  def {node.name}() (line {node.lineno})")
+            structure = "\\nStructure:\\n" + "\\n".join(items)
+        except SyntaxError:
+            pass
+
+    return f"File: {path} ({total} lines)\\n---\\n{preview}\\n...{structure}"
+
+@tool
+def load_file(path: str, start_line: int = 0, end_line: int = 0) -> str:
+    """Load full file content or a specific line range.
+    Use list_files and peek_file first to identify what to load.
+
+    Args:
+        path: File path to load
+        start_line: Start line (1-based, 0 = from beginning)
+        end_line: End line (0 = to end)
+    """
+    file_path = Path(path)
+    if not file_path.exists():
+        return f"File not found: {path}"
+
+    lines = file_path.read_text().splitlines()
+    if start_line > 0 and end_line > 0:
+        selected = lines[start_line - 1 : end_line]
+        return f"Lines {start_line}-{end_line} of {path}:\\n" + "\\n".join(selected)
+
+    return file_path.read_text()
+
+# Agent with progressive file tools
+llm = ChatOpenAI(model="gpt-4o")
+agent = create_react_agent(llm, [list_files, peek_file, load_file])`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+using System.ComponentModel;
+
+public static class ProgressiveFileTools
+{
+    [Description("List files in a directory with size and type info. " +
+                 "Use this first to understand what files are available.")]
+    public static string ListFiles(string directory, string pattern = "*")
+    {
+        if (!Directory.Exists(directory))
+            return $"Directory not found: {directory}";
+
+        var entries = Directory.EnumerateFiles(directory, pattern)
+            .Take(50)
+            .Select(f =>
+            {
+                var info = new FileInfo(f);
+                return $"  {info.Name} ({info.Length:N0} bytes, {info.Extension})";
+            });
+
+        return $"Files in {directory}:\\n{string.Join("\\n", entries)}";
+    }
+
+    [Description("Preview a file's structure without loading full content. " +
+                 "Shows first N lines and structural outline.")]
+    public static string PeekFile(string path, int lines = 50)
+    {
+        if (!File.Exists(path))
+            return $"File not found: {path}";
+
+        var allLines = File.ReadAllLines(path);
+        var total = allLines.Length;
+        var preview = string.Join("\\n", allLines.Take(lines));
+
+        // Extract structure for C# files
+        var structure = "";
+        if (path.EndsWith(".cs"))
+        {
+            var items = allLines
+                .Select((line, idx) => (line: line.Trim(), num: idx + 1))
+                .Where(x => x.line.Contains("class ") ||
+                            x.line.Contains("interface ") ||
+                            (x.line.Contains("(") && !x.line.StartsWith("//")
+                             && (x.line.Contains("public") || x.line.Contains("private"))))
+                .Select(x => $"  {x.line.TrimEnd('{')} (line {x.num})")
+                .Take(20);
+            structure = $"\\nStructure:\\n{string.Join("\\n", items)}";
+        }
+
+        return $"File: {path} ({total} lines)\\n---\\n{preview}\\n...{structure}";
+    }
+
+    [Description("Load full file content or a specific line range. " +
+                 "Use list_files and peek_file first to identify what to load.")]
+    public static string LoadFile(string path, int startLine = 0, int endLine = 0)
+    {
+        if (!File.Exists(path))
+            return $"File not found: {path}";
+
+        var lines = File.ReadAllLines(path);
+        if (startLine > 0 && endLine > 0)
+        {
+            var selected = lines.Skip(startLine - 1).Take(endLine - startLine + 1);
+            return $"Lines {startLine}-{endLine} of {path}:\\n{string.Join("\\n", selected)}";
+        }
+
+        return File.ReadAllText(path);
+    }
+}
+
+// Register with IChatClient as tools
+// Agent naturally progresses: list → peek → load`,
+  },
+];
+
+// Code Example 4: Token Savings Measurement
+const measurementExample = [
+  {
+    language: 'pseudo',
+    label: 'Pseudo-code',
+    code: `# Measuring Progressive Disclosure Effectiveness
+
+function measureDisclosure(requests, staticSystem, progressiveSystem):
+    results = {
+        static_tokens: [],
+        progressive_tokens: [],
+        accuracy_match: 0,
+        latency_overhead: []
+    }
+
+    for request in requests:
+        # Measure static approach
+        staticTokens = staticSystem.countContextTokens(request)
+        staticResponse = staticSystem.process(request)
+
+        # Measure progressive approach
+        startTime = now()
+        progTokens = progressiveSystem.countContextTokens(request)
+        progResponse = progressiveSystem.process(request)
+        overhead = now() - startTime
+
+        results.static_tokens.append(staticTokens)
+        results.progressive_tokens.append(progTokens)
+        results.latency_overhead.append(overhead)
+
+        if equivalent(staticResponse, progResponse):
+            results.accuracy_match += 1
+
+    return {
+        avg_static: mean(results.static_tokens),
+        avg_progressive: mean(results.progressive_tokens),
+        token_reduction: 1 - mean(results.progressive_tokens) / mean(results.static_tokens),
+        accuracy_preserved: results.accuracy_match / len(requests),
+        avg_latency_overhead_ms: mean(results.latency_overhead) * 1000
+    }`,
+  },
+  {
+    language: 'python',
+    label: 'Python (LangChain)',
+    code: `from dataclasses import dataclass, field
+from langchain_community.callbacks import get_openai_callback
+from langchain_openai import ChatOpenAI
+
+@dataclass
+class DisclosureMetrics:
+    static_tokens: list[int] = field(default_factory=list)
+    progressive_tokens: list[int] = field(default_factory=list)
+    accuracy_matches: int = 0
+    total_requests: int = 0
+
+    @property
+    def avg_reduction(self) -> float:
+        if not self.static_tokens:
+            return 0.0
+        avg_static = sum(self.static_tokens) / len(self.static_tokens)
+        avg_prog = sum(self.progressive_tokens) / len(self.progressive_tokens)
+        return 1 - (avg_prog / avg_static)
+
+    @property
+    def accuracy_rate(self) -> float:
+        return self.accuracy_matches / max(self.total_requests, 1)
+
+    def summary(self) -> dict:
+        return {
+            "avg_static_tokens": int(sum(self.static_tokens) / max(len(self.static_tokens), 1)),
+            "avg_progressive_tokens": int(sum(self.progressive_tokens) / max(len(self.progressive_tokens), 1)),
+            "token_reduction": f"{self.avg_reduction:.1%}",
+            "accuracy_preserved": f"{self.accuracy_rate:.1%}",
+        }
+
+def benchmark_disclosure(
+    test_queries: list[str],
+    static_agent,
+    progressive_agent,
+    judge_llm: ChatOpenAI | None = None,
+) -> DisclosureMetrics:
+    """Compare static vs progressive context loading."""
+    metrics = DisclosureMetrics()
+
+    for query in test_queries:
+        metrics.total_requests += 1
+
+        # Measure static approach
+        with get_openai_callback() as cb:
+            static_response = static_agent.invoke(query)
+            metrics.static_tokens.append(cb.prompt_tokens)
+
+        # Measure progressive approach
+        with get_openai_callback() as cb:
+            prog_response = progressive_agent.invoke(query)
+            metrics.progressive_tokens.append(cb.prompt_tokens)
+
+        # Compare response quality
+        if judge_llm:
+            verdict = judge_llm.invoke(
+                f"Are these responses equivalent?\\n"
+                f"A: {static_response}\\nB: {prog_response}\\n"
+                f"Answer YES or NO."
+            )
+            if "YES" in verdict.content.upper():
+                metrics.accuracy_matches += 1
+
+    return metrics
+
+# Run benchmark
+# metrics = benchmark_disclosure(queries, static_agent, prog_agent, judge)
+# print(metrics.summary())
+# {'avg_static_tokens': 142000, 'avg_progressive_tokens': 8200,
+#  'token_reduction': '94.2%', 'accuracy_preserved': '96.0%'}`,
+  },
+  {
+    language: 'csharp',
+    label: 'C# (Agent Framework)',
+    code: `using Microsoft.Extensions.AI;
+
+public record DisclosureMetrics
+{
+    public List<int> StaticTokens { get; init; } = new();
+    public List<int> ProgressiveTokens { get; init; } = new();
+    public int AccuracyMatches { get; set; }
+    public int TotalRequests { get; set; }
+
+    public double AvgReduction =>
+        StaticTokens.Count == 0 ? 0 :
+        1.0 - ((double)ProgressiveTokens.Average() / StaticTokens.Average());
+
+    public double AccuracyRate =>
+        TotalRequests == 0 ? 0 : (double)AccuracyMatches / TotalRequests;
+
+    public Dictionary<string, string> Summary() => new()
+    {
+        ["avg_static_tokens"] = $"{StaticTokens.Average():N0}",
+        ["avg_progressive_tokens"] = $"{ProgressiveTokens.Average():N0}",
+        ["token_reduction"] = $"{AvgReduction:P1}",
+        ["accuracy_preserved"] = $"{AccuracyRate:P1}",
+    };
+}
+
+public class DisclosureBenchmark
+{
+    private readonly IChatClient _staticAgent;
+    private readonly IChatClient _progressiveAgent;
+    private readonly IChatClient? _judge;
+
+    public DisclosureBenchmark(
+        IChatClient staticAgent,
+        IChatClient progressiveAgent,
+        IChatClient? judge = null)
+    {
+        _staticAgent = staticAgent;
+        _progressiveAgent = progressiveAgent;
+        _judge = judge;
+    }
+
+    public async Task<DisclosureMetrics> RunAsync(List<string> testQueries)
+    {
+        var metrics = new DisclosureMetrics();
+
+        foreach (var query in testQueries)
+        {
+            metrics.TotalRequests++;
+
+            // Measure static approach
+            var staticResult = await _staticAgent.GetResponseAsync(query);
+            metrics.StaticTokens.Add(staticResult.Usage?.InputTokenCount ?? 0);
+
+            // Measure progressive approach
+            var progResult = await _progressiveAgent.GetResponseAsync(query);
+            metrics.ProgressiveTokens.Add(progResult.Usage?.InputTokenCount ?? 0);
+
+            // Compare with judge LLM
+            if (_judge != null)
+            {
+                var verdict = await _judge.GetResponseAsync(
+                    $"Are these responses equivalent?\\n" +
+                    $"A: {staticResult.Text}\\nB: {progResult.Text}\\n" +
+                    $"Answer YES or NO.");
+                if (verdict.Text?.Contains("YES", StringComparison.OrdinalIgnoreCase) == true)
+                    metrics.AccuracyMatches++;
+            }
+        }
+
+        return metrics;
+    }
+}
+
+// Usage
+// var bench = new DisclosureBenchmark(staticAgent, progressiveAgent, judge);
+// var metrics = await bench.RunAsync(testQueries);
+// foreach (var kv in metrics.Summary())
+//     Console.WriteLine($"{kv.Key}: {kv.Value}");`,
+  },
+];
+---
+
+<BaseLayout
+  title="Progressive Disclosure"
+  description="Load agent context in layers — metadata first, details on demand. The architectural pattern behind skills, dynamic toolsets, and memory budgets."
+>
+  <article class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <!-- Header -->
+    <header class="mb-12">
+      <nav class="mb-4">
+        <a
+          href="/topics/"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          &larr; Back to Topics
+        </a>
+      </nav>
+      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+        Progressive Disclosure
+      </h1>
+      <p class="text-lg text-slate-600 dark:text-slate-300">
+        A context management strategy that loads information in layers — from lightweight metadata to full resources — minimizing token usage while maintaining agent effectiveness. The architectural pattern behind skills, dynamic toolsets, and memory budgets.
+      </p>
+    </header>
+
+    <!-- Section 1: From UX Design to Agent Architecture -->
+    <section class="prose prose-slate dark:prose-invert max-w-none mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        From UX Design to Agent Architecture
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Progressive disclosure originated as a UX design principle formalized by Jakob Nielsen: show users only the information they need at each stage, revealing complexity gradually. In agent engineering, this same principle has become a core architectural strategy for managing what information enters an agent's context window.
+      </p>
+
+      <Callout type="info" title="Definition">
+        <strong>Progressive disclosure</strong> in agent systems means revealing context in layers — metadata first, then instructions, then full resources — so the model only pays the token cost for information it actually needs.
+      </Callout>
+
+      <p class="text-slate-600 dark:text-slate-300 mb-4 mt-6">
+        The mapping from UX to agent architecture is direct: just as users don't need every menu option visible at once, agents don't need every tool definition, memory entry, or file loaded into context simultaneously.
+      </p>
+
+      <Table caption="Progressive disclosure: UX vs Agent architecture">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>UX Design</th>
+            <th>Agent Architecture</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>What's disclosed</strong></td>
+            <td>UI elements, options, settings</td>
+            <td>Tools, memories, files, instructions</td>
+          </tr>
+          <tr>
+            <td><strong>Why it's needed</strong></td>
+            <td>Reduces cognitive overload</td>
+            <td>Reduces token cost and attention dilution</td>
+          </tr>
+          <tr>
+            <td><strong>Trigger for next level</strong></td>
+            <td>User clicks, hovers, navigates</td>
+            <td>Agent selects, requests, determines complexity</td>
+          </tr>
+          <tr>
+            <td><strong>Cost of over-disclosure</strong></td>
+            <td>Confused users, lower engagement</td>
+            <td>Context bloat, lost-in-the-middle, higher costs</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Section 2: Why Agents Need Progressive Disclosure -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Why Agents Need Progressive Disclosure
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Static context loading — stuffing all tool definitions, memory, and instructions into every request — creates a linear scaling problem. As agents gain capabilities, their context cost grows proportionally, eventually hitting both cost and quality ceilings.
+      </p>
+
+      <Diagram title="Static Loading vs Progressive Disclosure">
+{`Static Loading (all tools in every request):
+┌─────────────────────────────────────────────────────┐
+│ Context Window                                      │
+│ ┌─────┐┌─────┐┌─────┐┌─────┐┌─────┐   ┌─────┐    │
+│ │Tool1││Tool2││Tool3││Tool4││Tool5│...│ToolN│    │
+│ │500tk││500tk││500tk││500tk││500tk│   │500tk│    │
+│ └─────┘└─────┘└─────┘└─────┘└─────┘   └─────┘    │
+│ Total: N × 500 tokens  (grows linearly)            │
+│ At 200 tools: 100,000 tokens per request           │
+└─────────────────────────────────────────────────────┘
+
+Progressive Disclosure (load on demand):
+┌─────────────────────────────────────────────────────┐
+│ Context Window                                      │
+│                                                     │
+│ Level 1: ┌────────────────────────────────┐         │
+│ Catalog  │ name1, name2, ... nameN        │ N × 80  │
+│          └────────────────────────────────┘         │
+│                      │ select                       │
+│ Level 2: ┌──────────────────┐                       │
+│ Detail   │ Selected tool    │  ~800 tokens          │
+│          │ full definition  │                       │
+│          └──────────────────┘                       │
+│                                                     │
+│ At 200 tools: 16,000 + 800 = 16,800 tokens (83%↓) │
+└─────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Table caption="Token cost comparison: static vs progressive loading">
+        <thead>
+          <tr>
+            <th>Number of Tools</th>
+            <th>Static (all loaded)</th>
+            <th>Progressive (Level 1+2)</th>
+            <th>Reduction</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>10 tools</td>
+            <td>5,000 tokens</td>
+            <td>1,600 tokens</td>
+            <td>68%</td>
+          </tr>
+          <tr>
+            <td>50 tools</td>
+            <td>25,000 tokens</td>
+            <td>4,800 tokens</td>
+            <td>81%</td>
+          </tr>
+          <tr>
+            <td>200 tools</td>
+            <td>100,000 tokens</td>
+            <td>16,800 tokens</td>
+            <td>83%</td>
+          </tr>
+          <tr>
+            <td>200 tools (meta-tool)</td>
+            <td>100,000 tokens</td>
+            <td>1,200 tokens</td>
+            <td>99%</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Section 3: The Three-Level Model -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Three-Level Model
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The core progressive disclosure pattern in agent systems uses three levels. Each level adds detail — and tokens — only when the previous level indicates it's needed.
+      </p>
+
+      <Diagram title="Three-Level Progressive Disclosure">
+{`Level 1: METADATA                Level 2: INSTRUCTIONS           Level 3: RESOURCES
+(~50-100 tokens per item)        (~500-1000 tokens)              (variable)
+┌───────────────────────┐        ┌───────────────────────┐       ┌───────────────────────┐
+│ • Name                │        │ • Full description    │       │ • Few-shot examples   │
+│ • Short description   │  ───►  │ • Parameters/schema   │  ───► │ • Templates           │
+│ • Trigger keywords    │ select │ • Usage instructions  │ if    │ • Reference data      │
+│ • Category            │        │ • Constraints/rules   │ complex • Related context     │
+└───────────────────────┘        └───────────────────────┘       └───────────────────────┘
+      Always loaded               Loaded on selection            Loaded on demand
+
+Token budget:                    Token budget:                   Token budget:
+N items × 80 tokens              1 item × 800 tokens            1 item × 1000-5000 tokens
+= CATALOG                        = WORKING SET                  = DEEP CONTEXT`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={threeLevelLoaderExample} title="Three-Level Progressive Loader" />
+      </div>
+    </section>
+
+    <!-- Section 4: Applications Across Agent Systems -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Applications Across Agent Systems
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Progressive disclosure isn't limited to tool loading — it applies anywhere an agent interacts with a large collection of information that shouldn't all enter context at once.
+      </p>
+
+      <Diagram title="Progressive Disclosure Application Areas">
+{`┌──────────────────────────────────────────────────────────────┐
+│              Progressive Disclosure Applications              │
+├──────────────┬──────────────┬───────────────┬────────────────┤
+│  Tool/Skill  │   Memory     │     File      │  MCP Server    │
+│  Loading     │   Systems    │   Handling    │  Integration   │
+│              │              │               │                │
+│  L1: Names   │  L1: Topics  │  L1: Listing  │  L1: Server    │
+│  L2: Schema  │  L2: Summary │  L2: Preview  │      catalog   │
+│  L3: Examples│  L3: Full    │  L3: Content  │  L2: Tool list │
+│              │      entries │               │  L3: Execute   │
+├──────────────┴──────────────┴───────────────┴────────────────┤
+│  Pattern: catalog → select → detail → (resources if needed)  │
+└──────────────────────────────────────────────────────────────┘`}
+      </Diagram>
+
+      <Table caption="Progressive disclosure across agent subsystems">
+        <thead>
+          <tr>
+            <th>Application Area</th>
+            <th>Level 1 (Catalog)</th>
+            <th>Level 2 (Detail)</th>
+            <th>Level 3 (Resources)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Tool/Skill Loading</strong></td>
+            <td>Tool names + descriptions</td>
+            <td>Full schema + instructions</td>
+            <td>Few-shot examples, templates</td>
+          </tr>
+          <tr>
+            <td><strong>Memory Systems</strong></td>
+            <td>Topic index / memory map</td>
+            <td>Summaries of relevant entries</td>
+            <td>Full memory entries with metadata</td>
+          </tr>
+          <tr>
+            <td><strong>File Handling</strong></td>
+            <td>Directory listing + sizes</td>
+            <td>File preview + structure outline</td>
+            <td>Full file content or sections</td>
+          </tr>
+          <tr>
+            <td><strong>MCP Servers</strong></td>
+            <td>Server names + capabilities</td>
+            <td>Tool list from selected server</td>
+            <td>Execute specific tool with args</td>
+          </tr>
+          <tr>
+            <td><strong>Context Repositories</strong></td>
+            <td>File tree of memory files</td>
+            <td>Read selected memory file</td>
+            <td>Load related files + history</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Section 5: The Meta-Tool Pattern -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        The Meta-Tool Pattern
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        The meta-tool pattern is the most aggressive form of progressive disclosure: instead of registering all tools with the LLM, expose just <strong>two tools</strong> — <code>discover_tools</code> and <code>execute_tool</code>. The agent searches for capabilities at runtime, achieving 85-95% token reduction compared to static tool definitions.
+      </p>
+
+      <Diagram title="Meta-Tool Flow">
+{`User: "Send an email to the team"
+  │
+  ▼
+┌─────────────────────────────────┐
+│ Agent (2 tools in context)      │
+│  • discover_tools               │
+│  • execute_tool                 │
+│  Context cost: ~400 tokens      │
+└─────────────────────────────────┘
+  │
+  │ Step 1: discover_tools("send email")
+  ▼
+┌─────────────────────────────────┐
+│ Tool Registry (200+ tools)      │
+│  Search: "send email"           │
+│  ───────────────────            │
+│  Results:                       │
+│   • gmail_send: Send via Gmail  │
+│   • outlook_send: Send via O365 │
+└─────────────────────────────────┘
+  │
+  │ Step 2: execute_tool("gmail_send", {to, subject, body})
+  ▼
+┌─────────────────────────────────┐
+│ Gmail API                       │
+│  → Email sent successfully      │
+└─────────────────────────────────┘
+
+Static approach:  200 tools × 500 tokens = 100,000 tokens
+Meta-tool:        2 tools   × 200 tokens =     400 tokens
+                                            ───────────
+                                            99.6% reduction`}
+      </Diagram>
+
+      <div class="mt-6">
+        <CodeBlock tabs={metaToolExample} title="Meta-Tool Implementation" />
+      </div>
+
+      <Callout type="tip" title="When to Use Meta-Tools">
+        The meta-tool pattern is ideal when you have 50+ tools and most requests only use 1-2 of them. For smaller toolsets (&lt;20 tools), the overhead of an extra discovery step may not be worth the savings.
+      </Callout>
+    </section>
+
+    <!-- Section 6: Progressive File Handling -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Progressive File Handling
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Will Larson's pattern for building internal agents applies progressive disclosure to file access. Instead of loading entire files (which can be thousands of tokens each), give agents three tools that reveal file content in layers: <code>list_files()</code>, <code>peek_file()</code>, and <code>load_file()</code>.
+      </p>
+
+      <CodeBlock tabs={fileHandlingExample} title="Progressive File Handling Tools" />
+
+      <Callout type="tip" title="Practical Tip">
+        The <code>peek_file</code> step is the key innovation. By showing the agent a file's structure (class names, function signatures, headings) without the full content, the agent can make an informed decision about <em>which section</em> to load. This is especially valuable for large files where loading the whole thing would consume thousands of tokens.
+      </Callout>
+    </section>
+
+    <!-- Section 7: Measuring Effectiveness -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Measuring Effectiveness
+      </h2>
+      <p class="text-slate-600 dark:text-slate-300 mb-4">
+        Progressive disclosure creates a trade-off: fewer tokens per request vs. additional selection steps. Measuring effectiveness means tracking both the savings and any accuracy impact.
+      </p>
+
+      <Table caption="Key metrics for progressive disclosure evaluation">
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>What It Measures</th>
+            <th>Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Token Reduction</strong></td>
+            <td>% fewer input tokens vs. static loading</td>
+            <td>&gt;80%</td>
+          </tr>
+          <tr>
+            <td><strong>Accuracy Preservation</strong></td>
+            <td>% of responses equivalent to static approach</td>
+            <td>&gt;95%</td>
+          </tr>
+          <tr>
+            <td><strong>Selection Precision</strong></td>
+            <td>Correct item selected from catalog</td>
+            <td>&gt;90%</td>
+          </tr>
+          <tr>
+            <td><strong>Latency Overhead</strong></td>
+            <td>Extra time from multi-step loading</td>
+            <td>&lt;500ms</td>
+          </tr>
+          <tr>
+            <td><strong>Cost Savings</strong></td>
+            <td>Reduced API spend from fewer tokens</td>
+            <td>&gt;70%</td>
+          </tr>
+        </tbody>
+      </Table>
+
+      <div class="mt-6">
+        <CodeBlock tabs={measurementExample} title="Benchmarking Progressive Disclosure" />
+      </div>
+    </section>
+
+    <!-- Section 8: Design Considerations -->
+    <section class="mb-12">
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-4">
+        Design Considerations
+      </h2>
+
+      <div class="space-y-4">
+        <Callout type="warning" title="Latency Trade-off">
+          Progressive disclosure adds round trips. Each level requires an LLM call to decide what to load next. For latency-sensitive applications, consider pre-loading frequently-used items or using embedding-based selection to skip Level 1 scanning entirely.
+        </Callout>
+
+        <Callout type="tip" title="Cache Frequently-Used Items">
+          Track which items are selected most often. For the top 5-10 items (which typically handle 60-80% of requests), consider pre-loading their Level 2 instructions to eliminate the selection step. This hybrid approach captures most savings while reducing latency for common queries.
+        </Callout>
+      </div>
+
+      <Table caption="When to use progressive disclosure vs. static loading">
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Recommendation</th>
+            <th>Reasoning</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>5-10 tools/items</td>
+            <td>Static loading</td>
+            <td>Overhead of discovery not worth the savings</td>
+          </tr>
+          <tr>
+            <td>10-50 tools/items</td>
+            <td>Two-level (metadata + detail)</td>
+            <td>Good savings with minimal complexity</td>
+          </tr>
+          <tr>
+            <td>50-200 tools/items</td>
+            <td>Three-level or meta-tool</td>
+            <td>Significant savings justify the extra step</td>
+          </tr>
+          <tr>
+            <td>200+ tools/items</td>
+            <td>Meta-tool + vector search</td>
+            <td>Metadata catalog itself becomes too large</td>
+          </tr>
+          <tr>
+            <td>Latency-critical</td>
+            <td>Hybrid: cache top items + progressive for rest</td>
+            <td>Balances speed with token efficiency</td>
+          </tr>
+        </tbody>
+      </Table>
+    </section>
+
+    <!-- Section 9: Related Topics -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8 mb-12">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Related Topics
+      </h2>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <a
+          href="/topics/skills-pattern/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Skills Pattern</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Filesystem-based tool management built on progressive disclosure
+          </p>
+        </a>
+        <a
+          href="/topics/context-engineering/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Engineering</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Progressive disclosure is a context selection strategy
+          </p>
+        </a>
+        <a
+          href="/topics/context-bloat/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Bloat & Context Rot</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            The problem that progressive disclosure solves
+          </p>
+        </a>
+        <a
+          href="/topics/context-repositories/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Context Repositories</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Filesystem-based memory using progressive disclosure for retrieval
+          </p>
+        </a>
+        <a
+          href="/topics/memory/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Memory Systems</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Memory retrieval benefits from layered disclosure
+          </p>
+        </a>
+        <a
+          href="/topics/mcp/"
+          class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+        >
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Model Context Protocol (MCP)</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400">
+            Meta-tool pattern enables progressive disclosure for MCP servers
+          </p>
+        </a>
+      </div>
+    </section>
+
+    <!-- Section 10: Sources -->
+    <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+      <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+        Sources
+      </h2>
+      <ul class="space-y-2 text-slate-600 dark:text-slate-300">
+        <li>
+          <strong>Anthropic</strong> — Agent Skills specification. Progressive disclosure as the core loading strategy for agent capabilities.
+        </li>
+        <li>
+          <strong>Anthropic</strong> — Effective Context Engineering for AI Agents. Write, Select, Compress, Isolate strategies.
+        </li>
+        <li>
+          <strong>Inferable</strong> — Progressive Context Enrichment for LLMs. Three-level pattern for tool and context management.
+        </li>
+        <li>
+          <strong>SynapticLabs</strong> — The Meta-Tool Pattern. Two-tool architecture for dynamic tool discovery with 85-95% token reduction.
+        </li>
+        <li>
+          <strong>Speakeasy</strong> — 100x Token Reduction with Dynamic Toolsets. Real-world benchmarks on progressive tool loading.
+        </li>
+        <li>
+          <strong>Will Larson</strong> — Building an Internal Agent. Progressive disclosure for file handling and large codebase navigation.
+        </li>
+      </ul>
+    </section>
+  </article>
+</BaseLayout>

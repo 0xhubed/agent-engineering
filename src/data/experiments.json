@@ -1,0 +1,13 @@
+[
+  {
+    "id": "tool-calling-basics",
+    "title": "Tool Calling Basics",
+    "description": "Which local models handle tool calling? Testing native vs prompt-based approaches across 4 models.",
+    "topic": "tool-use",
+    "date": "2026-02-14",
+    "models": ["gpt-oss-20b", "glm-4.7-flash", "gpt-oss-120b", "nemotron-3-nano"],
+    "status": "in-progress",
+    "testCases": 8,
+    "runsPerTest": 5
+  }
+]

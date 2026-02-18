@@ -104,6 +104,22 @@ const articleSchema = type === 'article' ? {
             ]}>
               Topics
             </a>
+            <a href="/experiments/" class:list={[
+              "text-sm transition-colors",
+              currentPath.startsWith('/experiments')
+                ? "text-slate-900 dark:text-white"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            ]}>
+              Experiments
+            </a>
+            <a href="/lab/" class:list={[
+              "text-sm transition-colors",
+              currentPath.startsWith('/lab')
+                ? "text-slate-900 dark:text-white"
+                : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            ]}>
+              Lab
+            </a>
             <a href="/benchmarks/" class:list={[
               "text-sm transition-colors",
               currentPath.startsWith('/benchmarks')
@@ -156,6 +172,12 @@ const articleSchema = type === 'article' ? {
         <div class="px-4 py-3 space-y-1">
           <a href="/topics/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
             Topics
+          </a>
+          <a href="/experiments/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+            Experiments
+          </a>
+          <a href="/lab/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+            Lab
           </a>
           <a href="/benchmarks/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
             Benchmarks

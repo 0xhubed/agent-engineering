@@ -1,0 +1,136 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Callout from '../../components/Callout.astro';
+import Table from '../../components/Table.astro';
+
+import labData from '../../data/lab.json';
+
+const hw = labData.hardware;
+const rt = labData.runtime;
+const models = labData.models;
+
+---
+
+<BaseLayout
+  title="Lab"
+  description="DGX Spark hardware specs, model catalog, and Ollama setup for running agent experiments locally."
+  keywords={['DGX Spark', 'Ollama', 'local LLM', 'NVIDIA', 'agent lab']}
+>
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="mb-8">
+      <a href="/" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+        &larr; Home
+      </a>
+    </div>
+
+    <article class="space-y-12">
+      <header>
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+          The Lab
+        </h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+          All experiments run locally on an NVIDIA DGX Spark, serving models through Ollama. No cloud APIs, no rate limits &mdash; just local inference with full control over the stack.
+        </p>
+      </header>
+
+      <!-- Hardware -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Hardware
+        </h2>
+        <Table>
+          <thead>
+            <tr><th>Spec</th><th>Details</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>System</td><td>{hw.name}</td></tr>
+            <tr><td>GPU</td><td>{hw.gpu}</td></tr>
+            <tr><td>GPU Memory</td><td>{hw.gpuMemory}</td></tr>
+            <tr><td>CPU</td><td>{hw.cpu}</td></tr>
+            <tr><td>System Memory</td><td>{hw.systemMemory}</td></tr>
+            <tr><td>Storage</td><td>{hw.storage}</td></tr>
+            <tr><td>Connectivity</td><td>{hw.connectivity}</td></tr>
+            <tr><td>OS</td><td>{hw.os}</td></tr>
+            <tr><td>AI Performance</td><td>{hw.perf}</td></tr>
+          </tbody>
+        </Table>
+      </section>
+
+      <!-- Runtime -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Runtime
+        </h2>
+        <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">{rt.name}</h3>
+          <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">Version {rt.version} &mdash; {rt.endpoint}</p>
+          <ul class="space-y-1">
+            {rt.features.map((f: string) => (
+              <li class="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                <span class="text-slate-400 dark:text-slate-500 mt-0.5">&bull;</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <!-- Model Catalog -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Model Catalog
+        </h2>
+        <p class="text-slate-600 dark:text-slate-400 mb-4">
+          Models currently loaded and available for experiments.
+        </p>
+        <Table>
+          <thead>
+            <tr><th>Model</th><th>Parameters</th><th>Quantization</th><th>Context Window</th><th>Tool Calling</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            {models.map((m: any) => (
+              <tr>
+                <td>{m.name}</td>
+                <td>{m.parameters}</td>
+                <td>{m.quantization}</td>
+                <td>{m.contextWindow.toLocaleString()}</td>
+                <td>{m.toolCallingSupport}</td>
+                <td>{m.notes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </Table>
+        <Callout type="info" title="Quantization">
+          All models use Q4_K_M quantization unless noted. This balances memory usage with quality &mdash; important when running 120B parameter models on a single node.
+        </Callout>
+      </section>
+
+      <!-- Links -->
+      <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Related
+        </h2>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <a
+            href="/lab/model-matrix/"
+            class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Model Matrix</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              Capability scores across all experiments
+            </p>
+          </a>
+          <a
+            href="/experiments/"
+            class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Experiments</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              Browse all experiments run on this hardware
+            </p>
+          </a>
+        </div>
+      </section>
+    </article>
+  </div>
+</BaseLayout>

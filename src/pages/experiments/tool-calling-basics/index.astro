@@ -1,0 +1,342 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import CodeBlock from '../../../components/CodeBlock.astro';
+import Callout from '../../../components/Callout.astro';
+import Table from '../../../components/Table.astro';
+import Diagram from '../../../components/Diagram.astro';
+
+import experiments from '../../../data/experiments.json';
+import labData from '../../../data/lab.json';
+import results from '../../../data/experiment-results/tool-calling-basics.json';
+
+const experiment = experiments.find(e => e.id === 'tool-calling-basics')!;
+const models = labData.models;
+const hasResults = results.status === 'complete';
+
+const testCases = [
+  { id: 'tc-01', name: 'Single tool, simple args', category: 'Native', complexity: 'Basic' },
+  { id: 'tc-02', name: 'Single tool, multiple args', category: 'Native', complexity: 'Medium' },
+  { id: 'tc-03', name: 'Tool selection (pick 1 from 3)', category: 'Native', complexity: 'Medium' },
+  { id: 'tc-04', name: 'Parallel tool calls (3 cities)', category: 'Native', complexity: 'Hard' },
+  { id: 'tc-05', name: 'Single tool, simple args', category: 'Prompt-based', complexity: 'Basic' },
+  { id: 'tc-06', name: 'Single tool, multiple args', category: 'Prompt-based', complexity: 'Medium' },
+  { id: 'tc-07', name: 'Tool selection (pick 1 from 3)', category: 'Prompt-based', complexity: 'Medium' },
+  { id: 'tc-08', name: 'Parallel tool calls (3 cities)', category: 'Prompt-based', complexity: 'Hard' },
+];
+
+const harnessCode = [
+  {
+    language: 'python',
+    label: 'Harness (Python)',
+    code: `from harness import OllamaClient, TestCase, ResultCollector
+
+client = OllamaClient("http://localhost:11434")
+collector = ResultCollector("tool-calling-basics")
+
+# Define test case
+test = TestCase(
+    id="tc-01",
+    name="Single tool, simple args",
+    category="native",
+    messages=[{"role": "user", "content": "What's the weather in Paris?"}],
+    tools=[{
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get current weather",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string"}
+                },
+                "required": ["location"]
+            }
+        }
+    }],
+    expected_tool="get_weather",
+    expected_args={"location": "Paris"}
+)
+
+# Run across all models, 5 runs each
+for model in ["gpt-oss-20b", "glm-4.7-flash", "gpt-oss-120b", "nemotron-3-nano"]:
+    for run in range(5):
+        result = client.run_test(model, test, temperature=0)
+        collector.add(model, test.id, run, result)
+
+collector.export("results.json")`,
+  },
+  {
+    language: 'bash',
+    label: 'Run',
+    code: `# Clone the repo and navigate to experiment
+cd experiments/tool-calling-basics
+
+# Install dependencies
+pip install -r ../requirements.txt
+
+# Ensure models are pulled
+ollama pull gpt-oss-20b
+ollama pull glm-4.7-flash
+ollama pull gpt-oss-120b
+ollama pull nemotron-3-nano
+
+# Run the experiment
+python run.py
+
+# Export results to site data
+python ../export_results.py tool-calling-basics`,
+  },
+];
+
+const promptBasedCode = [
+  {
+    language: 'text',
+    label: 'Prompt Template',
+    code: `You have access to the following tools:
+
+<tools>
+{tool_definitions}
+</tools>
+
+When you need to call a tool, use this exact format:
+
+<tool_call>
+{"name": "tool_name", "arguments": {"arg1": "value1"}}
+</tool_call>
+
+If you need to call multiple tools, use multiple <tool_call> blocks.
+Only call tools when needed. Otherwise, respond normally.`,
+  },
+];
+
+const dataFlowDiagram = `experiments/tool-calling-basics/run.py
+    │  runs on DGX Spark via Ollama
+    │  4 models × 8 tests × 5 runs = 160 runs
+    ▼
+results.json (local)
+    │
+experiments/export_results.py tool-calling-basics
+    │  validates schema
+    ├──▶ src/data/experiment-results/tool-calling-basics.json
+    ├──▶ src/data/experiments.json  (updates status)
+    └──▶ src/data/model-matrix.json (updates scores)
+    │
+npm run build
+    │  Astro imports JSON at build time
+    ▼
+Static HTML with rendered results`;
+
+const metrics = [
+  { name: 'Success Rate', desc: 'Valid parseable tool call returned', how: 'Parse response, check for tool_call structure' },
+  { name: 'Arg Correctness', desc: 'Right argument names, types, values', how: 'Compare against expected args' },
+  { name: 'Tool Selection', desc: 'Correct tool chosen from multiple', how: 'For tc-03/tc-07 only' },
+  { name: 'Latency', desc: 'Time from request to response (ms)', how: 'Wall clock via Ollama API' },
+  { name: 'Token Efficiency', desc: 'Input + output token count', how: 'Reported by Ollama API' },
+];
+---
+
+<BaseLayout
+  title="Tool Calling Basics"
+  description="Testing which local models handle tool calling — native vs prompt-based — across 4 models on a DGX Spark."
+  type="article"
+  keywords={['tool calling', 'function calling', 'local LLM', 'Ollama', 'experiment']}
+>
+  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+    <div class="mb-8">
+      <a href="/experiments/" class="text-sm text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+        &larr; Experiments
+      </a>
+    </div>
+
+    <article class="space-y-12">
+      <!-- Header -->
+      <header>
+        <div class="flex items-center gap-3 mb-4">
+          <span class:list={[
+            "px-2.5 py-1 text-xs font-medium rounded-full",
+            hasResults
+              ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+          ]}>
+            {hasResults ? 'Complete' : 'In Progress'}
+          </span>
+          <span class="text-sm text-slate-400 dark:text-slate-500">{experiment.date}</span>
+          <a href="/topics/tool-use/" class="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors">
+            Related: Tool Use
+          </a>
+        </div>
+        <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+          {experiment.title}
+        </h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 leading-relaxed">
+          {experiment.description}
+        </p>
+        <div class="flex flex-wrap gap-2 mt-4">
+          {models.map(m => (
+            <span class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded">
+              {m.name}
+            </span>
+          ))}
+        </div>
+      </header>
+
+      <!-- Question -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Question
+        </h2>
+        <div class="bg-slate-50 dark:bg-slate-800 p-6 rounded-lg">
+          <p class="text-slate-700 dark:text-slate-300 leading-relaxed">
+            Which local models can reliably handle tool calling? How do they compare when using native tool calling (Ollama's <code>tools</code> parameter) vs prompt-based approaches (tool definitions in the system prompt with XML output format)?
+          </p>
+        </div>
+      </section>
+
+      <!-- Setup -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Setup
+        </h2>
+        <p class="text-slate-600 dark:text-slate-400 mb-4">
+          All models run locally on a <a href="/lab/" class="text-slate-900 dark:text-white hover:underline">DGX Spark</a> via Ollama. No cloud APIs involved.
+        </p>
+        <Table>
+          <thead>
+            <tr><th>Model</th><th>Parameters</th><th>Tool Calling Support</th><th>Notes</th></tr>
+          </thead>
+          <tbody>
+            {models.map((m: any) => (
+              <tr><td>{m.name}</td><td>{m.parameters}</td><td>{m.toolCallingSupport}</td><td>{m.notes}</td></tr>
+            ))}
+          </tbody>
+        </Table>
+      </section>
+
+      <!-- Methodology -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Methodology
+        </h2>
+
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mb-3">Test Cases</h3>
+        <p class="text-slate-600 dark:text-slate-400 mb-4">
+          8 test cases covering native and prompt-based tool calling at increasing complexity levels. Each test runs 5 times per model at temperature 0, totaling 160 runs.
+        </p>
+        <Table>
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Category</th><th>Complexity</th></tr>
+          </thead>
+          <tbody>
+            {testCases.map(tc => (
+              <tr><td>{tc.id}</td><td>{tc.name}</td><td>{tc.category}</td><td>{tc.complexity}</td></tr>
+            ))}
+          </tbody>
+        </Table>
+
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mt-8 mb-3">Approaches</h3>
+        <div class="space-y-4">
+          <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+            <h4 class="font-medium text-slate-900 dark:text-white mb-1">Native (tc-01 to tc-04)</h4>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              Uses Ollama's <code>/api/chat</code> endpoint with the <code>tools</code> parameter. The model receives tool schemas as structured data and returns tool calls in a standardized format.
+            </p>
+          </div>
+          <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
+            <h4 class="font-medium text-slate-900 dark:text-white mb-1">Prompt-based (tc-05 to tc-08)</h4>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              Tool definitions are injected into the system prompt. The model outputs <code>&lt;tool_call&gt;</code> XML blocks that the harness parses. Works with any model, regardless of native support.
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-6">
+          <CodeBlock tabs={promptBasedCode} title="Prompt-Based Template" />
+        </div>
+
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mt-8 mb-3">Metrics</h3>
+        <Table>
+          <thead>
+            <tr><th>Metric</th><th>Description</th><th>How Measured</th></tr>
+          </thead>
+          <tbody>
+            {metrics.map(m => (
+              <tr><td>{m.name}</td><td>{m.desc}</td><td>{m.how}</td></tr>
+            ))}
+          </tbody>
+        </Table>
+
+        <h3 class="text-lg font-semibold text-slate-900 dark:text-white mt-8 mb-3">Data Flow</h3>
+        <Diagram title="Experiment Pipeline">{dataFlowDiagram}</Diagram>
+      </section>
+
+      <!-- Results -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Results
+        </h2>
+        {hasResults ? (
+          <p class="text-slate-600 dark:text-slate-400">Results will be rendered here from JSON data.</p>
+        ) : (
+          <div class="text-center py-12 bg-slate-50 dark:bg-slate-800/50 rounded-lg">
+            <p class="text-slate-500 dark:text-slate-400 mb-2">Experiment not yet run.</p>
+            <p class="text-sm text-slate-400 dark:text-slate-500">
+              Results will appear here after running the experiment on the DGX Spark and exporting the data.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <!-- Analysis -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Analysis
+        </h2>
+        {hasResults ? (
+          <p class="text-slate-600 dark:text-slate-400">Analysis will be written after results are collected.</p>
+        ) : (
+          <Callout type="info" title="Pending">
+            Analysis will be added once the experiment has been run and results are available.
+          </Callout>
+        )}
+      </section>
+
+      <!-- Reproduce -->
+      <section>
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Reproduce This
+        </h2>
+        <p class="text-slate-600 dark:text-slate-400 mb-4">
+          The full experiment code is in the <code>experiments/tool-calling-basics/</code> directory.
+        </p>
+        <CodeBlock tabs={harnessCode} title="Running the Experiment" />
+      </section>
+
+      <!-- Related -->
+      <section class="border-t border-slate-200 dark:border-slate-700 pt-8">
+        <h2 class="text-xl font-bold text-slate-900 dark:text-white mb-4">
+          Related
+        </h2>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <a
+            href="/topics/tool-use/"
+            class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use & Function Calling</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              The theory behind tool calling patterns
+            </p>
+          </a>
+          <a
+            href="/lab/model-matrix/"
+            class="block p-4 bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+          >
+            <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Model Matrix</h3>
+            <p class="text-sm text-slate-600 dark:text-slate-400">
+              Cross-experiment model comparison
+            </p>
+          </a>
+        </div>
+      </section>
+    </article>
+  </div>
+</BaseLayout>

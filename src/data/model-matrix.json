@@ -1,0 +1,5 @@
+{
+  "capabilities": [],
+  "models": ["gpt-oss-20b", "glm-4.7-flash", "gpt-oss-120b", "nemotron-3-nano"],
+  "lastUpdated": null
+}

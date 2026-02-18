@@ -1,0 +1,1012 @@
+
+ ▐▛███▜▌   Claude Code v2.1.42
+▝▜█████▛▘  Opus 4.6 · Claude Max
+  ▘▘ ▝▝    ~/Documents/projects/agent-engineering
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ Plan to implement                                                            │
+│                                                                              │
+│ Plan: Restructure Site as Learning Lab + Add First Experiment                │
+│                                                                              │
+│ Context                                                                      │
+│                                                                              │
+│ The site is currently a reference wiki (19 topic pages explaining agent      │
+│ patterns). The new vision: a learning lab where the owner learns agent       │
+│ engineering patterns by building experiments on an NVIDIA DGX Spark, testing │
+│  local models (GPT-OSS 20B, GLM-4.7-Flash, GPT-OSS 120B, Nemotron-3-Nano)    │
+│ via Ollama, and publishing results with code and data. Topics stay as the    │
+│ knowledge base backbone. Experiments are the differentiator.                 │
+│                                                                              │
+│ Navigation Change                                                            │
+│                                                                              │
+│ Current: Topics | Benchmarks | Resources                                     │
+│ New: Topics | Experiments | Lab | Benchmarks | Resources                     │
+│                                                                              │
+│ New Pages                                                                    │
+│                                                                              │
+│ Page: Experiments listing                                                    │
+│ Path: src/pages/experiments/index.astro                                      │
+│ Purpose: Grid of all experiments with status, models, related topic          │
+│ ────────────────────────────────────────                                     │
+│ Page: Tool Calling Basics                                                    │
+│ Path: src/pages/experiments/tool-calling-basics/index.astro                  │
+│ Purpose: First experiment (placeholder until results exist)                  │
+│ ────────────────────────────────────────                                     │
+│ Page: Lab overview                                                           │
+│ Path: src/pages/lab/index.astro                                              │
+│ Purpose: DGX Spark specs, model catalog, Ollama setup                        │
+│ ────────────────────────────────────────                                     │
+│ Page: Model matrix                                                           │
+│ Path: src/pages/lab/model-matrix/index.astro                                 │
+│ Purpose: Living compatibility matrix across experiments                      │
+│                                                                              │
+│ New Data Files                                                               │
+│                                                                              │
+│ File: src/data/experiments.json                                              │
+│ Purpose: Experiment registry (id, title, topic, date, models, status)        │
+│ ────────────────────────────────────────                                     │
+│ File: src/data/lab.json                                                      │
+│ Purpose: Hardware specs + model catalog                                      │
+│ ────────────────────────────────────────                                     │
+│ File: src/data/model-matrix.json                                             │
+│ Purpose: Aggregated model capability scores                                  │
+│ ────────────────────────────────────────                                     │
+│ File: src/data/experiment-results/tool-calling-basics.json                   │
+│ Purpose: Results for first experiment (placeholder)                          │
+│                                                                              │
+│ New Python Harness                                                           │
+│                                                                              │
+│ experiments/                                                                 │
+│   README.md                        # How to run experiments                  │
+│   requirements.txt                 # ollama, pydantic, rich                  │
+│   harness.py                       # OllamaClient, TestCase, ResultCollector │
+│   export_results.py                # Validate + copy results to src/data/    │
+│   tool-calling-basics/                                                       │
+│     run.py                         # Defines test cases, runs experiment     │
+│     tools.json                     # Tool definitions                        │
+│     prompt_template.txt            # System prompt for prompt-based approach │
+│                                                                              │
+│ Existing Files to Modify                                                     │
+│                                                                              │
+│ File: src/layouts/BaseLayout.astro                                           │
+│ Change: Add Experiments + Lab nav links (desktop lines ~98-123, mobile lines │
+│                                                                              │
+│   ~155-167)                                                                  │
+│ ────────────────────────────────────────                                     │
+│ File: src/pages/index.astro                                                  │
+│ Change: Update hero to mention learning lab, add "Latest Experiments"        │
+│ section,                                                                     │
+│   add "Browse Experiments" CTA                                               │
+│ ────────────────────────────────────────                                     │
+│ File: src/pages/topics/tool-use/index.astro                                  │
+│ Change: Add "Related Experiments" cross-link to tool-calling-basics          │
+│                                                                              │
+│ Experiment Page Template                                                     │
+│                                                                              │
+│ Each experiment page follows the existing topic page pattern (article        │
+│ wrapper, max-w-4xl, back nav) with these sections:                           │
+│                                                                              │
+│ 1. Header — Title, date, status badge, related topic link, models tested     │
+│ 2. Question — What we're testing and why                                     │
+│ 3. Setup — Models used (table), link to /lab/ for hardware details           │
+│ 4. Methodology — How tests were run, CodeBlock with harness code             │
+│ 5. Results — Tables + diagrams rendered from JSON data                       │
+│ 6. Analysis — Findings, surprises, failure modes, Callout with key takeaways │
+│ 7. Reproduce This — CodeBlock with run instructions, link to repo directory  │
+│ 8. Related — Links to topic page + model matrix                              │
+│                                                                              │
+│ Data Flow                                                                    │
+│                                                                              │
+│ experiments/tool-calling-basics/run.py  (runs on DGX Spark via Ollama)       │
+│     ↓ produces results.json locally                                          │
+│ experiments/export_results.py tool-calling-basics                            │
+│     ↓ validates, copies to src/data/experiment-results/                      │
+│     ↓ updates src/data/experiments.json registry                             │
+│     ↓ updates src/data/model-matrix.json                                     │
+│ npm run build                                                                │
+│     ↓ Astro imports JSON at build time, renders pages                        │
+│                                                                              │
+│ First Experiment: Tool Calling Basics                                        │
+│                                                                              │
+│ Goal: Test which local models handle tool calling, structured vs             │
+│ prompt-based.                                                                │
+│                                                                              │
+│ Test cases (8 total):                                                        │
+│                                                                              │
+│ ┌───────┬────────────────────────────────┬──────────────┬────────────┐       │
+│ │  ID   │              Name              │   Category   │ Complexity │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-01 │ Single tool, simple args       │ Native       │ Basic      │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-02 │ Single tool, multiple args     │ Native       │ Medium     │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-03 │ Tool selection (pick 1 from 3) │ Native       │ Medium     │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-04 │ Parallel tool calls (3 cities) │ Native       │ Hard       │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-05 │ Single tool, simple args       │ Prompt-based │ Basic      │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-06 │ Single tool, multiple args     │ Prompt-based │ Medium     │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-07 │ Tool selection (pick 1 from 3) │ Prompt-based │ Medium     │       │
+│ ├───────┼────────────────────────────────┼──────────────┼────────────┤       │
+│ │ tc-08 │ Parallel tool calls (3 cities) │ Prompt-based │ Hard       │       │
+│ └───────┴────────────────────────────────┴──────────────┴────────────┘       │
+│                                                                              │
+│ Metrics per test case × model (4 models × 8 tests × 5 runs each = 160 runs): │
+│ - Success rate (valid parseable tool call)                                   │
+│ - Arg correctness (right names, types, values)                               │
+│ - Tool selection accuracy (for tc-03, tc-07)                                 │
+│ - Latency (ms)                                                               │
+│ - Token efficiency (input + output tokens)                                   │
+│                                                                              │
+│ Methodology:                                                                 │
+│ - 5 runs per test case at temperature 0                                      │
+│ - Native: Ollama /api/chat with tools parameter                              │
+│ - Prompt-based: tool definitions in system prompt, model outputs <tool_call> │
+│  XML                                                                         │
+│ - Harness validates: parse response → check tool name → check args           │
+│                                                                              │
+│ Model Matrix Page                                                            │
+│                                                                              │
+│ A table where rows = capabilities, columns = models. Each cell shows a       │
+│ rating (Good >80%, Partial 40-80%, None <40%) with score and notes. Grows    │
+│ automatically as experiments add entries to model-matrix.json. Links from    │
+│ each capability row to its source experiment.                                │
+│                                                                              │
+│ Implementation Order                                                         │
+│                                                                              │
+│ Phase 1 — Data + Lab (no dependencies)                                       │
+│ 1. Create data files: experiments.json, lab.json, model-matrix.json,         │
+│ experiment-results/ dir                                                      │
+│ 2. Create src/pages/lab/index.astro                                          │
+│ 3. Create src/pages/lab/model-matrix/index.astro                             │
+│                                                                              │
+│ Phase 2 — Navigation                                                         │
+│ 4. Update src/layouts/BaseLayout.astro (add Experiments + Lab to nav)        │
+│ 5. Update src/pages/index.astro (hero copy, experiments section, CTA)        │
+│                                                                              │
+│ Phase 3 — Experiments section                                                │
+│ 6. Create src/pages/experiments/index.astro                                  │
+│ 7. Create src/pages/experiments/tool-calling-basics/index.astro (placeholder │
+│  with methodology, awaiting results)                                         │
+│                                                                              │
+│ Phase 4 — Python harness                                                     │
+│ 8. Create experiments/ directory with harness.py, requirements.txt,          │
+│ README.md                                                                    │
+│ 9. Create experiments/tool-calling-basics/ with run.py, tools.json,          │
+│ prompt_template.txt                                                          │
+│ 10. Create experiments/export_results.py                                     │
+│                                                                              │
+│ Phase 5 — Cross-linking                                                      │
+│ 11. Add "Related Experiments" section to                                     │
+│ src/pages/topics/tool-use/index.astro                                        │
+│                                                                              │
+│ Verification                                                                 │
+│                                                                              │
+│ npm run build    # 0 errors                                                  │
+│                                                                              │
+│ - All nav links work (Topics, Experiments, Lab, Benchmarks, Resources)       │
+│ - Lab page renders with hardware specs and model catalog                     │
+│ - Model matrix page renders (empty state)                                    │
+│ - Experiments listing shows tool-calling-basics card                         │
+│ - Experiment page renders with methodology sections                          │
+│ - Python harness: cd experiments && python -c "from harness import           │
+│ OllamaClient" imports cleanly                                                │
+│ - Cross-link from tool-use topic page to experiment works                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+⏺ I'll start by reading the key existing files to understand the current
+  structure, then implement all phases.
+
+⏺ Read 4 files (ctrl+o to expand)
+
+⏺ Now let me also read the tool-use topic page and check the existing data
+  directory.
+
+⏺ Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Now I have a clear picture of the codebase. Let me create task items and start
+   implementing all phases. I'll run multiple agents in parallel for independent
+   work.
+
+⏺ Now let me start with Phase 1 — creating all data files and directory
+  structure.
+
+⏺ Bash(mkdir -p /Users/daniel/Documents/projects/agent-engineering/src/data/expe
+      riment-results)
+  ⎿  Done
+
+⏺ Write(src/data/experiments.json)
+  ⎿  Wrote 14 lines to src/data/experiments.json
+       1 [
+       2   {
+       3     "id": "tool-calling-basics",
+       4     "title": "Tool Calling Basics",
+       5     "description": "Which local models handle tool calling? Test
+         ing native vs prompt-based approaches across 4 models.",
+       6     "topic": "tool-use",
+       7     "date": "2026-02-14",
+       8     "models": ["gpt-oss-20b", "glm-4.7-flash", "gpt-oss-120b", "
+         nemotron-3-nano"],
+       9     "status": "in-progress",
+      10     "testCases": 8,
+     … +4 lines (ctrl+o to expand)
+
+⏺ Write(src/data/lab.json)
+  ⎿  Wrote 58 lines to src/data/lab.json
+       1 {
+       2   "hardware": {
+       3     "name": "NVIDIA DGX Spark",
+       4     "gpu": "NVIDIA GB10 Grace Blackwell Superchip",
+       5     "gpuMemory": "128 GB unified memory",
+       6     "cpu": "20-core Grace CPU (Arm)",
+       7     "systemMemory": "128 GB LPDDR5X",
+       8     "storage": "4 TB NVMe SSD",
+       9     "connectivity": "ConnectX-7, Wi-Fi 7, Bluetooth 5.4",
+      10     "os": "DGX OS (Ubuntu-based)",
+     … +48 lines (ctrl+o to expand)
+
+⏺ Write(src/data/model-matrix.json)
+  ⎿  Wrote 6 lines to src/data/model-matrix.json
+      1 {
+      2   "capabilities": [],
+      3   "models": ["gpt-oss-20b", "glm-4.7-flash", "gpt-oss-120b", "nem
+        otron-3-nano"],
+      4   "lastUpdated": null
+      5 }
+
+⏺ Write(src/data/experiment-results/tool-calling-basics.json)
+  ⎿  Wrote 7 lines to src/data/experiment-results/tool-calling-basics.json
+      1 {
+      2   "experimentId": "tool-calling-basics",
+      3   "status": "pending",
+      4   "runDate": null,
+      5   "results": []
+      6 }
+
+⏺ Now let me create the lab pages and experiment pages in parallel using agents,
+   while I handle the navigation update directly.
+
+⏺ Bash(mkdir -p /Users/daniel/Documents/projects/agent-engineering/src/pages/lab
+      /model-matrix /Users/daniel/Documents/projects/agent-engineering/src/pages
+      /experiments/…)
+  ⎿  Done
+
+⏺ Now let me create all the new pages. I'll write them in parallel.
+
+⏺ Write(src/pages/lab/index.astro)
+  ⎿  Wrote 128 lines to src/pages/lab/index.astro
+       1 ---
+       2 import BaseLayout from '../../layouts/BaseLayout.astro';
+       3 import Callout from '../../components/Callout.astro';
+       4 import Table from '../../components/Table.astro';
+       5 
+       6 import labData from '../../data/lab.json';
+       7 
+       8 const hw = labData.hardware;
+       9 const rt = labData.runtime;
+      10 const models = labData.models;
+     … +118 lines (ctrl+o to expand)
+
+⏺ Write(src/pages/lab/model-matrix/index.astro)
+  ⎿  Wrote 125 lines to src/pages/lab/model-matrix/index.astro
+       1 ---
+       2 import BaseLayout from '../../../layouts/BaseLayout.astro';
+       3 import Callout from '../../../components/Callout.astro';
+       4 
+       5 import matrixData from '../../../data/model-matrix.json';
+       6 import labData from '../../../data/lab.json';
+       7 
+       8 const models = labData.models;
+       9 const capabilities = matrixData.capabilities;
+      10 const hasData = capabilities.length > 0;
+     … +115 lines (ctrl+o to expand)
+
+⏺ Now update the navigation in BaseLayout — add Experiments and Lab links.
+
+⏺ Update(src/layouts/BaseLayout.astro)
+  ⎿  Added 16 lines
+      104              ]}>
+      105                Topics
+      106              </a>
+      107 +            <a href="/experiments/" class:list={[             
+      108 +              "text-sm transition-colors",                    
+      109 +              currentPath.startsWith('/experiments')          
+      110 +                ? "text-slate-900 dark:text-white"            
+      111 +                : "text-slate-500 dark:text-slate-400 hover:te
+          +xt-slate-900 dark:hover:text-white"                           
+      112 +            ]}>                                               
+      113 +              Experiments                                     
+      114 +            </a>                                              
+      115 +            <a href="/lab/" class:list={[                     
+      116 +              "text-sm transition-colors",                    
+      117 +              currentPath.startsWith('/lab')                  
+      118 +                ? "text-slate-900 dark:text-white"            
+      119 +                : "text-slate-500 dark:text-slate-400 hover:te
+          +xt-slate-900 dark:hover:text-white"                           
+      120 +            ]}>                                               
+      121 +              Lab                                             
+      122 +            </a>                                              
+      123              <a href="/benchmarks/" class:list={[
+      124                "text-sm transition-colors",
+      125                currentPath.startsWith('/benchmarks')
+
+⏺ Now the mobile nav:
+
+⏺ Update(src/layouts/BaseLayout.astro)
+  ⎿  Added 6 lines
+      173            <a href="/topics/" class="block px-3 py-2 text-sm te
+           xt-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hov
+           er:text-white">
+      174              Topics
+      175            </a>
+      176 +          <a href="/experiments/" class="block px-3 py-2 text-
+          +sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dar
+          +k:hover:text-white">                                          
+      177 +            Experiments                                       
+      178 +          </a>                                                
+      179 +          <a href="/lab/" class="block px-3 py-2 text-sm text-
+          +slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:
+          +text-white">                                                  
+      180 +            Lab                                               
+      181 +          </a>                                                
+      182            <a href="/benchmarks/" class="block px-3 py-2 text-s
+           m text-slate-600 dark:text-slate-400 hover:text-slate-900 dark
+           :hover:text-white">
+      183              Benchmarks
+      184            </a>
+
+⏺ Now update the homepage — hero copy, Latest Experiments section, Browse
+  Experiments CTA.
+
+⏺ Update(src/pages/index.astro)
+  ⎿  Added 2 lines
+      2  import BaseLayout from '../layouts/BaseLayout.astro';
+      3  import CodeBlock from '../components/CodeBlock.astro';
+      4  
+      5 +import experiments from '../data/experiments.json';             
+      6 +                                                                
+      7  const topics = [
+      8    {
+      9      title: 'Tool Use & Function Calling',
+
+⏺ Update(src/pages/index.astro)
+  ⎿  Added 5 lines, removed 5 lines
+      153            Agent Engineering
+      154          </h1>
+      155          <p class="text-lg text-slate-600 dark:text-slate-400 m
+           b-10 leading-relaxed">
+      156 -          A comprehensive resource for understanding AI agent 
+          -architectures, design patterns, and implementation strategies.
+          - From basic loops to advanced multi-agent systems.            
+      156 +          A learning lab for AI agent engineering. Patterns an
+          +d theory in the topics, hands-on experiments on a DGX Spark wi
+          +th local models. Learn by building, test by measuring.        
+      157          </p>
+      158          <div class="flex flex-col sm:flex-row gap-4">
+      159            <a
+      160 -            href="/topics/"                                   
+      160 +            href="/experiments/"                              
+      161              class="inline-flex items-center justify-center px-
+           5 py-2.5 text-sm font-medium text-white bg-slate-900 dark:bg-w
+           hite dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slat
+           e-100 transition-colors"
+      162            >
+      163 -            Explore Topics                                    
+      163 +            Browse Experiments                                
+      164              <svg class="w-4 h-4 ml-2" fill="none" stroke="curr
+           entColor" viewBox="0 0 24 24">
+      165                <path stroke-linecap="round" stroke-linejoin="ro
+           und" stroke-width="2" d="M9 5l7 7-7 7"/>
+      166              </svg>
+      167            </a>
+      168            <a
+      169 -            href="/benchmarks/"                               
+      169 +            href="/topics/"                                   
+      170              class="inline-flex items-center justify-center px-
+           5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-30
+           0 border border-slate-300 dark:border-slate-600 hover:border-s
+           late-400 dark:hover:border-slate-500 transition-colors"
+      171            >
+      172 -            View Benchmarks                                   
+      172 +            Explore Topics                                    
+      173            </a>
+      174          </div>
+      175        </div>
+
+⏺ Now add a "Latest Experiments" section before the Code Example Preview
+  section:
+
+⏺ Update(src/pages/index.astro)
+  ⎿  Added 44 lines
+      176      </div>
+      177    </section>
+      178  
+      179 +  <!-- Latest Experiments -->                                 
+      180 +  <section class="py-16 border-t border-slate-200 dark:border-
+          +slate-800">                                                   
+      181 +    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">      
+      182 +      <div class="mb-10">                                     
+      183 +        <h2 class="text-2xl font-semibold text-slate-900 dark:
+          +text-white mb-3">                                             
+      184 +          Latest Experiments                                  
+      185 +        </h2>                                                 
+      186 +        <p class="text-slate-600 dark:text-slate-400">        
+      187 +          Hands-on tests with local models on a DGX Spark. Eac
+          +h experiment includes methodology, results, and reproducible c
+          +ode.                                                          
+      188 +        </p>                                                  
+      189 +      </div>                                                  
+      190 +      <div class="grid gap-px bg-slate-200 dark:bg-slate-700 s
+          +m:grid-cols-2 lg:grid-cols-3">                                
+      191 +        {experiments.map((exp) => (                           
+      192 +          <a                                                  
+      193 +            href={`/experiments/${exp.id}/`}                  
+      194 +            class="group block p-6 bg-white dark:bg-slate-900 
+          +hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"  
+      195 +          >                                                   
+      196 +            <div class="flex items-center gap-2 mb-2">        
+      197 +              <h3 class="text-base font-medium text-slate-900 
+          +dark:text-white group-hover:text-primary-600 dark:group-hover:
+          +text-primary-400 transition-colors">                          
+      198 +                {exp.title}                                   
+      199 +              </h3>                                           
+      200 +              <span class:list={[                             
+      201 +                "px-2 py-0.5 text-xs rounded-full",           
+      202 +                exp.status === 'complete'                     
+      203 +                  ? "bg-green-100 text-green-700 dark:bg-green
+          +-900/30 dark:text-green-400"                                  
+      204 +                  : "bg-yellow-100 text-yellow-700 dark:bg-yel
+          +low-900/30 dark:text-yellow-400"                              
+      205 +              ]}>                                             
+      206 +                {exp.status === 'complete' ? 'Complete' : 'In 
+          +Progress'}                                                    
+      207 +              </span>                                         
+      208 +            </div>                                            
+      209 +            <p class="text-sm text-slate-500 dark:text-slate-4
+          +00 leading-relaxed mb-3">                                     
+      210 +              {exp.description}                               
+      211 +            </p>                                              
+      212 +            <div class="flex items-center gap-3 text-xs text-s
+          +late-400 dark:text-slate-500">                                
+      213 +              <span>{exp.models.length} models</span>         
+      214 +              <span>&middot;</span>                           
+      215 +              <span>{exp.testCases} test cases</span>         
+      216 +            </div>                                            
+      217 +          </a>                                                
+      218 +        ))}                                                   
+      219 +      </div>                                                  
+      220 +    </div>                                                    
+      221 +  </section>                                                  
+      222 +                                                              
+      223    <!-- Code Example Preview -->
+      224    <section class="py-16 border-t border-slate-200 dark:border-
+           slate-800">
+      225      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+
+⏺ Now create the experiments listing page and the first experiment page.
+
+⏺ Write(src/pages/experiments/index.astro)
+  ⎿  Wrote 77 lines to src/pages/experiments/index.astro
+       1 ---
+       2 import BaseLayout from '../../layouts/BaseLayout.astro';
+       3 
+       4 import experiments from '../../data/experiments.json';
+       5 import labData from '../../data/lab.json';
+       6 
+       7 const modelMap = Object.fromEntries(labData.models.map(m => [m.i
+         d, m.name]));
+       8 ---
+       9 
+      10 <BaseLayout
+     … +67 lines (ctrl+o to expand)
+
+⏺ Write(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Wrote 321 lines to
+     src/pages/experiments/tool-calling-basics/index.astro
+       1 ---
+       2 import BaseLayout from '../../../layouts/BaseLayout.astro';
+       3 import CodeBlock from '../../../components/CodeBlock.astro';
+       4 import Callout from '../../../components/Callout.astro';
+       5 import Table from '../../../components/Table.astro';
+       6 import Diagram from '../../../components/Diagram.astro';
+       7 
+       8 import experiments from '../../../data/experiments.json';
+       9 import labData from '../../../data/lab.json';
+      10 import results from '../../../data/experiment-results/tool-calli
+         ng-basics.json';
+     … +311 lines (ctrl+o to expand)
+
+⏺ Now create the Python experiment harness.
+
+⏺ Bash(mkdir -p /Users/daniel/Documents/projects/agent-engineering/experiments/t
+      ool-calling-basics)
+  ⎿  Done
+
+⏺ Write(experiments/requirements.txt)
+  ⎿  Wrote 4 lines to experiments/requirements.txt
+      1 ollama>=0.4.0
+      2 pydantic>=2.0
+      3 rich>=13.0
+
+⏺ Write(experiments/README.md)
+  ⎿  Wrote 47 lines to experiments/README.md
+      1 # Experiments
+      2 
+      3 Experiment harness for testing agent patterns on local models via
+         Ollama.
+      4 
+      5 ## Prerequisites
+      6 
+      7 - Python 3.10+
+      8 - Ollama running locally (`http://localhost:11434`)
+      9 - Models pulled (see each experiment for required models)
+     … +37 lines (ctrl+o to expand)
+
+⏺ Write(experiments/harness.py)
+  ⎿  Wrote 244 lines to experiments/harness.py
+       1 """Experiment harness for testing agent patterns on local models
+          via Ollama."""
+       2 
+       3 import json
+       4 import re
+       5 import time
+       6 from dataclasses import dataclass, field
+       7 from pathlib import Path
+       8 from typing import Any
+       9 
+      10 import ollama
+     … +234 lines (ctrl+o to expand)
+
+⏺ Write(experiments/export_results.py)
+  ⎿  Wrote 109 lines to experiments/export_results.py
+       1 """Export experiment results to the site's data directory."""
+       2 
+       3 import json
+       4 import sys
+       5 from pathlib import Path
+       6 
+       7 SITE_DATA = Path(__file__).parent.parent / "src" / "data"
+       8 EXPERIMENTS_JSON = SITE_DATA / "experiments.json"
+       9 MODEL_MATRIX_JSON = SITE_DATA / "model-matrix.json"
+      10 RESULTS_DIR = SITE_DATA / "experiment-results"
+     … +99 lines (ctrl+o to expand)
+
+⏺ Write(experiments/tool-calling-basics/tools.json)
+  ⎿  Wrote 59 lines to experiments/tool-calling-basics/tools.json
+       1 [
+       2   {
+       3     "type": "function",
+       4     "function": {
+       5       "name": "get_weather",
+       6       "description": "Get current weather for a location",
+       7       "parameters": {
+       8         "type": "object",
+       9         "properties": {
+      10           "location": {
+     … +49 lines (ctrl+o to expand)
+
+⏺ Write(experiments/tool-calling-basics/prompt_template.txt)
+  ⎿  Wrote 15 lines to experiments/tool-calling-basics/prompt_template.txt
+       1 You have access to the following tools:
+       2 
+       3 <tools>
+       4 {tool_definitions}
+       5 </tools>
+       6 
+       7 When you need to call a tool, use this exact format:
+       8 
+       9 <tool_call>
+      10 {"name": "tool_name", "arguments": {"arg1": "value1"}}
+     … +5 lines (ctrl+o to expand)
+
+⏺ Write(experiments/tool-calling-basics/run.py)
+  ⎿  Wrote 148 lines to experiments/tool-calling-basics/run.py
+       1 """Tool Calling Basics experiment.
+       2 
+       3 Tests native vs prompt-based tool calling across local models.
+       4 8 test cases × 4 models × 5 runs = 160 total runs.
+       5 """
+       6 
+       7 import json
+       8 from pathlib import Path
+       9 
+      10 from rich.console import Console
+     … +138 lines (ctrl+o to expand)
+
+⏺ Now add the "Related Experiments" cross-link to the tool-use topic page.
+
+⏺ Update(src/pages/topics/tool-use/index.astro)
+  ⎿  Added 21 lines
+      667        </div>
+      668      </section>
+      669  
+      670 +    <!-- Related Experiments -->                              
+      671 +    <section class="border-t border-slate-200 dark:border-slat
+          +e-700 pt-8">                                                  
+      672 +      <h2 class="text-xl font-bold text-slate-900 dark:text-wh
+          +ite mb-4">                                                    
+      673 +        Related Experiments                                   
+      674 +      </h2>                                                   
+      675 +      <div class="grid sm:grid-cols-2 gap-4">                 
+      676 +        <a                                                    
+      677 +          href="/experiments/tool-calling-basics/"            
+      678 +          class="block p-4 bg-slate-50 dark:bg-slate-800 round
+          +ed-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-co
+          +lors"                                                         
+      679 +        >                                                     
+      680 +          <div class="flex items-center gap-2 mb-1">          
+      681 +            <h3 class="font-semibold text-slate-900 dark:text-
+          +white">Tool Calling Basics</h3>                               
+      682 +            <span class="px-2 py-0.5 text-xs bg-yellow-100 tex
+          +t-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounde
+          +d-full">In Progress</span>                                    
+      683 +          </div>                                              
+      684 +          <p class="text-sm text-slate-600 dark:text-slate-400
+          +">                                                            
+      685 +            Testing native vs prompt-based tool calling across
+          + 4 local models on a DGX Spark                                
+      686 +          </p>                                                
+      687 +        </a>                                                  
+      688 +      </div>                                                  
+      689 +    </section>                                                
+      690 +                                                              
+      691      <!-- Next Steps -->
+      692      <section class="border-t border-slate-200 dark:border-slat
+           e-700 pt-8">
+      693        <h2 class="text-xl font-bold text-slate-900 dark:text-wh
+           ite mb-4">
+
+⏺ Now let's run the build to verify everything works.
+
+⏺ Bash(npm run build 2>&1)
+  ⎿  Error: Exit code 1
+
+     > agent-patterns@0.0.1 build
+     > astro check && astro build
+
+     12:13:08 [vite] Re-optimizing dependencies because vite config has changed
+     12:13:08 [types] Generated 25ms
+     12:13:08 [check] Getting diagnostics for Astro files in 
+     /Users/daniel/Documents/projects/agent-engineering...
+     dist/_astro/hoisted.DlpnbitJ.js:1:181 - warning ts(6133): 'e' is declared
+     but its value is never read.
+
+     … +34 lines (ctrl+o to see all)
+
+⏺ Table component has different prop names. Let me check it.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ The Table component uses slots, not headers/rows props. I need to use raw HTML
+   tables within the Table component. Let me update both files.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Let me check how Table is used in other topic pages to see the pattern:
+
+⏺ Searched for 1 pattern (ctrl+o to expand)
+
+⏺ Got it — the Table component uses slot-based HTML content. I need to update my
+   pages to use <Table> with <thead>/<tbody> slots instead of headers/rows
+  props. Let me fix both files.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ I need to rewrite the lab page and experiment page to use slot-based Table
+  component. Let me fix both.
+
+⏺ Update(src/pages/lab/index.astro)
+  ⎿  Removed 22 lines
+       9  const rt = labData.runtime;
+      10  const models = labData.models;
+      11  
+      12 -const hardwareHeaders = ['Spec', 'Details'];                   
+      13 -const hardwareRows = [                                         
+      14 -  ['System', hw.name],                                         
+      15 -  ['GPU', hw.gpu],                                             
+      16 -  ['GPU Memory', hw.gpuMemory],                                
+      17 -  ['CPU', hw.cpu],                                             
+      18 -  ['System Memory', hw.systemMemory],                          
+      19 -  ['Storage', hw.storage],                                     
+      20 -  ['Connectivity', hw.connectivity],                           
+      21 -  ['OS', hw.os],                                               
+      22 -  ['AI Performance', hw.perf],                                 
+      23 -];                                                             
+      24 -                                                               
+      25 -const modelHeaders = ['Model', 'Parameters', 'Quantization', 'C
+         -ontext Window', 'Tool Calling', 'Notes'];                      
+      26 -const modelRows = models.map(m => [                            
+      27 -  m.name,                                                      
+      28 -  m.parameters,                                                
+      29 -  m.quantization,                                              
+      30 -  m.contextWindow.toLocaleString(),                            
+      31 -  m.toolCallingSupport,                                        
+      32 -  m.notes,                                                     
+      33 -]);                                                            
+      12  ---
+      13  
+      14  <BaseLayout
+
+⏺ Update(src/pages/lab/index.astro)
+  ⎿  Added 16 lines, removed 1 line
+      38          <h2 class="text-xl font-bold text-slate-900 dark:text-w
+          hite mb-4">
+      39            Hardware
+      40          </h2>
+      41 -        <Table headers={hardwareHeaders} rows={hardwareRows} />
+      41 +        <Table>                                                
+      42 +          <thead>                                              
+      43 +            <tr><th>Spec</th><th>Details</th></tr>             
+      44 +          </thead>                                             
+      45 +          <tbody>                                              
+      46 +            <tr><td>System</td><td>{hw.name}</td></tr>         
+      47 +            <tr><td>GPU</td><td>{hw.gpu}</td></tr>             
+      48 +            <tr><td>GPU Memory</td><td>{hw.gpuMemory}</td></tr>
+      49 +            <tr><td>CPU</td><td>{hw.cpu}</td></tr>             
+      50 +            <tr><td>System Memory</td><td>{hw.systemMemory}</td
+         +></tr>                                                         
+      51 +            <tr><td>Storage</td><td>{hw.storage}</td></tr>     
+      52 +            <tr><td>Connectivity</td><td>{hw.connectivity}</td>
+         +</tr>                                                          
+      53 +            <tr><td>OS</td><td>{hw.os}</td></tr>               
+      54 +            <tr><td>AI Performance</td><td>{hw.perf}</td></tr> 
+      55 +          </tbody>                                             
+      56 +        </Table>                                               
+      57        </section>
+      58  
+      59        <!-- Runtime -->
+
+⏺ Update(src/pages/lab/index.astro)
+  ⎿  Added 17 lines, removed 1 line
+       83          <p class="text-slate-600 dark:text-slate-400 mb-4">
+       84            Models currently loaded and available for experiment
+           s.
+       85          </p>
+       86 -        <Table headers={modelHeaders} rows={modelRows} />     
+       86 +        <Table>                                               
+       87 +          <thead>                                             
+       88 +            <tr><th>Model</th><th>Parameters</th><th>Quantizat
+          +ion</th><th>Context Window</th><th>Tool Calling</th><th>Notes<
+          +/th></tr>                                                     
+       89 +          </thead>                                            
+       90 +          <tbody>                                             
+       91 +            {models.map((m: any) => (                         
+       92 +              <tr>                                            
+       93 +                <td>{m.name}</td>                             
+       94 +                <td>{m.parameters}</td>                       
+       95 +                <td>{m.quantization}</td>                     
+       96 +                <td>{m.contextWindow.toLocaleString()}</td>   
+       97 +                <td>{m.toolCallingSupport}</td>               
+       98 +                <td>{m.notes}</td>                            
+       99 +              </tr>                                           
+      100 +            ))}                                               
+      101 +          </tbody>                                            
+      102 +        </Table>                                              
+      103          <Callout type="info" title="Quantization">
+      104            All models use Q4_K_M quantization unless noted. Thi
+           s balances memory usage with quality &mdash; important when ru
+           nning 120B parameter models on a single node.
+      105          </Callout>
+
+⏺ Now fix the experiment page's tables.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 9 lines, removed 13 lines
+      13  const models = labData.models;
+      14  const hasResults = results.status === 'complete';
+      15  
+      16 -const modelHeaders = ['Model', 'Parameters', 'Tool Calling Supp
+         -ort', 'Notes'];                                                
+      17 -const modelRows = models.map(m => [m.name, m.parameters, m.tool
+         -CallingSupport, m.notes]);                                     
+      18 -                                                               
+      19 -const testCaseHeaders = ['ID', 'Name', 'Category', 'Complexity'
+         -];                                                             
+      20 -const testCaseRows = [                                         
+      21 -  ['tc-01', 'Single tool, simple args', 'Native', 'Basic'],    
+      22 -  ['tc-02', 'Single tool, multiple args', 'Native', 'Medium'], 
+      23 -  ['tc-03', 'Tool selection (pick 1 from 3)', 'Native', 'Medium
+         -'],                                                            
+      24 -  ['tc-04', 'Parallel tool calls (3 cities)', 'Native', 'Hard']
+         -,                                                              
+      25 -  ['tc-05', 'Single tool, simple args', 'Prompt-based', 'Basic'
+         -],                                                             
+      26 -  ['tc-06', 'Single tool, multiple args', 'Prompt-based', 'Medi
+         -um'],                                                          
+      27 -  ['tc-07', 'Tool selection (pick 1 from 3)', 'Prompt-based', '
+         -Medium'],                                                      
+      28 -  ['tc-08', 'Parallel tool calls (3 cities)', 'Prompt-based', '
+         -Hard'],                                                        
+      16 +const testCases = [                                            
+      17 +  { id: 'tc-01', name: 'Single tool, simple args', category: 'N
+         +ative', complexity: 'Basic' },                                 
+      18 +  { id: 'tc-02', name: 'Single tool, multiple args', category: 
+         +'Native', complexity: 'Medium' },                              
+      19 +  { id: 'tc-03', name: 'Tool selection (pick 1 from 3)', catego
+         +ry: 'Native', complexity: 'Medium' },                          
+      20 +  { id: 'tc-04', name: 'Parallel tool calls (3 cities)', catego
+         +ry: 'Native', complexity: 'Hard' },                            
+      21 +  { id: 'tc-05', name: 'Single tool, simple args', category: 'P
+         +rompt-based', complexity: 'Basic' },                           
+      22 +  { id: 'tc-06', name: 'Single tool, multiple args', category: 
+         +'Prompt-based', complexity: 'Medium' },                        
+      23 +  { id: 'tc-07', name: 'Tool selection (pick 1 from 3)', catego
+         +ry: 'Prompt-based', complexity: 'Medium' },                    
+      24 +  { id: 'tc-08', name: 'Parallel tool calls (3 cities)', catego
+         +ry: 'Prompt-based', complexity: 'Hard' },                      
+      25  ];
+      26  
+      27  const harnessCode = [
+
+⏺ Now I need to read the file around lines 95-110 and the three Table usages to
+  fix them. Let me read the relevant sections.
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Let me find the exact lines with Table usage:
+
+⏺ Searched for 1 pattern, read 1 file (ctrl+o to expand)
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 5 lines, removed 6 lines
+      126      ▼
+      127  Static HTML with rendered results`;
+      128  
+      129 -const metricsHeaders = ['Metric', 'Description', 'How Measured
+          -'];                                                           
+      130 -const metricsRows = [                                         
+      131 -  ['Success Rate', 'Valid parseable tool call returned', 'Pars
+          -e response, check for tool_call structure'],                  
+      132 -  ['Arg Correctness', 'Right argument names, types, values', '
+          -Compare against expected args'],                              
+      133 -  ['Tool Selection', 'Correct tool chosen from multiple', 'For
+          - tc-03/tc-07 only'],                                          
+      134 -  ['Latency', 'Time from request to response (ms)', 'Wall cloc
+          -k via Ollama API'],                                           
+      129 +const metrics = [                                             
+      130 +  { name: 'Success Rate', desc: 'Valid parseable tool call ret
+          +urned', how: 'Parse response, check for tool_call structure' }
+          +,                                                             
+      131 +  { name: 'Arg Correctness', desc: 'Right argument names, type
+          +s, values', how: 'Compare against expected args' },           
+      132 +  { name: 'Tool Selection', desc: 'Correct tool chosen from mu
+          +ltiple', how: 'For tc-03/tc-07 only' },                       
+      133 +  { name: 'Latency', desc: 'Time from request to response (ms)
+          +', how: 'Wall clock via Ollama API' },                        
+      134    ['Token Efficiency', 'Input + output token count', 'Reported
+            by Ollama API'],
+      135  ];
+      136  ---
+
+⏺ Read 1 file (ctrl+o to expand)
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 1 line, removed 1 line
+      131    { name: 'Arg Correctness', desc: 'Right argument names, type
+           s, values', how: 'Compare against expected args' },
+      132    { name: 'Tool Selection', desc: 'Correct tool chosen from mu
+           ltiple', how: 'For tc-03/tc-07 only' },
+      133    { name: 'Latency', desc: 'Time from request to response (ms)
+           ', how: 'Wall clock via Ollama API' },
+      134 -  ['Token Efficiency', 'Input + output token count', 'Reported
+          - by Ollama API'],                                             
+      134 +  { name: 'Token Efficiency', desc: 'Input + output token coun
+          +t', how: 'Reported by Ollama API' },                          
+      135  ];
+      136  ---
+      137  
+
+⏺ Now replace the three Table usages:
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 10 lines, removed 1 line
+      200          <p class="text-slate-600 dark:text-slate-400 mb-4">
+      201            All models run locally on a <a href="/lab/" class="t
+           ext-slate-900 dark:text-white hover:underline">DGX Spark</a> v
+           ia Ollama. No cloud APIs involved.
+      202          </p>
+      203 -        <Table headers={modelHeaders} rows={modelRows} />     
+      203 +        <Table>                                               
+      204 +          <thead>                                             
+      205 +            <tr><th>Model</th><th>Parameters</th><th>Tool Call
+          +ing Support</th><th>Notes</th></tr>                           
+      206 +          </thead>                                            
+      207 +          <tbody>                                             
+      208 +            {models.map((m: any) => (                         
+      209 +              <tr><td>{m.name}</td><td>{m.parameters}</td><td>
+          +{m.toolCallingSupport}</td><td>{m.notes}</td></tr>            
+      210 +            ))}                                               
+      211 +          </tbody>                                            
+      212 +        </Table>                                              
+      213        </section>
+      214  
+      215        <!-- Methodology -->
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 10 lines, removed 1 line
+      222          <p class="text-slate-600 dark:text-slate-400 mb-4">
+      223            8 test cases covering native and prompt-based tool c
+           alling at increasing complexity levels. Each test runs 5 times
+            per model at temperature 0, totaling 160 runs.
+      224          </p>
+      225 -        <Table headers={testCaseHeaders} rows={testCaseRows} /
+          ->                                                             
+      225 +        <Table>                                               
+      226 +          <thead>                                             
+      227 +            <tr><th>ID</th><th>Name</th><th>Category</th><th>C
+          +omplexity</th></tr>                                           
+      228 +          </thead>                                            
+      229 +          <tbody>                                             
+      230 +            {testCases.map(tc => (                            
+      231 +              <tr><td>{tc.id}</td><td>{tc.name}</td><td>{tc.ca
+          +tegory}</td><td>{tc.complexity}</td></tr>                     
+      232 +            ))}                                               
+      233 +          </tbody>                                            
+      234 +        </Table>                                              
+      235  
+      236          <h3 class="text-lg font-semibold text-slate-900 dark:t
+           ext-white mt-8 mb-3">Approaches</h3>
+      237          <div class="space-y-4">
+
+⏺ Update(src/pages/experiments/tool-calling-basics/index.astro)
+  ⎿  Added 10 lines, removed 1 line
+      254          </div>
+      255  
+      256          <h3 class="text-lg font-semibold text-slate-900 dark:t
+           ext-white mt-8 mb-3">Metrics</h3>
+      257 -        <Table headers={metricsHeaders} rows={metricsRows} /> 
+      257 +        <Table>                                               
+      258 +          <thead>                                             
+      259 +            <tr><th>Metric</th><th>Description</th><th>How Mea
+          +sured</th></tr>                                               
+      260 +          </thead>                                            
+      261 +          <tbody>                                             
+      262 +            {metrics.map(m => (                               
+      263 +              <tr><td>{m.name}</td><td>{m.desc}</td><td>{m.how
+          +}</td></tr>                                                   
+      264 +            ))}                                               
+      265 +          </tbody>                                            
+      266 +        </Table>                                              
+      267  
+      268          <h3 class="text-lg font-semibold text-slate-900 dark:t
+           ext-white mt-8 mb-3">Data Flow</h3>
+      269          <Diagram title="Experiment Pipeline">{dataFlowDiagram}
+           </Diagram>
+
+⏺ Now let's build again.
+
+⏺ Bash(npm run build 2>&1)
+  ⎿  > agent-patterns@0.0.1 build
+     > astro check && astro build
+     … +88 lines (ctrl+o to expand)
+  ⎿  (timeout 2m)
+
+⏺ Build passes with 0 errors. Now let me verify the Python harness imports
+  cleanly.
+
+⏺ Bash(cd /Users/daniel/Documents/projects/agent-engineering/experiments &&
+      python3 -c "from harness import OllamaClient, TestCase, ResultCollector;
+      print('Import OK')…)
+  ⎿  Error: Exit code 1
+     Traceback (most recent call last):
+       File "<string>", line 1, in <module>
+       File "/Users/daniel/Documents/projects/agent-engineering/experiments/harn
+     ess.py", line 10, in <module>
+         import ollama
+     ModuleNotFoundError: No module named 'ollama'
+
+⏺ That's expected — the ollama dependency isn't installed in the current
+  environment. The import structure itself is correct. Let me verify the syntax
+  is valid Python.
+
+⏺ Bash(cd /Users/daniel/Documents/projects/agent-engineering/experiments &&
+      python3 -c "import ast; ast.parse(open('harness.py').read());
+      print('harness.py: syntax OK'…)
+  ⎿  Interrupted · What should Claude do instead?
+
+❯ /usage 
+  ⎿  Status dialog dismissed
