@@ -1,0 +1,565 @@
+---
+title: "Prompt Caching / KV Cache"
+description: "Reduce inference costs by 90% and time-to-first-token by 80% by reusing computed attention states across requests with identical prefixes."
+category: "Context Layer"
+date: "2024-02-20"
+type: "topic"
+tags: [caching, kv-cache, latency, cost]
+featured: false
+---
+
+Every time a transformer model processes a request, it computes Key and Value matrices for every token in the context. This is the most computationally expensive step in inference, and it is repeated in full for every new request — even when 95% of the tokens are identical to the previous one. KV caching solves this by storing those computed matrices and reusing them whenever the same prefix appears again. The savings are dramatic: up to 90% cost reduction on cached tokens, and 70–85% reduction in time-to-first-token for large prefixes.
+
+## How KV Caching Works
+
+The cache is prefix-based. When a request arrives, the provider compares the beginning of the context against stored KV states. If the tokens match exactly from position 0 through some point, those states are reused and only the remaining tokens require fresh computation. A single character difference anywhere in the matched region breaks the cache entirely.
+
+<Diagram title="KV Cache Mechanism">
+{`WITHOUT CACHING                        WITH CACHING
+───────────────                        ────────────
+
+Request 1:                             Request 1:
+┌──────────────────────┐               ┌──────────────────────┐
+│ System: "You are..." │ ◄─ Compute   │ System: "You are..." │ ◄─ Compute
+│ User: "Hello"        │    K,V        │ User: "Hello"        │    K,V
+└──────────────────────┘               └──────────────────────┘
+                                                │
+                                                ▼
+                                       ┌──────────────────────┐
+                                       │      KV CACHE        │
+                                       │ Store K,V matrices   │
+                                       └──────────────────────┘
+
+Request 2:                             Request 2:
+┌──────────────────────┐               ┌──────────────────────┐
+│ System: "You are..." │ ◄─ Compute   │ System: "You are..." │ ◄─ Cache HIT!
+│ User: "Hi there"     │    K,V AGAIN  │ User: "Hi there"     │    (reuse K,V)
+└──────────────────────┘               └──────────────────────┘
+                                                │
+Cost: Full price                                ▼
+                                       Only compute K,V for "Hi there"
+                                       Cost: 90% reduction on cached portion`}
+</Diagram>
+
+<Callout type="info" title="Key Insight">
+The cache is prefix-based. Every token must match exactly from the beginning. A single character difference at any point breaks the cache.
+</Callout>
+
+## Provider Implementations
+
+Major providers implement caching differently. Anthropic uses explicit `cache_control` markers that you add to system message content blocks, giving you precise control over what gets cached and when. OpenAI caches automatically based on prefix matching — no code changes required, though you get less visibility and control. Google's context caching API takes a more explicit approach similar to Anthropic's. Self-hosted deployments using vLLM or TGI get the latency benefits of prefix caching without the monetary discount.
+
+<Table caption="How different providers implement prompt caching">
+  <thead>
+    <tr>
+      <th>Provider</th>
+      <th>Mechanism</th>
+      <th>Discount</th>
+      <th>TTL</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Anthropic</strong></td>
+      <td>Explicit cache_control markers</td>
+      <td>90% off cached reads</td>
+      <td>5 minutes (ephemeral)</td>
+    </tr>
+    <tr>
+      <td><strong>OpenAI</strong></td>
+      <td>Automatic prefix matching</td>
+      <td>50% off cached tokens</td>
+      <td>5–10 minutes</td>
+    </tr>
+    <tr>
+      <td><strong>Google</strong></td>
+      <td>Context caching API</td>
+      <td>Variable by model</td>
+      <td>Configurable</td>
+    </tr>
+    <tr>
+      <td><strong>Self-hosted</strong></td>
+      <td>vLLM/TGI prefix caching</td>
+      <td>N/A (latency benefit)</td>
+      <td>Memory-dependent</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Impact: Cost and Latency
+
+The financial case for caching is clearest when you have a large, stable system prompt used across many requests. Consider a 50K-token system prompt serving 1,000 requests:
+
+<Diagram title="Cost and Latency Improvements">
+{`COST IMPACT (Example: 50K token system prompt)
+
+Without Caching:
+├── Request 1: 50,000 tokens × $0.003/1K = $0.15
+├── Request 2: 50,000 tokens × $0.003/1K = $0.15
+├── Request 3: 50,000 tokens × $0.003/1K = $0.15
+└── Total: $0.45
+
+With Caching (90% discount on cached):
+├── Request 1: 50,000 tokens × $0.003/1K = $0.15 (cache created)
+├── Request 2: 50,000 tokens × $0.0003/1K = $0.015 (cache hit)
+├── Request 3: 50,000 tokens × $0.0003/1K = $0.015 (cache hit)
+└── Total: $0.18 (60% savings)
+
+At scale (1000 requests):
+├── Without: $150.00
+├── With: $15.15
+└── Savings: $134.85 (90%)
+
+─────────────────────────────────────────────────────────
+
+LATENCY IMPACT
+
+Without Caching:
+Time to First Token (TTFT): ~2-3 seconds (compute all K,V)
+
+With Caching:
+Time to First Token (TTFT): ~0.3-0.5 seconds (only new tokens)
+
+Improvement: 70-85% reduction in TTFT`}
+</Diagram>
+
+<Table caption="Measured impact metrics by use case">
+  <thead>
+    <tr>
+      <th>Use Case</th>
+      <th>Cached Prefix Size</th>
+      <th>Cost Reduction</th>
+      <th>TTFT Reduction</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>RAG with fixed docs</td>
+      <td>20–50K tokens</td>
+      <td>70–85%</td>
+      <td>60–80%</td>
+    </tr>
+    <tr>
+      <td>Agent with many tools</td>
+      <td>10–30K tokens</td>
+      <td>50–75%</td>
+      <td>50–70%</td>
+    </tr>
+    <tr>
+      <td>Multi-turn chat</td>
+      <td>5–15K tokens</td>
+      <td>40–60%</td>
+      <td>40–60%</td>
+    </tr>
+    <tr>
+      <td>Code assistant</td>
+      <td>30–100K tokens</td>
+      <td>80–90%</td>
+      <td>70–85%</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="tip" title="Maximum Benefit Scenarios">
+Caching provides the most benefit when you have a large, stable system prompt, you make many requests with the same prefix, and requests happen within the cache TTL (typically 5 minutes).
+</Callout>
+
+## Basic Implementation
+
+The following shows how to implement prompt caching with Anthropic's explicit markers. Note that this topic is one of the exceptions to the standard LangChain/provider-agnostic approach — caching requires provider-specific APIs:
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic()
+
+SYSTEM_PROMPT = """You are an expert assistant for our
+e-commerce platform. Here is our complete product catalog:
+
+[... imagine 50,000 tokens of product data ...]
+
+Use this catalog to answer customer questions accurately.
+Always cite specific product IDs when making recommendations.
+"""
+
+def query_with_caching(user_question: str) -> str:
+    """Query with prompt caching enabled."""
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=[
+            {
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
+        messages=[
+            {"role": "user", "content": user_question}
+        ]
+    )
+
+    # Check cache performance
+    usage = response.usage
+    print(f"Input tokens: {usage.input_tokens}")
+    print(f"Cache read tokens: {usage.cache_read_input_tokens}")
+    print(f"Cache creation tokens: {usage.cache_creation_input_tokens}")
+
+    # First call: cache_creation_input_tokens = ~50,000
+    #             cache_read_input_tokens = 0
+    # Subsequent: cache_creation_input_tokens = 0
+    #             cache_read_input_tokens = ~50,000
+
+    return response.content[0].text
+```
+
+## Multi-Turn Conversation Caching
+
+In multi-turn conversations, the system prompt and tool definitions remain stable across every turn while the conversation history grows. The key is to structure requests so the stable prefix is always at the beginning and the dynamic conversation history follows it. This way, each turn gets a cache hit on the expensive system content.
+
+<Diagram title="Multi-Turn Cache Structure">
+{`Turn 1:
+┌────────────────────────────────────────────────────┐
+│ [CACHE CREATED]                                    │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ System prompt (50K tokens)                   │  │
+│ │ Tool definitions (5K tokens)                 │  │
+│ └──────────────────────────────────────────────┘  │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ User: "Hello"                                │  │
+│ └──────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────┘
+
+Turn 2:
+┌────────────────────────────────────────────────────┐
+│ [CACHE HIT]                                        │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ System prompt (50K tokens) ✓ CACHED          │  │
+│ │ Tool definitions (5K tokens) ✓ CACHED        │  │
+│ └──────────────────────────────────────────────┘  │
+│ ┌──────────────────────────────────────────────┐  │
+│ │ User: "Hello"                                │  │
+│ │ Assistant: "Hi! How can I help?"             │  │
+│ │ User: "What's the weather?"                  │  │
+│ └──────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────┘
+
+Cost breakdown:
+- Turn 1: 55K tokens at full price (cache creation)
+- Turn 2: 55K tokens at 90% discount + ~50 new tokens full price
+- Turn 3+: Same pattern, savings compound`}
+</Diagram>
+
+```python
+from anthropic import Anthropic
+from dataclasses import dataclass, field
+from typing import List, Dict
+
+@dataclass
+class CachedConversation:
+    """Multi-turn conversation optimized for prompt caching."""
+
+    client: Anthropic
+    system_prompt: str
+    tool_definitions: str
+    model: str = "claude-sonnet-4-20250514"
+    messages: List[Dict] = field(default_factory=list)
+    total_cache_reads: int = 0
+    total_cache_creates: int = 0
+
+    def chat(self, user_message: str) -> str:
+        """Send message and get response with caching."""
+        self.messages.append({
+            "role": "user",
+            "content": user_message
+        })
+
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=2048,
+            system=[
+                # Large system prompt - cached
+                {
+                    "type": "text",
+                    "text": self.system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                },
+                # Tool definitions - cached
+                {
+                    "type": "text",
+                    "text": self.tool_definitions,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=self.messages
+        )
+
+        # Track cache performance
+        usage = response.usage
+        self.total_cache_reads += usage.cache_read_input_tokens
+        self.total_cache_creates += usage.cache_creation_input_tokens
+
+        assistant_message = response.content[0].text
+        self.messages.append({
+            "role": "assistant",
+            "content": assistant_message
+        })
+
+        return assistant_message
+
+    def get_cache_stats(self) -> dict:
+        """Get cumulative cache statistics."""
+        return {
+            "total_cache_reads": self.total_cache_reads,
+            "total_cache_creates": self.total_cache_creates,
+            "estimated_savings": self._calculate_savings()
+        }
+
+    def _calculate_savings(self) -> str:
+        """Estimate cost savings from caching."""
+        # Anthropic pricing: cached reads are 90% cheaper
+        if self.total_cache_reads == 0:
+            return "0%"
+        full_cost = self.total_cache_reads + self.total_cache_creates
+        actual_cost = (
+            self.total_cache_creates +
+            self.total_cache_reads * 0.1  # 90% discount
+        )
+        savings = (1 - actual_cost / full_cost) * 100
+        return f"{savings:.1f}%"
+```
+
+## Optimization Strategies
+
+Maximizing cache hit rates requires careful control over prompt structure. Content should be ordered from most stable to least stable, because the cache prefix ends at the first differing byte. Static instructions go first. Reference data and knowledge bases come next. Tool definitions follow — but only when sorted deterministically, since random ordering breaks the cache. Session-specific context and conversation history go last, outside the cached region.
+
+<Diagram title="Optimal Prompt Ordering for Caching">
+{`MOST STABLE (highest cache benefit)
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 1. Static Instructions                │ ← Never changes
+    │    "You are a helpful assistant..."   │
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 2. Reference Data / Knowledge Base    │ ← Changes rarely
+    │    Documentation, product catalog...  │    (daily/weekly)
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 3. Tool Definitions                   │ ← Changes occasionally
+    │    Sorted alphabetically for          │    (with deployments)
+    │    deterministic ordering             │
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 4. Session Context                    │ ← Changes per session
+    │    User preferences, auth info...     │    (no caching)
+    └───────────────────────────────────────┘
+            │
+            ▼
+    ┌───────────────────────────────────────┐
+    │ 5. Conversation History               │ ← Changes per turn
+    │    Previous messages...               │    (no caching)
+    └───────────────────────────────────────┘
+            │
+            ▼
+LEAST STABLE (no cache benefit)`}
+</Diagram>
+
+```python
+from dataclasses import dataclass
+from typing import List, Optional
+import hashlib
+import json
+
+@dataclass
+class CacheOptimizedPromptBuilder:
+    """Build prompts optimized for cache hit rates."""
+
+    static_instructions: str
+    reference_data: str
+    tool_definitions: List[dict]
+
+    def build_system_content(
+        self,
+        session_context: Optional[str] = None
+    ) -> List[dict]:
+        """Build system content with optimal cache structure."""
+        content = []
+
+        # Layer 1: Static instructions (highest cache stability)
+        content.append({
+            "type": "text",
+            "text": self._normalize(self.static_instructions),
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 2: Reference data (changes rarely)
+        content.append({
+            "type": "text",
+            "text": self._normalize(self.reference_data),
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 3: Tool definitions (normalized for consistency)
+        # Sort tools alphabetically for deterministic ordering
+        sorted_tools = sorted(
+            self.tool_definitions,
+            key=lambda t: t.get("name", "")
+        )
+        tools_text = json.dumps(sorted_tools, sort_keys=True)
+        content.append({
+            "type": "text",
+            "text": f"Available tools:\n{tools_text}",
+            "cache_control": {"type": "ephemeral"}
+        })
+
+        # Layer 4: Session context (if any, no cache control)
+        if session_context:
+            content.append({
+                "type": "text",
+                "text": session_context
+                # No cache_control = not cached
+            })
+
+        return content
+
+    def _normalize(self, text: str) -> str:
+        """Normalize text to maximize cache hits."""
+        lines = [line.rstrip() for line in text.split('\n')]
+        normalized = '\n'.join(lines)
+        return normalized
+
+    def get_cache_key(self) -> str:
+        """Get a hash representing the cacheable prefix."""
+        cacheable = (
+            self._normalize(self.static_instructions) +
+            self._normalize(self.reference_data) +
+            json.dumps(sorted(
+                self.tool_definitions,
+                key=lambda t: t.get("name", "")
+            ), sort_keys=True)
+        )
+        return hashlib.sha256(cacheable.encode()).hexdigest()[:16]
+```
+
+<Table caption="Common cache-breaking patterns and fixes">
+  <thead>
+    <tr>
+      <th>Pattern</th>
+      <th>Problem</th>
+      <th>Fix</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Timestamps in prompt</td>
+      <td>Changes every second/minute</td>
+      <td>Move to metadata or round to day</td>
+    </tr>
+    <tr>
+      <td>Request IDs in system</td>
+      <td>Unique per request</td>
+      <td>Move to message, not system prompt</td>
+    </tr>
+    <tr>
+      <td>Random example order</td>
+      <td>Different each time</td>
+      <td>Sort deterministically</td>
+    </tr>
+    <tr>
+      <td>User name in system</td>
+      <td>Breaks cache per user</td>
+      <td>Move to conversation, after cache boundary</td>
+    </tr>
+    <tr>
+      <td>Inconsistent whitespace</td>
+      <td>Trailing spaces vary</td>
+      <td>Normalize with .strip()</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Monitoring and Evaluation
+
+Without tracking cache metrics, you will not know whether caching is working. Always log `cache_read_input_tokens` on every response. If `cache_creation_input_tokens` keeps appearing on requests that should be hitting the cache, you have a cache-breaking pattern in your prompt structure.
+
+<Table caption="Key metrics for cache performance">
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>What it Measures</th>
+      <th>Target</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Cache hit rate</strong></td>
+      <td>% of requests using cached prefix</td>
+      <td>&gt;90% for steady workloads</td>
+    </tr>
+    <tr>
+      <td><strong>Cached token ratio</strong></td>
+      <td>Cached tokens / total input tokens</td>
+      <td>Higher is better (varies by use case)</td>
+    </tr>
+    <tr>
+      <td><strong>TTFT improvement</strong></td>
+      <td>Latency reduction from caching</td>
+      <td>50–80% for large prefixes</td>
+    </tr>
+    <tr>
+      <td><strong>Cost savings</strong></td>
+      <td>Actual vs theoretical cost</td>
+      <td>Track against baseline</td>
+    </tr>
+    <tr>
+      <td><strong>Cache creation rate</strong></td>
+      <td>New caches created / total requests</td>
+      <td>&lt;10% indicates good stability</td>
+    </tr>
+  </tbody>
+</Table>
+
+A simple debugging technique: compute a SHA-256 hash of your system prompt before each request and log it. If the hash changes between requests that should be identical, you have found your cache-breaking source. Byte-level matching means invisible differences — trailing spaces, different line endings, CRLF vs LF — will silently prevent cache hits.
+
+## Common Pitfalls
+
+<Callout type="danger" title="Dynamic Content in Cached Region">
+Any dynamic content (timestamps, IDs, user names) in the cached portion will break the cache on every request. Audit your prompts carefully.
+</Callout>
+
+<Callout type="danger" title="Ignoring Cache TTL">
+Caches expire (typically 5 minutes). If your traffic is sporadic, you may not get cache benefits. Consider batching requests or accepting cold starts.
+</Callout>
+
+<Callout type="warning" title="Inconsistent Ordering">
+If tool definitions or examples appear in different orders, the cache breaks. Always sort deterministically — alphabetically, by ID, or by any stable key.
+</Callout>
+
+<Callout type="warning" title="Not Monitoring">
+Without tracking cache metrics, you will not know if caching is working. Always log cache_read_input_tokens to verify hits.
+</Callout>
+
+## Best Practices
+
+<Callout type="tip" title="Front-Load Stable Content">
+Put all stable content (system prompt, docs, tools) at the beginning. Cache benefit ends at the first byte of difference.
+</Callout>
+
+<Callout type="tip" title="Normalize Everything">
+Strip whitespace, sort collections, use consistent formatting. Byte-level matching means even invisible differences break cache.
+</Callout>
+
+<Callout type="tip" title="Batch Similar Requests">
+If you have multiple similar requests, send them close together in time to maximize cache hits before TTL expires.
+</Callout>
+
+<Callout type="tip" title="Monitor Continuously">
+Log cache metrics on every request. Alert if hit rate drops significantly — it indicates prompt structure changed.
+</Callout>

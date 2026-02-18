@@ -1,0 +1,506 @@
+---
+title: "Universal Commerce Protocol (UCP)"
+description: "An open industry protocol enabling AI agents to shop across any participating merchant using unified APIs for checkout, identity linking, and order management."
+category: "Protocols"
+date: "2024-03-25"
+type: "topic"
+tags:
+  - commerce
+  - protocol
+  - checkout
+  - agents
+featured: false
+---
+
+The Universal Commerce Protocol solves one of the most fragmented problems in agentic AI: enabling an agent to shop across dozens of retailers without building a custom integration for each one. Before UCP, an agent that wanted to purchase running shoes would need bespoke adapters for Nike's API, Target's API, and Shopify's API, each with different auth flows, cart models, and webhook formats. UCP provides what its designers describe as "the common language for platforms, agents, and businesses" — a single API surface that covers the full shopping lifecycle, from cart creation through post-purchase support.
+
+## What is UCP?
+
+UCP was co-developed by Google, Shopify, Etsy, Wayfair, Target, and Walmart, with endorsement from more than 27 companies including PayPal, Stripe, and Visa. Its design philosophy keeps retailers as the Merchant of Record with full ownership of the customer relationship — UCP facilitates commerce without disintermediating the merchants who power it.
+
+The protocol has three main pillars. The Checkout API covers cart management, dynamic pricing, tax calculation, and payment processing. Identity Linking uses OAuth 2.0 to let users authorize agents to access their merchant accounts without sharing credentials. Order Management provides real-time webhooks so agents receive instant notifications about shipping, delivery, and refunds.
+
+<Callout type="info" title="Industry Backing">
+UCP was co-developed by Google, Shopify, Etsy, Wayfair, Target, and Walmart, with endorsement from 27+ companies including PayPal, Stripe, and Visa. It is designed to keep retailers as the Merchant of Record with full customer relationship ownership.
+</Callout>
+
+## Architecture
+
+<Diagram title="UCP Commerce Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                         AI AGENT                                 │
+│                                                                  │
+│  "Find me running shoes under $150 and order the best match"    │
+└─────────────────────────────────────────────────────────────────┘
+         │                    │                    │
+         │ UCP API            │ UCP API            │ UCP API
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌───────────────┐   ┌───────────────┐   ┌───────────────┐
+│    SHOPIFY    │   │    TARGET     │   │   WAYFAIR     │
+│   Merchant    │   │   Merchant    │   │   Merchant    │
+│               │   │               │   │               │
+│ • Catalog     │   │ • Catalog     │   │ • Catalog     │
+│ • Checkout    │   │ • Checkout    │   │ • Checkout    │
+│ • Identity    │   │ • Identity    │   │ • Identity    │
+│ • Orders      │   │ • Orders      │   │ • Orders      │
+└───────────────┘   └───────────────┘   └───────────────┘
+         │                    │                    │
+         └────────────────────┼────────────────────┘
+                              │
+                              ▼
+                    ┌───────────────┐
+                    │    PAYMENT    │
+                    │   PROVIDER    │
+                    │ (Stripe, etc) │
+                    │               │
+                    │ Agent Payments│
+                    │ Protocol (AP2)│
+                    └───────────────┘`}
+</Diagram>
+
+<Table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Protocol</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Commerce</strong></td>
+      <td>UCP</td>
+      <td>Checkout, orders, identity, catalog</td>
+    </tr>
+    <tr>
+      <td><strong>Payments</strong></td>
+      <td>AP2 (Agent Payments Protocol)</td>
+      <td>Secure agent-initiated payments</td>
+    </tr>
+    <tr>
+      <td><strong>Agent Communication</strong></td>
+      <td>A2A</td>
+      <td>Agent-to-agent task delegation</td>
+    </tr>
+    <tr>
+      <td><strong>Tool Access</strong></td>
+      <td>MCP</td>
+      <td>Agent-to-tool integration</td>
+    </tr>
+    <tr>
+      <td><strong>Transport</strong></td>
+      <td>REST / JSON-RPC</td>
+      <td>HTTPS-based communication</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Checkout API
+
+UCP's Checkout API handles complex cart logic, dynamic pricing, tax calculations, and payment processing through a straightforward REST interface. Agents never need to know how any individual retailer implements promotions or shipping rules — the UCP layer normalizes it all.
+
+```python
+import httpx
+from typing import Optional
+from dataclasses import dataclass
+
+@dataclass
+class CartItem:
+    product_id: str
+    quantity: int
+    variant: dict | None = None
+
+class UCPClient:
+    def __init__(self, api_key: str, merchant_id: str):
+        self.base_url = "https://api.merchant.com/ucp/v1"
+        self.client = httpx.AsyncClient(headers={
+            "Authorization": f"Bearer {api_key}",
+            "X-UCP-Version": "1.0"
+        })
+        self.merchant_id = merchant_id
+
+    async def create_cart(
+        self,
+        items: list[CartItem],
+        promo_code: Optional[str] = None
+    ) -> dict:
+        """Create a shopping cart with items."""
+        response = await self.client.post(
+            f"{self.base_url}/carts",
+            json={
+                "merchantId": self.merchant_id,
+                "items": [
+                    {
+                        "productId": item.product_id,
+                        "quantity": item.quantity,
+                        "variant": item.variant
+                    }
+                    for item in items
+                ],
+                "promoCode": promo_code
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def calculate_totals(
+        self,
+        cart_id: str,
+        shipping_address: dict
+    ) -> dict:
+        """Get cart totals with tax and shipping calculated."""
+        response = await self.client.post(
+            f"{self.base_url}/carts/{cart_id}/calculate",
+            json={"shippingAddress": shipping_address}
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def checkout(
+        self,
+        cart_id: str,
+        payment_token: str,
+        shipping_address: dict
+    ) -> dict:
+        """Complete checkout with payment."""
+        response = await self.client.post(
+            f"{self.base_url}/carts/{cart_id}/checkout",
+            json={
+                "paymentToken": payment_token,
+                "shippingAddress": shipping_address
+            }
+        )
+        response.raise_for_status()
+        return response.json()
+
+# Usage with an agent
+async def purchase_product(
+    ucp: UCPClient,
+    product_id: str,
+    user_payment_token: str,
+    shipping_address: dict
+):
+    # Create cart
+    cart = await ucp.create_cart([
+        CartItem(product_id=product_id, quantity=1)
+    ])
+
+    # Calculate final price
+    totals = await ucp.calculate_totals(
+        cart["id"],
+        shipping_address
+    )
+    print(f"Total: {totals['total']}")
+
+    # Complete purchase
+    order = await ucp.checkout(
+        cart["id"],
+        user_payment_token,
+        shipping_address
+    )
+
+    return order
+```
+
+<Callout type="tip" title="Dynamic Pricing">
+UCP handles real-time pricing adjustments including flash sales, loyalty discounts, promo codes, and personalized offers. Agents always get current prices without caching concerns.
+</Callout>
+
+## Checkout Endpoints
+
+<Table>
+  <thead>
+    <tr>
+      <th>Endpoint</th>
+      <th>Method</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>/carts</code></td>
+      <td>POST</td>
+      <td>Create a new shopping cart</td>
+    </tr>
+    <tr>
+      <td><code>/carts/{`{id}`}</code></td>
+      <td>GET</td>
+      <td>Get cart details</td>
+    </tr>
+    <tr>
+      <td><code>/carts/{`{id}`}/items</code></td>
+      <td>POST/DELETE</td>
+      <td>Add or remove items</td>
+    </tr>
+    <tr>
+      <td><code>/carts/{`{id}`}/calculate</code></td>
+      <td>POST</td>
+      <td>Calculate totals with tax and shipping</td>
+    </tr>
+    <tr>
+      <td><code>/carts/{`{id}`}/checkout</code></td>
+      <td>POST</td>
+      <td>Complete purchase</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Identity Linking
+
+UCP uses OAuth 2.0 to securely connect user accounts at participating merchants to the agent platform. Users authorize the agent to access their account — seeing order history, loyalty points, saved addresses — without sharing their password. The agent stores only scoped tokens, not credentials.
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+import httpx
+import secrets
+
+@dataclass
+class LinkedIdentity:
+    merchant_id: str
+    user_id: str
+    access_token: str
+    refresh_token: str
+    scopes: list[str]
+    expires_at: datetime
+
+class UCPIdentityManager:
+    def __init__(self, client_id: str, client_secret: str):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.client = httpx.AsyncClient()
+        self.state_store: dict[str, dict] = {}
+
+    async def initiate_linking(
+        self,
+        merchant_id: str,
+        scopes: list[str],
+        redirect_uri: str
+    ) -> str:
+        """Start OAuth flow, return authorization URL."""
+        state = secrets.token_urlsafe(32)
+        merchant_config = await self._get_merchant_config(merchant_id)
+
+        self.state_store[state] = {
+            "merchant_id": merchant_id,
+            "redirect_uri": redirect_uri
+        }
+
+        params = {
+            "client_id": self.client_id,
+            "response_type": "code",
+            "scope": " ".join(scopes),
+            "redirect_uri": redirect_uri,
+            "state": state
+        }
+
+        auth_url = f"{merchant_config['authorization_endpoint']}?"
+        auth_url += "&".join(f"{k}={v}" for k, v in params.items())
+        return auth_url
+
+    async def exchange_code(
+        self,
+        code: str,
+        state: str
+    ) -> LinkedIdentity:
+        """Exchange authorization code for tokens."""
+        if state not in self.state_store:
+            raise ValueError("Invalid state parameter")
+
+        stored = self.state_store.pop(state)
+        merchant_id = stored["merchant_id"]
+        merchant_config = await self._get_merchant_config(merchant_id)
+
+        response = await self.client.post(
+            merchant_config["token_endpoint"],
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "redirect_uri": stored["redirect_uri"]
+            }
+        )
+        response.raise_for_status()
+        tokens = response.json()
+
+        return LinkedIdentity(
+            merchant_id=merchant_id,
+            user_id=tokens["user_id"],
+            access_token=tokens["access_token"],
+            refresh_token=tokens["refresh_token"],
+            scopes=tokens["scope"].split(),
+            expires_at=datetime.fromtimestamp(tokens["expires_at"])
+        )
+
+    async def _get_merchant_config(self, merchant_id: str) -> dict:
+        """Fetch merchant's OAuth configuration."""
+        response = await self.client.get(
+            f"https://{merchant_id}.com/.well-known/ucp-configuration"
+        )
+        return response.json()
+```
+
+<Callout type="warning" title="Token Security">
+Store refresh tokens securely, encrypted at rest. Access tokens are short-lived and should be refreshed before expiration. Revoke tokens immediately when users disconnect accounts.
+</Callout>
+
+<Callout type="info" title="Scopes">
+Request the minimal scopes needed. Common scopes include `orders:read`, `loyalty:read`, `profile:read`, and `checkout:write`.
+</Callout>
+
+## Order Management
+
+UCP provides real-time order tracking through webhooks. Agents receive instant notifications for every meaningful order event, enabling proactive user communication without requiring polling.
+
+```python
+from fastapi import FastAPI, Request, HTTPException
+import hmac
+import hashlib
+import json
+
+app = FastAPI()
+
+WEBHOOK_SECRET = "your_webhook_secret"
+
+def verify_signature(payload: bytes, signature: str) -> bool:
+    """Verify UCP webhook signature."""
+    expected = hmac.new(
+        WEBHOOK_SECRET.encode(),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+
+@app.post("/webhooks/ucp")
+async def handle_ucp_webhook(request: Request):
+    body = await request.body()
+    signature = request.headers.get("X-UCP-Signature", "")
+
+    if not verify_signature(body, signature):
+        raise HTTPException(401, "Invalid signature")
+
+    event = json.loads(body)
+
+    match event["type"]:
+        case "order.created":
+            await handle_order_created(event["data"])
+        case "order.shipped":
+            await handle_order_shipped(event["data"])
+        case "order.delivered":
+            await handle_order_delivered(event["data"])
+        case "order.refunded":
+            await handle_order_refunded(event["data"])
+
+    return {"status": "ok"}
+
+async def handle_order_shipped(data: dict):
+    """Handle order shipped event."""
+    shipment = data["shipment"]
+
+    await db.orders.update(
+        data["orderId"],
+        {
+            "status": "shipped",
+            "tracking": {
+                "carrier": shipment["carrier"],
+                "number": shipment["trackingNumber"],
+                "url": shipment["trackingUrl"]
+            },
+            "estimatedDelivery": shipment["estimatedDelivery"]
+        }
+    )
+
+    await notifications.send(
+        user_id=data["userId"],
+        message=f"Your order has shipped via {shipment['carrier']}!",
+        tracking_url=shipment["trackingUrl"]
+    )
+
+async def handle_order_delivered(data: dict):
+    """Handle order delivered event."""
+    await db.orders.update(
+        data["orderId"],
+        {"status": "delivered", "deliveredAt": data["deliveredAt"]}
+    )
+
+    await notifications.send(
+        user_id=data["userId"],
+        message="Your order was delivered! Would you like to leave a review?",
+        actions=[
+            {"label": "Leave Review", "action": "review"},
+            {"label": "Report Issue", "action": "support"}
+        ]
+    )
+```
+
+## Webhook Events
+
+<Table>
+  <thead>
+    <tr>
+      <th>Event</th>
+      <th>Trigger</th>
+      <th>Key Data</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>order.created</code></td>
+      <td>Order placed</td>
+      <td>Order ID, items, totals</td>
+    </tr>
+    <tr>
+      <td><code>order.confirmed</code></td>
+      <td>Payment confirmed</td>
+      <td>Payment ID, confirmation</td>
+    </tr>
+    <tr>
+      <td><code>order.shipped</code></td>
+      <td>Order dispatched</td>
+      <td>Carrier, tracking number, ETA</td>
+    </tr>
+    <tr>
+      <td><code>order.delivered</code></td>
+      <td>Package delivered</td>
+      <td>Delivery timestamp, signature</td>
+    </tr>
+    <tr>
+      <td><code>order.cancelled</code></td>
+      <td>Order cancelled</td>
+      <td>Reason, refund status</td>
+    </tr>
+    <tr>
+      <td><code>order.refunded</code></td>
+      <td>Refund processed</td>
+      <td>Refund amount, method</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Key Principles
+
+UCP is built around four principles that distinguish it from proprietary commerce APIs. Merchants remain the Merchant of Record with full ownership of the customer relationship — the protocol facilitates purchases without taking control of the commerce layer. The protocol is surface-agnostic, working equally well across chat agents, voice assistants, browser extensions, and mobile apps without assuming any particular UI. It is open and extensible, carrying no vendor lock-in, and merchants can add custom capabilities while preserving compatibility with any UCP client. Finally, it is privacy-preserving by design: user credentials never pass through agents, and OAuth-based identity linking ensures access is scoped and user-controlled at all times.
+
+## Security Considerations
+
+<Callout type="danger" title="Payment Security">
+Never store raw payment credentials. Use tokenized payment methods via AP2. All payment data must be handled according to PCI-DSS requirements.
+</Callout>
+
+<Callout type="warning" title="Webhook Verification">
+Always verify webhook signatures before processing. Use HMAC-SHA256 with your webhook secret to validate that requests come from legitimate sources.
+</Callout>
+
+<Callout type="warning" title="Token Storage">
+Encrypt access and refresh tokens at rest. Implement secure token refresh before expiration. Revoke tokens immediately when users unlink accounts.
+</Callout>
+
+<Callout type="tip" title="Audit Logging">
+Log all commerce operations with user ID, merchant, action, and timestamp. This supports dispute resolution and fraud detection.
+</Callout>
+
+<Callout type="info" title="Learn More">
+Visit [ucp.dev](https://ucp.dev/latest/) for the full specification and implementation guides.
+</Callout>

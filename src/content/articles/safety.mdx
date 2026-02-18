@@ -1,0 +1,356 @@
+---
+title: "Safety & Guardrails"
+description: "Defense in depth for AI agents: input validation, output filtering, tool sandboxing, guardian agents, and OWASP LLM security risks."
+category: "Safety"
+date: "2024-05-01"
+type: "topic"
+tags:
+  - safety
+  - guardrails
+  - owasp
+  - security
+featured: false
+---
+
+AI agents that take real actions in the world — writing files, calling APIs, executing code, sending communications — require multiple overlapping safety layers. No single technique catches everything. Pattern-based filters are fast and predictable but bypassable by determined adversaries. LLM-based evaluation is flexible and semantic but adds latency and cost. Sandboxing contains the blast radius of failures. The goal is defense in depth: combine all three so that any single point of failure does not compromise the whole system.
+
+## Defense in Depth
+
+<Diagram title="Multi-Layer Security Architecture">
+{`USER INPUT
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYER 1: INPUT GUARDRAILS                                       │
+│ ├── Length & format validation                                  │
+│ ├── Injection pattern detection                                 │
+│ ├── PII detection & masking                                     │
+│ └── Content policy filtering                                    │
+└─────────────────────────────────────────────────────────────────┘
+    │ (blocked or sanitized)
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYER 2: AGENT EXECUTION                                        │
+│ ├── Sandboxed tool execution                                    │
+│ ├── Resource limits (time, memory, network)                     │
+│ ├── Allowlisted tools only                                      │
+│ └── Argument validation per tool                                │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYER 3: OUTPUT GUARDRAILS                                      │
+│ ├── Harmful content detection                                   │
+│ ├── PII leakage prevention                                      │
+│ ├── Hallucination detection                                     │
+│ └── Policy compliance check                                     │
+└─────────────────────────────────────────────────────────────────┘
+    │ (blocked, filtered, or modified)
+    ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ LAYER 4: GUARDIAN AGENT (Optional)                              │
+│ ├── LLM-based semantic analysis                                 │
+│ ├── Context-aware evaluation                                    │
+│ └── Complex policy enforcement                                  │
+└─────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+USER OUTPUT`}
+</Diagram>
+
+<Callout type="info" title="Defense in Depth">
+No single layer catches everything. Combine multiple techniques: pattern-based (fast, predictable) + LLM-based (flexible, semantic) + sandboxing (contains damage).
+</Callout>
+
+## OWASP Top 10 for LLM Applications
+
+The [OWASP Top 10 for LLMs](https://owasp.org/www-project-top-10-for-large-language-model-applications/) identifies the most critical security risks in LLM-powered systems.
+
+<Table caption="OWASP Top 10 LLM Risks (2025)">
+  <thead>
+    <tr>
+      <th>Risk</th>
+      <th>Description</th>
+      <th>Mitigation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>LLM01: Prompt Injection</strong></td>
+      <td>Malicious input manipulates LLM behavior</td>
+      <td>Input validation, instruction hierarchy</td>
+    </tr>
+    <tr>
+      <td><strong>LLM02: Insecure Output</strong></td>
+      <td>LLM output executed without validation</td>
+      <td>Output sanitization, sandboxing</td>
+    </tr>
+    <tr>
+      <td><strong>LLM03: Training Data Poisoning</strong></td>
+      <td>Malicious data corrupts model behavior</td>
+      <td>Data validation, provenance tracking</td>
+    </tr>
+    <tr>
+      <td><strong>LLM04: Denial of Service</strong></td>
+      <td>Resource exhaustion attacks</td>
+      <td>Rate limiting, resource caps</td>
+    </tr>
+    <tr>
+      <td><strong>LLM05: Supply Chain</strong></td>
+      <td>Compromised models, plugins, or data</td>
+      <td>Integrity checks, trusted sources</td>
+    </tr>
+    <tr>
+      <td><strong>LLM06: Permission Issues</strong></td>
+      <td>LLM granted excessive permissions</td>
+      <td>Least privilege, human approval</td>
+    </tr>
+    <tr>
+      <td><strong>LLM07: Data Leakage</strong></td>
+      <td>Sensitive data exposed in responses</td>
+      <td>PII filtering, access controls</td>
+    </tr>
+    <tr>
+      <td><strong>LLM08: Excessive Agency</strong></td>
+      <td>LLM takes unintended autonomous actions</td>
+      <td>Action limits, confirmation prompts</td>
+    </tr>
+    <tr>
+      <td><strong>LLM09: Overreliance</strong></td>
+      <td>Users trust LLM output without verification</td>
+      <td>Confidence indicators, source citations</td>
+    </tr>
+    <tr>
+      <td><strong>LLM10: Model Theft</strong></td>
+      <td>Extraction of model weights or behavior</td>
+      <td>API rate limits, watermarking</td>
+    </tr>
+  </tbody>
+</Table>
+
+## 1. Input Guardrails
+
+Input guardrails validate and sanitize all user input before it reaches the LLM. The implementation combines structural validation (length limits, encoding checks, format restrictions) with content filtering for injection patterns, PII, and malicious payloads.
+
+```python
+import re
+from dataclasses import dataclass
+from enum import Enum
+
+class RiskLevel(Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+@dataclass
+class ValidationResult:
+    allowed: bool
+    reason: str | None = None
+    category: str | None = None
+    risk_level: RiskLevel | None = None
+
+class InputGuardrail:
+    # Injection patterns to detect
+    INJECTION_PATTERNS = [
+        r"ignore\s+(previous|above|all)\s+instructions",
+        r"you\s+are\s+now\s+",
+        r"act\s+as\s+(if\s+you\s+are|a)\s+",
+        r"pretend\s+(you\s+are|to\s+be)",
+        r"system\s*:\s*",
+        r"\[INST\]|\[/INST\]",
+        r"<\|im_start\|>|<\|im_end\|>",
+    ]
+
+    # PII patterns
+    PII_PATTERNS = {
+        "ssn": r"\b\d{3}-\d{2}-\d{4}\b",
+        "credit_card": r"\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b",
+        "email": r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
+        "phone": r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b",
+    }
+
+    def __init__(
+        self,
+        max_length: int = 10000,
+        block_pii: bool = True,
+        block_injections: bool = True
+    ):
+        self.max_length = max_length
+        self.block_pii = block_pii
+        self.block_injections = block_injections
+
+    def validate(self, input_text: str) -> ValidationResult:
+        # Length check
+        if len(input_text) > self.max_length:
+            return ValidationResult(
+                allowed=False,
+                reason=f"Input exceeds maximum length ({self.max_length})",
+                category="LENGTH",
+                risk_level=RiskLevel.LOW
+            )
+
+        # Injection detection
+        if self.block_injections:
+            for pattern in self.INJECTION_PATTERNS:
+                if re.search(pattern, input_text, re.IGNORECASE):
+                    return ValidationResult(
+                        allowed=False,
+                        reason="Potential prompt injection detected",
+                        category="INJECTION",
+                        risk_level=RiskLevel.HIGH
+                    )
+
+        # PII detection
+        if self.block_pii:
+            for pii_type, pattern in self.PII_PATTERNS.items():
+                if re.search(pattern, input_text):
+                    return ValidationResult(
+                        allowed=False,
+                        reason=f"PII detected: {pii_type}",
+                        category="PII",
+                        risk_level=RiskLevel.MEDIUM
+                    )
+
+        return ValidationResult(allowed=True)
+
+    def sanitize(self, input_text: str) -> str:
+        """Sanitize input without blocking."""
+        sanitized = input_text
+        # Remove control characters (except newlines, tabs)
+        sanitized = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', sanitized)
+        import unicodedata
+        sanitized = unicodedata.normalize('NFKC', sanitized)
+        # Escape potential special tokens
+        sanitized = sanitized.replace("<|", "< |")
+        sanitized = sanitized.replace("|>", "| >")
+        return sanitized
+```
+
+<Callout type="warning" title="Pattern Matching Limitations">
+Determined attackers can bypass pattern-based filters through homoglyph attacks, Unicode tricks, and indirect injection via retrieved documents. Use pattern matching as a first line of defense, not the only defense.
+</Callout>
+
+## 2. Output Guardrails
+
+Output guardrails validate LLM responses before returning them to users. They check for harmful content across categories (violence, hate speech, self-harm, illegal activity), PII leakage where the output contains sensitive data not present in the input, hallucination against retrieved source documents, and dangerous patterns in generated tool call arguments.
+
+The action taken on failure depends on severity: critical and high-severity failures trigger blocking, medium-severity allows filtering (removing the problematic portion), and low-severity warrants a logged warning while allowing the response through.
+
+<Table>
+  <thead>
+    <tr>
+      <th>Check</th>
+      <th>Purpose</th>
+      <th>Action on Failure</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Harmful Content</strong></td>
+      <td>Detect violence, hate, illegal content</td>
+      <td>Block</td>
+    </tr>
+    <tr>
+      <td><strong>PII Leakage</strong></td>
+      <td>Prevent exposure of personal data</td>
+      <td>Mask or Block</td>
+    </tr>
+    <tr>
+      <td><strong>Hallucination</strong></td>
+      <td>Flag unsupported claims</td>
+      <td>Warn or Modify</td>
+    </tr>
+    <tr>
+      <td><strong>Tool Call Safety</strong></td>
+      <td>Validate tool arguments</td>
+      <td>Block execution</td>
+    </tr>
+    <tr>
+      <td><strong>Policy Compliance</strong></td>
+      <td>Enforce usage policies</td>
+      <td>Block or Modify</td>
+    </tr>
+  </tbody>
+</Table>
+
+## 3. Guardian Agents
+
+A guardian agent uses a separate LLM to evaluate interactions for complex, context-dependent risks that pattern matching cannot capture. The guardian receives both the user input and the agent's response, evaluates them across categories (prompt injection, harmful content, PII leakage, policy violation, hallucination), and returns a structured verdict with confidence scores, evidence, and a recommendation to allow, block, or modify.
+
+<Callout type="tip" title="Guardian Model Selection">
+Consider using a different model for the guardian than the main agent. This provides defense-in-depth against model-specific vulnerabilities — an attack that manipulates one model architecture may not affect another.
+</Callout>
+
+The cost of a guardian agent is real: an extra LLM call per interaction adds latency and API cost, and the guardian itself can be manipulated or produce false positives. Use guardians for high-stakes actions where the cost of a safety failure exceeds the overhead of evaluation.
+
+## 4. Tool Execution Sandboxing
+
+Sandboxing isolates tool execution to contain the blast radius of compromised or hallucinated tool calls. An effective sandbox enforces an allowlist of permitted tools, validates arguments against denied patterns before execution, enforces resource limits (CPU time, memory, output size), and restricts filesystem access to approved paths.
+
+<Table>
+  <thead>
+    <tr>
+      <th>Strategy</th>
+      <th>Isolation Level</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Process limits</strong></td>
+      <td>Low</td>
+      <td>Resource caps only</td>
+    </tr>
+    <tr>
+      <td><strong>Docker containers</strong></td>
+      <td>Medium</td>
+      <td>Most production use cases</td>
+    </tr>
+    <tr>
+      <td><strong>gVisor/Firecracker</strong></td>
+      <td>High</td>
+      <td>Untrusted code execution</td>
+    </tr>
+    <tr>
+      <td><strong>WASM</strong></td>
+      <td>High</td>
+      <td>Browser/edge execution</td>
+    </tr>
+    <tr>
+      <td><strong>Separate VMs</strong></td>
+      <td>Very High</td>
+      <td>Highest security needs</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Best Practices
+
+<Callout type="danger" title="Never Trust LLM Output">
+Always validate LLM-generated code, commands, or data before execution. The LLM can be manipulated or hallucinate dangerous operations.
+</Callout>
+
+<Callout type="danger" title="Principle of Least Privilege">
+Give agents only the minimum permissions needed. Do not grant write access if read is sufficient. Do not grant admin if user-level access is sufficient.
+</Callout>
+
+<Callout type="warning" title="Human in the Loop">
+For high-stakes actions — deletions, financial transactions, external communications — require explicit human approval before execution.
+</Callout>
+
+<Callout type="warning" title="Rate Limiting">
+Implement rate limits on all agent operations to prevent resource exhaustion and limit damage from compromised agents.
+</Callout>
+
+<Callout type="tip" title="Audit Logging">
+Log all agent actions with context. This enables incident investigation and detection of anomalous behavior patterns before they cause serious harm.
+</Callout>
+
+<Callout type="tip" title="Fail Secure">
+When guardrails fail or timeout, default to blocking rather than allowing. False positives are recoverable; security breaches often are not.
+</Callout>
+
+## Implementation Checklist
+
+A minimal safety implementation covers: input validation (length, format, injection patterns), PII detection and masking, sandboxed tool execution with resource limits, tool argument schema validation, output content filtering, rate limiting and resource caps, and comprehensive audit logging. For higher risk applications, add a guardian agent for complex policies and require human approval for irreversible actions. Test regularly with adversarial inputs to verify guardrails remain effective as the system evolves.

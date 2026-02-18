@@ -1,0 +1,334 @@
+---
+title: "Agent Memory Systems"
+description: "How agents maintain context, learn from past interactions, and build persistent knowledge across sessions using layered memory architectures."
+category: "Foundational"
+date: "2024-02-01"
+type: "topic"
+tags:
+  - memory
+  - context
+  - embeddings
+featured: false
+---
+
+Without memory, every agent interaction starts from scratch. The model has no knowledge of prior conversations, no record of user preferences, and no way to learn from past successes or failures. Memory systems address this by providing structured persistence at multiple timescales: the current conversation turn, the current session, across sessions, and across entire workflows. Well-designed memory architectures can reduce token consumption by 80% compared to naive full-history approaches while preserving the information the agent actually needs.
+
+The four canonical types — working, short-term, long-term, and episodic — are not mutually exclusive but complementary. Most production systems use at least two in combination. The choice of implementation for each layer involves meaningful trade-offs between latency, cost, retrieval fidelity, and engineering complexity.
+
+<Callout type="info" title="Key Insight">
+Memory systems like Mem0 achieve **80% token reduction** while preserving fidelity through intelligent summarization and retrieval. Instead of keeping entire conversation history, store and retrieve relevant facts.
+</Callout>
+
+## Types of Agent Memory
+
+<Diagram title="Memory Hierarchy">
+{`┌─────────────────────────────────────────────────────────────┐
+│  WORKING MEMORY                                              │
+│  Current conversation in context window                      │
+│  Scope: Current turn │ Capacity: Model's context limit       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  SHORT-TERM MEMORY                                           │
+│  Facts extracted from current session                        │
+│  Scope: Current session │ Storage: In-memory                 │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  LONG-TERM MEMORY                                            │
+│  Persistent facts and knowledge                              │
+│  Scope: Cross-session │ Storage: Vector DB                   │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│  EPISODIC MEMORY                                             │
+│  Specific past experiences and outcomes                      │
+│  Scope: Cross-session │ Storage: Indexed experiences         │
+└─────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+<Table caption="Comparison of memory types">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Scope</th>
+      <th>Implementation</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Working</strong></td>
+      <td>Current conversation</td>
+      <td>Context window</td>
+      <td>Immediate task context</td>
+    </tr>
+    <tr>
+      <td><strong>Short-term</strong></td>
+      <td>Current session</td>
+      <td>In-memory store</td>
+      <td>Session-specific facts</td>
+    </tr>
+    <tr>
+      <td><strong>Long-term</strong></td>
+      <td>Cross-session</td>
+      <td>Vector DB + metadata</td>
+      <td>User preferences, knowledge</td>
+    </tr>
+    <tr>
+      <td><strong>Episodic</strong></td>
+      <td>Specific interactions</td>
+      <td>Indexed experiences</td>
+      <td>Learning from past tasks</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Memory System Implementation
+
+```python
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
+from langchain_chroma import Chroma
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain_core.messages import HumanMessage, AIMessage
+from datetime import datetime
+
+class AgentMemorySystem:
+    def __init__(self, persist_directory: str = "./memory_store"):
+        self.llm = ChatOpenAI(model="gpt-4")
+        # Working memory with auto-summarization when limit exceeded
+        self.working_memory = ConversationSummaryBufferMemory(
+            llm=self.llm,
+            max_token_limit=2000,
+            return_messages=True
+        )
+
+        # Short-term: in-memory for current session
+        self.short_term: list[dict] = []
+
+        # Long-term: Chroma vector store
+        self.embeddings = OpenAIEmbeddings()
+        self.long_term = Chroma(
+            collection_name="agent_memory",
+            embedding_function=self.embeddings,
+            persist_directory=persist_directory
+        )
+
+    def add_to_working_memory(self, human_msg: str, ai_msg: str):
+        self.working_memory.save_context(
+            {"input": human_msg},
+            {"output": ai_msg}
+        )
+
+    def store_long_term(self, content: str, metadata: dict = None):
+        self.long_term.add_texts(
+            texts=[content],
+            metadatas=[metadata or {}],
+            ids=[f"mem_{datetime.now().timestamp()}"]
+        )
+
+    def recall(self, query: str, n_results: int = 5) -> list[str]:
+        results = []
+        long_term_docs = self.long_term.similarity_search(query, k=n_results)
+        results.extend([doc.page_content for doc in long_term_docs])
+
+        for mem in self.short_term:
+            if self._is_relevant(query, mem["content"]):
+                results.append(mem["content"])
+
+        working = self.working_memory.load_memory_variables({})
+        if working.get("history"):
+            results.append(f"Recent context: {working['history']}")
+
+        return results[:n_results]
+```
+
+## Working Memory: Summarization
+
+The context window has finite capacity. When conversations grow long, you need strategies to compress history while retaining the information that matters. The most effective approach keeps recent messages verbatim — preserving immediate context — while summarizing older exchanges into a compact narrative.
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain.memory import ConversationSummaryBufferMemory
+
+class ConversationSummarizer:
+    def __init__(self, max_token_limit: int = 4000):
+        self.llm = ChatOpenAI(model="gpt-4")
+        # Automatically summarizes when buffer exceeds limit
+        self.memory = ConversationSummaryBufferMemory(
+            llm=self.llm,
+            max_token_limit=max_token_limit,
+            return_messages=True
+        )
+
+    def add_exchange(self, human_input: str, ai_output: str):
+        self.memory.save_context(
+            {"input": human_input},
+            {"output": ai_output}
+        )
+
+    def get_context(self) -> str:
+        return self.memory.load_memory_variables({})
+
+# LangGraph with built-in persistence
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.memory import MemorySaver
+
+agent = create_react_agent(
+    llm,
+    tools,
+    checkpointer=MemorySaver()
+)
+```
+
+<Callout type="tip" title="Summarization Strategy">
+Keep recent messages verbatim (last 5–10) and summarize older ones. This preserves immediate context while retaining key facts from earlier in the conversation.
+</Callout>
+
+## Episodic Memory: Learning from Experience
+
+Episodic memory stores complete interaction trajectories — the full sequence of thoughts, actions, and observations — enabling agents to learn from past successes and failures. When a new task arrives, the agent can retrieve similar past episodes and use them as few-shot examples.
+
+```python
+from dataclasses import dataclass, field
+from langchain_openai import OpenAIEmbeddings
+from langchain_chroma import Chroma
+from langchain_core.documents import Document
+from datetime import datetime
+import json
+
+@dataclass
+class Episode:
+    task: str
+    trajectory: list[dict]
+    outcome: dict
+    timestamp: datetime = field(default_factory=datetime.now)
+
+class EpisodicMemory:
+    def __init__(self, persist_path: str = "./episodic_memory"):
+        self.embeddings = OpenAIEmbeddings()
+        self.vectorstore = Chroma(
+            collection_name="episodes",
+            embedding_function=self.embeddings,
+            persist_directory=persist_path
+        )
+
+    def record_episode(self, task: str, trajectory: list[dict], outcome: dict) -> str:
+        episode_id = f"ep_{datetime.now().timestamp()}"
+        search_content = f"{task}\n{outcome.get('result', '')}"
+
+        doc = Document(
+            page_content=search_content,
+            metadata={
+                "task": task,
+                "trajectory": json.dumps(trajectory),
+                "outcome": json.dumps(outcome),
+                "success": outcome.get("success", False),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+        self.vectorstore.add_documents([doc], ids=[episode_id])
+        return episode_id
+
+    def retrieve_similar(self, current_task: str, k: int = 3) -> list[Episode]:
+        results = self.vectorstore.similarity_search(current_task, k=k * 2)
+        episodes = [
+            Episode(
+                task=doc.metadata["task"],
+                trajectory=json.loads(doc.metadata["trajectory"]),
+                outcome=json.loads(doc.metadata["outcome"]),
+                timestamp=datetime.fromisoformat(doc.metadata["timestamp"])
+            )
+            for doc in results
+        ]
+        episodes.sort(key=lambda e: (not e.outcome.get("success"), -e.timestamp.timestamp()))
+        return episodes[:k]
+```
+
+<Callout type="info" title="Few-Shot from Experience">
+Episodic memory enables dynamic few-shot learning. Instead of hardcoded examples, the agent retrieves relevant past experiences to guide current tasks — and these examples improve automatically as the agent accumulates more successful trajectories.
+</Callout>
+
+## Production Memory: Mem0
+
+Mem0 is a purpose-built framework for production memory systems. It handles the full pipeline — extracting relevant facts from conversations, storing them with appropriate metadata, resolving conflicts when facts change, and retrieving them efficiently. Most teams find that Mem0 or a similar abstraction reduces the engineering burden significantly compared to building memory infrastructure from scratch.
+
+```python
+from mem0 import Memory
+
+config = {
+    "llm": {"provider": "openai", "config": {"model": "gpt-4"}},
+    "embedder": {"provider": "openai", "config": {"model": "text-embedding-3-small"}},
+    "vector_store": {
+        "provider": "chroma",
+        "config": {"collection_name": "agent_memories", "path": "./mem0_data"}
+    }
+}
+
+memory = Memory.from_config(config)
+
+# Add memories with user context
+memory.add(
+    "User prefers dark mode and uses VS Code",
+    user_id="user_123",
+    metadata={"category": "preferences"}
+)
+
+# Search memories
+results = memory.search("What IDE does the user prefer?", user_id="user_123")
+
+for result in results:
+    print(f"Memory: {result['memory']}, Score: {result['score']}")
+
+# Update when facts change
+memory.update(
+    memory_id=results[0]["id"],
+    data="User prefers dark mode, uses VS Code with Vim keybindings"
+)
+```
+
+## Memory Design Patterns
+
+<Table>
+  <thead>
+    <tr>
+      <th>Pattern</th>
+      <th>Description</th>
+      <th>When to Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Rolling Window</strong></td>
+      <td>Keep last N messages only</td>
+      <td>Simple chatbots, low-stakes tasks</td>
+    </tr>
+    <tr>
+      <td><strong>Summarize + Recent</strong></td>
+      <td>Summarize old, keep recent verbatim</td>
+      <td>Most agent applications</td>
+    </tr>
+    <tr>
+      <td><strong>Entity Memory</strong></td>
+      <td>Track entities and their states</td>
+      <td>Complex workflows, state machines</td>
+    </tr>
+    <tr>
+      <td><strong>Knowledge Graph</strong></td>
+      <td>Store facts as relationships</td>
+      <td>Domain-specific agents, reasoning</td>
+    </tr>
+    <tr>
+      <td><strong>Hierarchical</strong></td>
+      <td>Multiple summary levels</td>
+      <td>Very long conversations (100+ turns)</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Common Pitfalls
+
+Storing everything leads to retrieval degradation: as the memory store grows, similarity search surfaces increasingly irrelevant results alongside relevant ones. Use importance scoring to gate what enters long-term memory. A related problem is conflicting memories — when user preferences or facts change, stale memories can contradict current ones. Implement update and invalidation mechanisms rather than appending new facts indefinitely. Aggressive summarization trades token savings for information loss; always test recall of specific facts after compression to ensure critical details survive. Finally, vector search adds non-trivial latency; for real-time applications consider caching frequently accessed memories or prefetching based on predicted query patterns.

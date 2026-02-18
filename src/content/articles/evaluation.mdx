@@ -1,0 +1,373 @@
+---
+title: "Evaluation & Metrics"
+description: "Measuring agent performance across component accuracy, task completion, trajectory quality, and system-level metrics with benchmarks and LLM-as-judge."
+category: "Evaluation"
+date: "2024-05-10"
+type: "topic"
+tags:
+  - evaluation
+  - metrics
+  - benchmarks
+  - llm-judge
+featured: false
+---
+
+How do you know if your agent is actually working? Shipping an agent without systematic evaluation means flying blind: you cannot detect regressions, cannot compare approaches, and cannot build confidence that the system will behave as expected on real-world inputs. Evaluation is the discipline of measuring agent performance across multiple dimensions — component accuracy, task completion, trajectory quality, and system-level concerns like cost and safety — so that improvements are grounded in evidence rather than intuition.
+
+## Evaluation Taxonomy
+
+Agent evaluation operates at three layers. Component-level metrics measure individual capabilities such as tool calling accuracy and argument extraction. Task-level metrics measure goal achievement — did the agent complete the assigned task, and how efficiently? System-level metrics measure real-world deployment concerns: latency, cost, safety compliance, and user preference. Strong component metrics are necessary but not sufficient for good task metrics, which are necessary but not sufficient for good system metrics.
+
+<Diagram>
+{`┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Agent Evaluation Layers                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 3: SYSTEM                                                     │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ E2E Latency │ │ Cost/Task   │ │ Safety      │ │ User Pref   │    │   │
+│  │  │ P95 < 30s   │ │ $/query     │ │ Compliance  │ │ Win Rate    │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    ↑                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 2: TASK                                                       │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ Completion  │ │ Step        │ │ Error       │ │ Output      │    │   │
+│  │  │ Rate        │ │ Efficiency  │ │ Recovery    │ │ Quality     │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                    ↑                                        │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Layer 1: COMPONENT                                                  │   │
+│  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐    │   │
+│  │  │ Tool Call   │ │ Argument    │ │ Response    │ │ Context     │    │   │
+│  │  │ Accuracy    │ │ Extraction  │ │ Format      │ │ Utilization │    │   │
+│  │  └─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘    │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+<Table caption="Evaluation metrics organized by layer">
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Metric</th>
+      <th>Description</th>
+      <th>Evaluation Method</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Component</td>
+      <td>Tool Calling Accuracy</td>
+      <td>Correct tool selection rate</td>
+      <td>Compare to ground truth tool sequence</td>
+    </tr>
+    <tr>
+      <td>Component</td>
+      <td>Argument Extraction F1</td>
+      <td>Parameter parsing accuracy</td>
+      <td>Compare extracted args to expected</td>
+    </tr>
+    <tr>
+      <td>Component</td>
+      <td>Response Format Validity</td>
+      <td>Structured output correctness</td>
+      <td>JSON schema validation</td>
+    </tr>
+    <tr>
+      <td>Task</td>
+      <td>Task Completion Rate</td>
+      <td>Goal achievement percentage</td>
+      <td>Binary pass/fail per task</td>
+    </tr>
+    <tr>
+      <td>Task</td>
+      <td>Step Efficiency</td>
+      <td>Steps taken vs optimal path</td>
+      <td>Ratio of actual to optimal steps</td>
+    </tr>
+    <tr>
+      <td>Task</td>
+      <td>Error Recovery Rate</td>
+      <td>Recovery from failures</td>
+      <td>Track retry success rate</td>
+    </tr>
+    <tr>
+      <td>System</td>
+      <td>End-to-End Latency</td>
+      <td>Total response time</td>
+      <td>Measure P50, P95, P99</td>
+    </tr>
+    <tr>
+      <td>System</td>
+      <td>Cost per Task</td>
+      <td>Resource consumption</td>
+      <td>Tokens/API calls/dollars</td>
+    </tr>
+    <tr>
+      <td>System</td>
+      <td>Safety Compliance</td>
+      <td>Guardrail adherence</td>
+      <td>Red team testing</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Agent-Specific Metrics with DeepEval
+
+[DeepEval](https://docs.confident-ai.com/) is an open-source evaluation framework with metrics specifically designed for agentic systems. Unlike traditional NLP metrics (BLEU, ROUGE) that measure surface-level text similarity, DeepEval captures tool use, grounding, and multi-step reasoning quality.
+
+```python
+from deepeval import evaluate
+from deepeval.metrics import (
+    ToolCorrectnessMetric,
+    FaithfulnessMetric,
+    AnswerRelevancyMetric,
+    TaskCompletionMetric,
+)
+from deepeval.test_case import LLMTestCase, ToolCall
+
+# Define test case for agent evaluation
+test_case = LLMTestCase(
+    input="Find the weather in London and book a restaurant nearby",
+    actual_output="The weather in London is 15°C with light rain. I found 'The Ivy' restaurant nearby and booked a table for 7pm.",
+    expected_output="Weather retrieved and restaurant booked successfully",
+    retrieval_context=[
+        "London weather: 15°C, light rain, humidity 80%",
+        "Nearby restaurants: The Ivy (0.3mi), Sketch (0.5mi)"
+    ],
+    tools_called=[
+        ToolCall(name="get_weather", args={"city": "London"}),
+        ToolCall(name="search_restaurants", args={"location": "London", "cuisine": "any"}),
+        ToolCall(name="book_restaurant", args={"restaurant": "The Ivy", "time": "19:00"})
+    ],
+    expected_tools=[
+        ToolCall(name="get_weather", args={"city": "London"}),
+        ToolCall(name="search_restaurants", args={"location": "London"}),
+        ToolCall(name="book_restaurant", args={})  # Args can vary
+    ]
+)
+
+# Define metrics
+metrics = [
+    ToolCorrectnessMetric(
+        threshold=0.8,
+        include_args=True  # Also check arguments
+    ),
+    FaithfulnessMetric(
+        threshold=0.7,
+        model="gpt-4"  # Judge model
+    ),
+    AnswerRelevancyMetric(
+        threshold=0.7,
+        model="gpt-4"
+    ),
+    TaskCompletionMetric(
+        threshold=0.8,
+        model="gpt-4"
+    )
+]
+
+# Run evaluation
+results = evaluate([test_case], metrics)
+
+for metric_result in results:
+    print(f"{metric_result.name}: {metric_result.score:.2f}")
+    if metric_result.reason:
+        print(f"  Reason: {metric_result.reason}")
+```
+
+The four core agent metrics are: Tool Correctness (did the agent call the right tools with right arguments), Faithfulness (is the response grounded in retrieved context rather than hallucinated), Answer Relevancy (does the response actually address the user's question), and Task Completion (did the agent achieve the stated goal, assessed by an LLM judge for nuance beyond binary pass/fail).
+
+## Trajectory-Level Evaluation
+
+Beyond final outputs, trajectory evaluation examines the agent's reasoning path. An agent might reach the correct answer through a convoluted path, wasting tokens and time, or it might succeed on the test case but for the wrong reasons — lucky guesses that will fail on similar inputs.
+
+<Callout type="tip" title="Why Trajectory Evaluation?">
+An agent might reach the correct answer through a convoluted path, wasting tokens and time. Trajectory metrics reveal these inefficiencies that final-answer metrics miss, and detect loops and regressions before they appear in production.
+</Callout>
+
+```python
+from dataclasses import dataclass
+from typing import List, Dict, Any
+import numpy as np
+
+@dataclass
+class TrajectoryStep:
+    state: Dict[str, Any]
+    action: str
+    observation: str
+    reasoning: str
+    is_error: bool = False
+
+@dataclass
+class AgentTrajectory:
+    steps: List[TrajectoryStep]
+    final_result: Any
+    task_completed: bool
+
+class TrajectoryEvaluator:
+    def __init__(self, llm_judge=None):
+        self.llm_judge = llm_judge
+
+    def evaluate(self,
+                 trajectory: AgentTrajectory,
+                 optimal_steps: int = None) -> Dict[str, float]:
+        metrics = {}
+
+        # 1. Step efficiency
+        if optimal_steps:
+            metrics["step_efficiency"] = min(
+                1.0, optimal_steps / len(trajectory.steps)
+            )
+
+        # 2. Action diversity (detect loops)
+        actions = [s.action for s in trajectory.steps]
+        metrics["action_diversity"] = len(set(actions)) / len(actions)
+
+        # 3. Detect repetition (exact action sequences)
+        metrics["repetition_score"] = self._detect_repetition(actions)
+
+        # 4. Error recovery rate
+        errors = [s for s in trajectory.steps if s.is_error]
+        if errors:
+            recoveries = self._count_recoveries(trajectory, errors)
+            metrics["recovery_rate"] = recoveries / len(errors)
+        else:
+            metrics["recovery_rate"] = 1.0  # No errors = perfect
+
+        # 5. LLM-as-judge for reasoning quality
+        if self.llm_judge:
+            metrics["reasoning_quality"] = self._judge_reasoning(trajectory)
+
+        return metrics
+
+    def _detect_repetition(self, actions: List[str]) -> float:
+        """Return 1.0 if no repetition, lower if patterns repeat."""
+        if len(actions) < 4:
+            return 1.0
+        for pattern_len in [2, 3]:
+            for i in range(len(actions) - pattern_len * 2):
+                pattern = actions[i:i + pattern_len]
+                next_seq = actions[i + pattern_len:i + pattern_len * 2]
+                if pattern == next_seq:
+                    return 0.5  # Repetition detected
+        return 1.0
+```
+
+Key trajectory metrics include step efficiency (actual steps versus the known optimal path), action diversity (penalizing repetitive actions that indicate the agent is stuck in a loop), progress rate (how much progress toward the goal each step achieves), error recovery rate (how often the agent successfully recovers after a tool failure or wrong action), and LLM-judged reasoning quality.
+
+## Major Agent Benchmarks
+
+Benchmarks provide standardized tasks for comparing agent capabilities across research groups and over time.
+
+<Table caption="Major agent benchmarks comparison">
+  <thead>
+    <tr>
+      <th>Benchmark</th>
+      <th>Domain</th>
+      <th>Tasks</th>
+      <th>Primary Metric</th>
+      <th>Top Score (2025)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>SWE-bench Verified</td>
+      <td>Software Engineering</td>
+      <td>500</td>
+      <td>Resolved Rate</td>
+      <td>~72% (Claude 3.5 Sonnet)</td>
+    </tr>
+    <tr>
+      <td>SWE-bench Full</td>
+      <td>Software Engineering</td>
+      <td>2,294</td>
+      <td>Resolved Rate</td>
+      <td>~51%</td>
+    </tr>
+    <tr>
+      <td>WebArena</td>
+      <td>Web Navigation</td>
+      <td>812</td>
+      <td>Task Success Rate</td>
+      <td>~42%</td>
+    </tr>
+    <tr>
+      <td>GAIA Level 1</td>
+      <td>General Assistant</td>
+      <td>~165</td>
+      <td>Exact Match</td>
+      <td>~75%</td>
+    </tr>
+    <tr>
+      <td>GAIA Level 2</td>
+      <td>General Assistant</td>
+      <td>~186</td>
+      <td>Exact Match</td>
+      <td>~60%</td>
+    </tr>
+    <tr>
+      <td>GAIA Level 3</td>
+      <td>General Assistant</td>
+      <td>~115</td>
+      <td>Exact Match</td>
+      <td>~40%</td>
+    </tr>
+    <tr>
+      <td>τ-bench</td>
+      <td>Tool + Conversation</td>
+      <td>680</td>
+      <td>Pass Rate</td>
+      <td>~45% (Retail)</td>
+    </tr>
+    <tr>
+      <td>HumanEval</td>
+      <td>Code Generation</td>
+      <td>164</td>
+      <td>Pass@1</td>
+      <td>~95%</td>
+    </tr>
+  </tbody>
+</Table>
+
+SWE-bench evaluates agents on real GitHub issues from popular Python repositories like Django, Flask, and scikit-learn. The agent must understand the issue, locate relevant code, and generate a patch that passes the repository's test suite. SWE-bench Verified uses 500 human-verified issues; SWE-bench Lite contains 300 simpler issues for faster iteration. WebArena tests realistic web navigation across five self-hosted websites including shopping, forums, code hosting, and maps. GAIA (General AI Assistant) poses questions requiring multi-step reasoning across web search, file processing, and calculation, at three difficulty levels. τ-bench evaluates multi-turn conversations requiring tool use across airline, retail, and banking domains with simulated APIs.
+
+## LLM-as-Judge
+
+Many agent behaviors resist deterministic evaluation. Response helpfulness, reasoning coherence, and instruction-following quality are inherently subjective. LLM-as-Judge uses a capable model to evaluate agent outputs against a rubric, providing more nuanced assessment than exact-match metrics.
+
+<Diagram>
+{`┌──────────────────────────────────────────────────────────────────┐
+│                      LLM-as-Judge Pipeline                        │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│   ┌─────────────┐    ┌──────────────┐    ┌─────────────────┐     │
+│   │ Agent       │    │ Judge        │    │ Structured      │     │
+│   │ Output      │───▶│ Prompt       │───▶│ Evaluation      │     │
+│   │             │    │ + Rubric     │    │                 │     │
+│   └─────────────┘    └──────────────┘    │ • Score: 0-1    │     │
+│                                          │ • Reasoning     │     │
+│   ┌─────────────┐                        │ • Suggestions   │     │
+│   │ Ground      │                        └─────────────────┘     │
+│   │ Truth       │────────▶ Compare                               │
+│   │ (optional)  │                                                │
+│   └─────────────┘                                                │
+│                                                                   │
+│   Judge Models: GPT-4, Claude 3 Opus, Gemini 1.5 Pro             │
+└──────────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+<Callout type="warning" title="Judge Bias">
+LLM judges have known biases: they prefer verbose responses, may favor their own writing style, and can be fooled by confident-sounding but incorrect answers. Use multiple judges and calibrate against human labels before relying on LLM-as-judge scores.
+</Callout>
+
+## Evaluation Best Practices
+
+Evaluate at multiple layers rather than relying only on final answer accuracy. Use held-out test sets that were never seen during development. Include adversarial and edge cases — the cases that reveal failure modes, not just average performance. Track metrics over time to detect regressions before they reach production. Combine automated metrics with periodic human evaluation to catch what automated metrics miss. Report confidence intervals, not just point estimates, because many benchmark datasets are small enough that single-run scores have high variance.
+
+Do not overfit to benchmark-specific patterns, ignore trajectory quality, skip safety evaluation, use only synthetic test cases, or assume benchmark scores predict production performance. Benchmarks measure a proxy for real-world capability; the gap between benchmark performance and deployment performance is often substantial and domain-specific.

@@ -1,0 +1,339 @@
+---
+title: "Context Engineering"
+description: "The discipline of optimizing what enters the context window — replacing prompt engineering as the key skill for practitioners building reliable agents."
+category: "Context Layer"
+date: "2024-02-10"
+type: "topic"
+tags:
+  - context-window
+  - prompting
+  - optimization
+featured: false
+---
+
+As context windows have grown from 4K to 200K tokens and beyond, the central challenge of agent development has shifted. The question is no longer whether you can fit everything in the window — it often is that you can — but whether you *should*. Models attend poorly to marginally relevant content, and the cost of processing tokens scales linearly with context size. Context engineering treats the context window as a resource to be managed: the goal is maximum signal with minimum noise.
+
+The discipline encompasses four complementary strategies. The Write strategy adds structured working memory — scratchpads, intermediate findings — that helps the model maintain coherence across steps. The Select strategy retrieves only the most relevant information rather than loading entire knowledge bases. The Compress strategy reduces the size of existing context through summarization and pruning. The Isolate strategy separates different concerns into distinct contexts, preventing cross-contamination between planning and execution phases.
+
+<Callout type="info" title="The New Paradigm">
+Context engineering treats the context window as a *resource to be managed*, not a bucket to fill. The goal is maximum signal with minimum noise.
+</Callout>
+
+## The Four Strategies
+
+<Diagram title="Context Engineering Strategies">
+{`┌─────────────────────────────────────────────────────────────┐
+│                    CONTEXT WINDOW                           │
+│                                                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
+│  │  WRITE   │  │  SELECT  │  │ COMPRESS │  │  ISOLATE │   │
+│  │Scratchpad│  │ Retrieve │  │Summarize │  │ Separate │   │
+│  │  Working │  │ relevant │  │  Prune   │  │ concerns │   │
+│  │  memory  │  │   only   │  │  Dedupe  │  │into parts│   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
+└─────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+<Table caption="Overview of the four context engineering strategies">
+  <thead>
+    <tr>
+      <th>Strategy</th>
+      <th>Purpose</th>
+      <th>When to Use</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Write</strong></td>
+      <td>Add scratchpads and working memory to context</td>
+      <td>Multi-step reasoning, accumulating findings</td>
+    </tr>
+    <tr>
+      <td><strong>Select</strong></td>
+      <td>Retrieve only relevant information</td>
+      <td>Large knowledge bases, RAG scenarios</td>
+    </tr>
+    <tr>
+      <td><strong>Compress</strong></td>
+      <td>Summarize, deduplicate, prune content</td>
+      <td>Long conversations, large tool outputs</td>
+    </tr>
+    <tr>
+      <td><strong>Isolate</strong></td>
+      <td>Separate concerns into different contexts</td>
+      <td>Complex workflows, planning vs execution</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Strategy 1: Write
+
+The Write strategy adds working memory to the context — a scratchpad that accumulates key findings across steps so the model doesn't have to rediscover the same information repeatedly. Rather than appending raw tool outputs, the agent extracts and maintains a concise, structured record of what it has learned.
+
+```python
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+
+class AgentState(TypedDict):
+    messages: list
+    scratchpad: str
+    task_complete: bool
+
+llm = ChatOpenAI(model="gpt-4")
+
+def think_and_act(state: AgentState) -> AgentState:
+    scratchpad_prompt = f"""
+Current Scratchpad (key findings so far):
+{state['scratchpad'] or 'Empty - no findings yet'}
+
+Use this scratchpad to track important discoveries.
+"""
+
+    messages = state['messages'] + [
+        {"role": "system", "content": scratchpad_prompt}
+    ]
+
+    response = llm.invoke(messages)
+
+    # Extract key facts to update scratchpad
+    new_scratchpad = extract_scratchpad_update(
+        response.content,
+        state['scratchpad']
+    )
+
+    return {
+        **state,
+        "messages": state['messages'] + [response],
+        "scratchpad": new_scratchpad
+    }
+```
+
+<Callout type="tip" title="Best Practice">
+Keep scratchpads concise. Use the LLM to extract key facts rather than appending raw outputs. A good scratchpad reads like bullet points, not a transcript.
+</Callout>
+
+## Strategy 2: Select
+
+The Select strategy retrieves only the most relevant information for the current task, combining semantic similarity with recency and importance signals. This is the foundation of RAG but applies broadly to any context curation problem.
+
+```python
+from typing import List, Dict, Any
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import tiktoken
+
+class ContextSelector:
+    def __init__(self, max_tokens: int = 4000):
+        self.max_tokens = max_tokens
+        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+    def select(self, query: str, context_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        query_embedding = self.embedder.encode(query)
+
+        scored_items = [
+            (item, self._score_item(query_embedding, item))
+            for item in context_items
+        ]
+        scored_items.sort(key=lambda x: x[1], reverse=True)
+
+        return self._fit_to_budget(scored_items)
+
+    def _score_item(self, query_embedding, item) -> float:
+        item_embedding = self.embedder.encode(item["content"])
+        similarity = np.dot(query_embedding, item_embedding) / (
+            np.linalg.norm(query_embedding) * np.linalg.norm(item_embedding)
+        )
+        recency = item.get("recency_score", 0.5)
+        importance = item.get("importance", 1.0)
+        return similarity * 0.6 + recency * 0.2 + importance * 0.2
+
+    def _fit_to_budget(self, scored_items) -> List[Dict[str, Any]]:
+        enc = tiktoken.get_encoding("cl100k_base")
+        selected, current_tokens = [], 0
+        for item, _ in scored_items:
+            tokens = len(enc.encode(item["content"]))
+            if current_tokens + tokens <= self.max_tokens:
+                selected.append(item)
+                current_tokens += tokens
+            else:
+                break
+        return selected
+```
+
+<Callout type="warning" title="Pitfall: Over-Selection">
+Don't retrieve too many documents. Research shows that adding marginally relevant content often hurts performance more than leaving it out. When in doubt, be selective.
+</Callout>
+
+## Strategy 3: Compress
+
+The Compress strategy reduces the size of existing context through summarization, truncation of large tool outputs, and deduplication. It's essential for long-running agents that accumulate significant context over many steps.
+
+```python
+from typing import List
+import tiktoken
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import BaseMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
+
+class ConversationCompressor:
+    def __init__(self, target_tokens: int = 8000, preserve_recent_ratio: float = 0.4):
+        self.llm = ChatOpenAI(model="gpt-4o-mini")  # Fast model for compression
+        self.target_tokens = target_tokens
+        self.preserve_ratio = preserve_recent_ratio
+        self.enc = tiktoken.get_encoding("cl100k_base")
+
+    def compress(self, messages: List[BaseMessage]) -> List[BaseMessage]:
+        if self._count_tokens(messages) <= self.target_tokens:
+            return messages
+
+        split_idx = int(len(messages) * (1 - self.preserve_ratio))
+        old_messages = messages[:split_idx]
+        recent_messages = messages[split_idx:]
+
+        summary = self._summarize(old_messages)
+
+        compressed = [
+            SystemMessage(content=f"Previous conversation summary:\n{summary}"),
+            *recent_messages
+        ]
+
+        if self._count_tokens(compressed) > self.target_tokens:
+            compressed = self._truncate_tool_outputs(compressed)
+
+        return compressed
+
+    def _summarize(self, messages: List[BaseMessage]) -> str:
+        formatted = "\n".join([
+            f"{m.type.upper()}: {m.content[:500]}" for m in messages
+        ])
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", "Summarize, preserving: key decisions, facts, task status.\n\n{conversation}")
+        ])
+        return (prompt | self.llm).invoke({"conversation": formatted}).content
+
+    def _count_tokens(self, messages: List[BaseMessage]) -> int:
+        return sum(len(self.enc.encode(str(m.content))) for m in messages)
+```
+
+<Table caption="Compression techniques and their trade-offs">
+  <thead>
+    <tr>
+      <th>Technique</th>
+      <th>Token Reduction</th>
+      <th>Information Loss</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Summarization</strong></td>
+      <td>70–90%</td>
+      <td>Medium</td>
+      <td>Older conversation history</td>
+    </tr>
+    <tr>
+      <td><strong>Truncation</strong></td>
+      <td>Variable</td>
+      <td>High (for cut content)</td>
+      <td>Tool outputs with known structure</td>
+    </tr>
+    <tr>
+      <td><strong>Deduplication</strong></td>
+      <td>10–30%</td>
+      <td>None</td>
+      <td>Repeated information across sources</td>
+    </tr>
+    <tr>
+      <td><strong>Selective retention</strong></td>
+      <td>50–80%</td>
+      <td>Low (if done well)</td>
+      <td>Mixed-importance content</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Strategy 4: Isolate
+
+The Isolate strategy separates different phases of a workflow into distinct contexts. A planning context might contain only high-level task decomposition with no tools available. An execution context contains only the current step and relevant memory. This separation prevents concerns from contaminating each other and allows each context to be optimized independently.
+
+```python
+from dataclasses import dataclass, field
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+@dataclass
+class IsolatedContextAgent:
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
+    planning_context: list = field(default_factory=list)
+    execution_context: list = field(default_factory=list)
+    memory_store: list = field(default_factory=list)
+
+    def plan(self, task: str) -> list[str]:
+        """Planning uses isolated context — no tools."""
+        messages = [
+            SystemMessage(content="Break this task into clear, executable steps. Do not execute."),
+            *self.planning_context,
+            HumanMessage(content=task)
+        ]
+        response = self.llm.invoke(messages)
+        self.planning_context.extend([HumanMessage(content=task), response])
+        return self._parse_steps(response.content)
+
+    def execute(self, step: str, tools: list) -> dict:
+        """Execution uses separate bounded context."""
+        relevant_memory = self._search_memory(step)
+        llm_with_tools = self.llm.bind_tools(tools)
+        messages = [
+            SystemMessage(content=f"Execute this step. Relevant context:\n{relevant_memory}"),
+            HumanMessage(content=f"Execute: {step}")
+        ]
+        response = llm_with_tools.invoke(messages)
+        self.execution_context.append({"step": step, "result": response.content})
+        self.execution_context = self.execution_context[-10:]  # Bounded
+        return {"content": response.content}
+```
+
+<Callout type="info" title="When to Isolate">
+Use context isolation when different phases need different tools, you want to limit cross-contamination between concerns, or you need bounded memory for specific operations.
+</Callout>
+
+## Combining Strategies
+
+In practice, effective agents combine multiple strategies. A typical pipeline selects relevant documents on entry, compresses accumulated history periodically, uses isolated contexts for planning versus execution phases, and maintains a scratchpad that accumulates findings across steps.
+
+<Table caption="Strategy combinations for common scenarios">
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Primary Strategy</th>
+      <th>Supporting Strategies</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>RAG chatbot</strong></td>
+      <td>Select</td>
+      <td>Compress (for long docs)</td>
+    </tr>
+    <tr>
+      <td><strong>Coding agent</strong></td>
+      <td>Write + Isolate</td>
+      <td>Select (for relevant files)</td>
+    </tr>
+    <tr>
+      <td><strong>Research assistant</strong></td>
+      <td>Select + Write</td>
+      <td>Compress (for sources)</td>
+    </tr>
+    <tr>
+      <td><strong>Multi-step workflow</strong></td>
+      <td>Isolate</td>
+      <td>Write (scratchpad), Compress (history)</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Common Pitfalls
+
+Over-compressing is a frequent mistake — aggressive summarization can eliminate critical details that the agent needs later. Always test compression by querying for specific facts that were present before compression and verifying they survive. Raw embedding similarity produces false positives; always rerank retrieved content with a cross-encoder or multi-factor scoring before injecting into context. Models attend differently based on position — the "lost in the middle" phenomenon means that content buried in the middle of a long context receives less attention than content at the beginning or end, so place the most important material at the extremes. Finally, context needs change throughout a task: heavy retrieval early, more compression later as context accumulates.

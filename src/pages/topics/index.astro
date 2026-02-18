@@ -1,175 +1,63 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-const topics = [
-  {
-    title: 'Tool Use & Function Calling',
-    description: 'Learn how agents extend their capabilities by calling external tools and APIs. Covers schemas, parallel execution, and error handling.',
-    href: '/topics/tool-use/',
-    status: 'available',
-    category: 'Foundational',
-  },
-  {
-    title: 'ReAct Pattern',
-    description: 'Master the Reasoning + Acting loop that forms the foundation of agentic behavior. From explicit traces to modern implicit reasoning.',
-    href: '/topics/react-pattern/',
-    status: 'available',
-    category: 'Foundational',
-  },
-  {
-    title: 'Memory Systems',
-    description: 'Explore how agents maintain context and learn from past interactions. Working, short-term, long-term, and episodic memory.',
-    href: '/topics/memory/',
-    status: 'available',
-    category: 'Foundational',
-  },
-  {
-    title: 'Context Engineering',
-    description: 'The discipline of optimizing what goes into the context window. Write, Select, Compress, and Isolate strategies.',
-    href: '/topics/context-engineering/',
-    status: 'available',
-    category: 'Context Layer',
-  },
-  {
-    title: 'Context Bloat & Context Rot',
-    description: 'Understanding and mitigating performance degradation in large contexts. Lost-in-the-middle effects and stale information.',
-    href: '/topics/context-bloat/',
-    status: 'available',
-    category: 'Context Layer',
-  },
-  {
-    title: 'Prompt Caching / KV Cache',
-    description: 'Reduce costs and latency by caching attention computations. Provider implementations and optimization strategies.',
-    href: '/topics/prompt-caching/',
-    status: 'available',
-    category: 'Context Layer',
-  },
-  {
-    title: 'Skills Pattern',
-    description: 'Anthropic\'s approach to scalable tool management. Filesystem-based tool discovery with 98% token savings.',
-    href: '/topics/skills-pattern/',
-    status: 'available',
-    category: 'Advanced',
-  },
-  {
-    title: 'Model Context Protocol (MCP)',
-    description: 'Anthropic\'s open protocol for connecting AI agents with external tools, data sources, and services.',
-    href: '/topics/mcp/',
-    status: 'available',
-    category: 'Protocols',
-  },
-  {
-    title: 'Agent2Agent Protocol (A2A)',
-    description: 'Google\'s open protocol for enabling AI agents to discover, communicate, and collaborate with each other.',
-    href: '/topics/a2a/',
-    status: 'available',
-    category: 'Protocols',
-  },
-  {
-    title: 'MCP Apps',
-    description: 'UI capabilities for MCP that enable tools to return interactive interfaces—dashboards, forms, visualizations—directly in conversations.',
-    href: '/topics/mcp-apps/',
-    status: 'available',
-    category: 'Protocols',
-  },
-  {
-    title: 'Universal Commerce Protocol (UCP)',
-    description: 'Open protocol for AI agent commerce. Unified APIs for checkout, identity linking, and order management across platforms.',
-    href: '/topics/ucp/',
-    status: 'available',
-    category: 'Protocols',
-  },
-  {
-    title: 'Learning & Adaptation',
-    description: 'How agents improve without retraining: token-space learning, reflexion, and self-evolving patterns.',
-    href: '/topics/learning-adaptation/',
-    status: 'available',
-    category: 'Advanced',
-  },
-  {
-    title: 'Agent-Assisted Fine-Tuning',
-    description: 'Using coding agents to automate LLM fine-tuning workflows. From GPU selection to model deployment via natural language.',
-    href: '/topics/agent-fine-tuning/',
-    status: 'available',
-    category: 'Advanced',
-  },
-  {
-    title: 'Multi-Agent Systems',
-    description: 'Discover patterns for coordinating multiple specialized agents. Hierarchical, peer-to-peer, and role-based architectures.',
-    href: '/topics/multi-agent/',
-    status: 'available',
-    category: 'Advanced',
-  },
-  {
-    title: 'Agentic RAG',
-    description: 'Beyond simple retrieval: agents that decide when and what to retrieve. Self-RAG, Corrective RAG, and Graph RAG.',
-    href: '/topics/agentic-rag/',
-    status: 'available',
-    category: 'Advanced',
-  },
-  {
-    title: 'Safety & Guardrails',
-    description: 'Implement safeguards to ensure agents behave safely and predictably. Guardian agents and OWASP top 10 for LLMs.',
-    href: '/topics/safety/',
-    status: 'available',
-    category: 'Safety',
-  },
-  {
-    title: 'Evaluation & Metrics',
-    description: 'Measure agent performance across component, task, and system levels. DeepEval metrics, trajectory evaluation, and LLM-as-Judge.',
-    href: '/topics/evaluation/',
-    status: 'available',
-    category: 'Evaluation',
-  },
-];
+const allArticles = await getCollection('articles');
+const topics = allArticles
+  .filter(a => a.data.type === 'topic')
+  .sort((a, b) => new Date(a.data.date).getTime() - new Date(b.data.date).getTime());
 
-// Group topics by category
-const categories = [...new Set(topics.map(t => t.category))];
+const categories = [...new Set(topics.map(t => t.data.category))].sort();
+
+function fmtDate(d: string) {
+  const dt = new Date(d + 'T12:00:00');
+  if (isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
 ---
 
-<BaseLayout title="Topics">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-    <div class="mb-12">
-      <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+<BaseLayout title="Topics" description="Core concepts and patterns for building AI agents — with prose explanations and code examples.">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+    <div class="text-center mb-8">
+      <h1 class="font-display font-bold text-ink" style="font-size: clamp(1.75rem, 4vw, 3rem);">
         Topics
       </h1>
-      <p class="text-slate-600 dark:text-slate-400 max-w-2xl">
-        Core concepts and patterns for building AI agents. Each topic includes explanations and code examples in multiple languages.
+      <p class="font-serif italic text-ink-muted mt-2 max-w-xl mx-auto">
+        Core concepts and patterns for building AI agents — with prose explanations and code examples.
       </p>
+      <hr class="rule-double mt-6" />
     </div>
 
     {categories.map((category) => (
-      <div class="mb-14">
-        <h2 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          {category}
-        </h2>
-        <div class="grid gap-px bg-slate-200 dark:bg-slate-700 sm:grid-cols-2 lg:grid-cols-3">
-          {topics.filter(t => t.category === category).map((topic) => (
-            topic.status === 'available' ? (
-              <a
-                href={topic.href}
-                class="group block p-5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-              >
-                <h3 class="font-medium text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                  {topic.title}
-                </h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {topic.description}
-                </p>
+      <section class="mb-10">
+        <h2 class="section-label mb-4">{category}</h2>
+        <div class="space-y-0 divide-y divide-newsprint-200">
+          {topics.filter(t => t.data.category === category).map((topic) => (
+            <div class="py-4">
+              <a href={`/articles/${topic.slug}/`} class="no-underline group flex items-start justify-between gap-4">
+                <div class="flex-1">
+                  <h3 class="font-display font-semibold text-ink text-lg leading-tight group-hover:underline">
+                    {topic.data.title}
+                  </h3>
+                  <p class="font-serif text-sm text-ink-muted mt-1 leading-snug">
+                    {topic.data.description}
+                  </p>
+                  <div class="flex flex-wrap gap-1 mt-2">
+                    {topic.data.tags.slice(0, 3).map((tag: string) => (
+                      <span class="tag-chip">{tag}</span>
+                    ))}
+                  </div>
+                </div>
+                <span class="font-serif text-xs text-ink-faint whitespace-nowrap mt-1">
+                  {fmtDate(topic.data.date)}
+                </span>
               </a>
-            ) : (
-              <div class="block p-5 bg-white dark:bg-slate-900 opacity-50">
-                <h3 class="font-medium text-slate-900 dark:text-white mb-2">
-                  {topic.title}
-                </h3>
-                <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {topic.description}
-                </p>
-              </div>
-            )
+            </div>
           ))}
         </div>
-      </div>
+      </section>
     ))}
+
   </div>
 </BaseLayout>

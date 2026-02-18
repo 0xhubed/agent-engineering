@@ -13,7 +13,6 @@ interface Props {
 const { tabs, title } = Astro.props;
 const id = `code-${Math.random().toString(36).substring(2, 11)}`;
 
-// Map language names to Shiki language identifiers
 const languageMap: Record<string, string> = {
   'pseudo': 'plaintext',
   'pseudocode': 'plaintext',
@@ -33,18 +32,18 @@ const languageMap: Record<string, string> = {
 };
 ---
 
-<div class="code-block rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 my-4">
+<div class="code-block overflow-hidden border border-newsprint-300 my-4">
   {title && (
-    <div class="bg-slate-100 dark:bg-slate-800 px-4 py-2 border-b border-slate-200 dark:border-slate-700">
-      <span class="text-sm font-medium text-slate-700 dark:text-slate-300">{title}</span>
+    <div class="bg-newsprint-100 px-4 py-2 border-b border-newsprint-300">
+      <span class="font-serif text-sm text-ink-muted italic">{title}</span>
     </div>
   )}
 
   <!-- Tabs -->
-  <div class="flex border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+  <div class="flex border-b border-newsprint-300 bg-newsprint-50">
     {tabs.map((tab, index) => (
       <button
-        class="code-tab px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px"
+        class="code-tab px-4 py-2 font-serif text-sm transition-colors border-b-2 -mb-px"
         data-tab-id={`${id}-${index}`}
         data-active={index === 0 ? 'true' : 'false'}
       >
@@ -62,9 +61,9 @@ const languageMap: Record<string, string> = {
         data-active={index === 0 ? 'true' : 'false'}
       >
         <div class="relative group">
-          <pre class="bg-slate-50 dark:bg-slate-900 p-4 overflow-x-auto text-sm"><code class={`language-${languageMap[tab.language.toLowerCase()] || 'plaintext'}`}>{tab.code}</code></pre>
+          <pre class="bg-newsprint-50 p-4 overflow-x-auto text-sm border-0 rounded-none m-0"><code class={`language-${languageMap[tab.language.toLowerCase()] || 'plaintext'}`}>{tab.code}</code></pre>
           <button
-            class="copy-btn absolute top-2 right-2 p-2 rounded-lg bg-slate-200/80 dark:bg-slate-700/80 text-slate-600 dark:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-slate-300 dark:hover:bg-slate-600"
+            class="copy-btn absolute top-2 right-2 p-2 bg-newsprint-200/80 text-ink-muted opacity-0 group-hover:opacity-100 transition-opacity hover:bg-newsprint-300"
             data-code={tab.code}
             aria-label="Copy code"
           >
@@ -83,11 +82,12 @@ const languageMap: Record<string, string> = {
 
 <style>
   .code-tab[data-active='true'] {
-    @apply text-primary-600 dark:text-primary-400 border-primary-500 bg-white dark:bg-slate-900;
+    @apply text-ink border-ink bg-white;
+    font-weight: 500;
   }
 
   .code-tab[data-active='false'] {
-    @apply text-slate-500 dark:text-slate-400 border-transparent hover:text-slate-700 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600;
+    @apply text-ink-muted border-transparent hover:text-ink-light hover:border-newsprint-400;
   }
 
   .code-panel[data-active='false'] {
@@ -100,21 +100,15 @@ const languageMap: Record<string, string> = {
 </style>
 
 <script>
-  // Tab switching functionality
   document.querySelectorAll('.code-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
       const tabId = tab.getAttribute('data-tab-id');
       if (!tabId) return;
-
       const prefix = tabId.substring(0, tabId.lastIndexOf('-'));
-
-      // Update all tabs in this group
       document.querySelectorAll(`[data-tab-id^="${prefix}"]`).forEach((t) => {
         t.setAttribute('data-active', 'false');
       });
       tab.setAttribute('data-active', 'true');
-
-      // Update all panels in this group
       document.querySelectorAll(`[data-panel-id^="${prefix}"]`).forEach((p) => {
         p.setAttribute('data-active', 'false');
       });
@@ -122,20 +116,15 @@ const languageMap: Record<string, string> = {
     });
   });
 
-  // Copy functionality
   document.querySelectorAll('.copy-btn').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const code = btn.getAttribute('data-code');
       if (!code) return;
-
       await navigator.clipboard.writeText(code);
-
       const copyIcon = btn.querySelector('.copy-icon');
       const checkIcon = btn.querySelector('.check-icon');
-
       copyIcon?.classList.add('hidden');
       checkIcon?.classList.remove('hidden');
-
       setTimeout(() => {
         copyIcon?.classList.remove('hidden');
         checkIcon?.classList.add('hidden');

@@ -1,0 +1,350 @@
+---
+title: "MCP Apps"
+description: "An official MCP extension enabling tools to return interactive UI components — dashboards, forms, and visualizations — that render directly in conversations."
+category: "Protocols"
+date: "2024-03-20"
+type: "topic"
+tags:
+  - mcp
+  - ui
+  - interactive
+  - apps
+featured: false
+---
+
+Traditional MCP tools return structured data that a language model summarizes as plain text. MCP Apps closes what its designers call "the context gap between what tools can do and what users can see" by enabling tools to return rich, interactive UI components that users can directly manipulate — without leaving the conversation. A sales analysis that once produced a text summary can now open an interactive dashboard where users filter by region, compare quarters, and export to CSV, all inline.
+
+## What are MCP Apps?
+
+MCP Apps is an official extension to the MCP protocol. When a tool executes, it can include a `_meta.ui` field alongside its standard content response. That field references a `ui://` resource — a bundled HTML and JavaScript application stored on the MCP server — and passes structured data into it. The host (Claude, VS Code, Goose) fetches the bundle, renders it in a sandboxed iframe within the conversation, and establishes a JSON-RPC channel so the embedded UI can communicate back with the server and add context to the ongoing conversation.
+
+The result is that capabilities like interactive dashboards, configuration wizards, document viewers with annotation support, and real-time system monitors become first-class outputs from agent tool calls rather than links to external web pages.
+
+<Callout type="info" title="Why MCP Apps Matter">
+Without MCP Apps, a sales analysis tool might return "Q4 revenue: $2.3M across 4 regions." With MCP Apps, users see an interactive chart where they can click regions to drill down, compare quarters, and export data — all without additional prompts.
+</Callout>
+
+## Architecture
+
+<Diagram title="MCP Apps Data Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                    MCP CLIENT (Claude, VS Code)                  │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                     Conversation                            │ │
+│  │                                                             │ │
+│  │  User: "Show me Q4 sales by region"                         │ │
+│  │                                                             │ │
+│  │  Assistant: Analyzing Q4 sales data...                      │ │
+│  │                                                             │ │
+│  │  ┌───────────────────────────────────────────────────────┐ │ │
+│  │  │              SANDBOXED IFRAME (ui://)                  │ │ │
+│  │  │  ┌─────────────────────────────────────────────────┐  │ │ │
+│  │  │  │     Q4 Sales by Region                          │  │ │ │
+│  │  │  │  ┌────┐ ┌────┐ ┌────┐ ┌────┐                   │  │ │ │
+│  │  │  │  │ NA │ │ EU │ │APAC│ │LATAM│  [Export] [Filter]│  │ │ │
+│  │  │  │  │1.2M│ │0.6M│ │0.3M│ │0.2M│                   │  │ │ │
+│  │  │  │  └────┘ └────┘ └────┘ └────┘                   │  │ │ │
+│  │  │  └─────────────────────────────────────────────────┘  │ │ │
+│  │  │                     ▲         │                        │ │ │
+│  │  │                     │ JSON-RPC│                        │ │ │
+│  │  │                     └─────────┘                        │ │ │
+│  │  └───────────────────────────────────────────────────────┘ │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Tool response with _meta.ui
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                         MCP SERVER                               │
+│                                                                  │
+│  Tool: "analyze_sales"                                          │
+│    → Queries database                                            │
+│    → Returns data + UI metadata                                  │
+│                                                                  │
+│  Resource: "ui://sales-dashboard"                                │
+│    → Serves bundled HTML/JS application                          │
+└─────────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+The flow has four steps. The tool returns standard content plus `_meta.ui` containing a `resourceUri` and a `data` payload. The host fetches the UI resource — a bundled HTML and JS application — via the `ui://` scheme. The host renders the bundle in a sandboxed iframe with restricted permissions. Finally, the UI receives its data payload and communicates back to the host via JSON-RPC, allowing it to update conversation context or invoke additional server tools.
+
+## Basic Implementation
+
+Tools declare their UI component by including `_meta.ui` in the response. The Python MCP server pattern looks like this:
+
+```python
+from mcp.server import Server
+from mcp.types import Tool, TextContent, Resource
+from pathlib import Path
+
+server = Server("analytics-server")
+
+# Tool that returns interactive UI
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "analyze_sales":
+        data = await sales_db.query(
+            region=arguments.get("region"),
+            period=arguments["period"]
+        )
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Sales analysis for {arguments['period']}: {data['total']:,.2f} revenue"
+                )
+            ],
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://sales-dashboard",
+                    "data": {
+                        "records": data["records"],
+                        "summary": data["summary"],
+                        "chartConfig": {
+                            "type": "bar",
+                            "groupBy": "region",
+                            "metric": "revenue"
+                        }
+                    }
+                }
+            }
+        }
+
+@server.list_tools()
+async def list_tools():
+    return [
+        Tool(
+            name="analyze_sales",
+            description="Analyze sales data with interactive visualization",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "region": {"type": "string"},
+                    "period": {
+                        "type": "string",
+                        "enum": ["Q1", "Q2", "Q3", "Q4", "YTD"]
+                    }
+                },
+                "required": ["period"]
+            }
+        )
+    ]
+
+# UI resource - serves bundled HTML/JS application
+@server.read_resource()
+async def read_resource(uri: str):
+    if uri == "ui://sales-dashboard":
+        bundle_path = Path(__file__).parent / "ui" / "sales-dashboard.html"
+        return {
+            "uri": uri,
+            "mimeType": "text/html",
+            "text": bundle_path.read_text()
+        }
+
+@server.list_resources()
+async def list_resources():
+    return [
+        Resource(
+            uri="ui://sales-dashboard",
+            name="Sales Dashboard",
+            description="Interactive sales data visualization",
+            mimeType="text/html"
+        )
+    ]
+```
+
+## Building UI Resources
+
+UI resources are HTML and JavaScript bundles served via the `ui://` scheme. The `@modelcontextprotocol/ext-apps` package provides the client API for communicating with the host from inside the iframe.
+
+The server-side of a bidirectional exchange handles callbacks from the UI — for example, an export request or an annotation save — and can push updates back to an already-rendered UI component:
+
+```python
+from mcp.server import Server
+from mcp.types import Tool, TextContent
+
+server = Server("interactive-server")
+
+# Tool that handles UI callbacks
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "export_data":
+        # Handle export request from UI
+        data = await db.query(arguments.get("filters", {}))
+
+        if arguments["format"] == "csv":
+            content = to_csv(data)
+        else:
+            content = to_json(data)
+
+        return {
+            "content": [
+                TextContent(type="text", text=content)
+            ]
+        }
+
+    if name == "save_annotation":
+        # Handle annotation from document viewer UI
+        await db.save_annotation(
+            document_id=arguments["documentId"],
+            annotation=arguments["annotation"]
+        )
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Saved annotation on document {arguments['documentId']}"
+                )
+            ]
+        }
+
+    if name == "get_metrics":
+        # Real-time metrics for monitoring UI
+        metrics = await monitoring.get_current_metrics()
+
+        return {
+            "content": [
+                TextContent(type="text", text="Metrics updated")
+            ],
+            "_meta": {
+                "ui": {
+                    "update": {  # Push update to existing UI
+                        "metrics": metrics,
+                        "timestamp": time.time()
+                    }
+                }
+            }
+        }
+```
+
+## ext-apps Client API
+
+<Table>
+  <thead>
+    <tr>
+      <th>Method</th>
+      <th>Direction</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>app.connect()</code></td>
+      <td>-</td>
+      <td>Initialize connection to host</td>
+    </tr>
+    <tr>
+      <td><code>app.ondata</code></td>
+      <td>Server to UI</td>
+      <td>Receive initial data from tool result</td>
+    </tr>
+    <tr>
+      <td><code>app.onupdate</code></td>
+      <td>Server to UI</td>
+      <td>Receive pushed updates from server</td>
+    </tr>
+    <tr>
+      <td><code>app.updateModelContext()</code></td>
+      <td>UI to Model</td>
+      <td>Add information to conversation context</td>
+    </tr>
+    <tr>
+      <td><code>app.callServerTool()</code></td>
+      <td>UI to Server</td>
+      <td>Invoke another tool on the server</td>
+    </tr>
+    <tr>
+      <td><code>app.requestUserConfirmation()</code></td>
+      <td>UI to Host</td>
+      <td>Show confirmation dialog to user</td>
+    </tr>
+    <tr>
+      <td><code>app.downloadFile()</code></td>
+      <td>UI to Host</td>
+      <td>Trigger file download</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Bidirectional Communication
+
+<Diagram title="Bidirectional Communication">
+{`┌──────────────────┐         ┌──────────────────┐
+│    UI (iframe)   │         │    MCP Server    │
+└────────┬─────────┘         └────────┬─────────┘
+         │                            │
+         │◄────── ondata ─────────────│  Initial data
+         │                            │
+         │◄────── onupdate ───────────│  Real-time updates
+         │                            │
+         │─── updateModelContext ────►│  Add to conversation
+         │                            │
+         │─── callServerTool ────────►│  Invoke tool
+         │◄────── result ─────────────│
+         │                            │
+         │─── requestConfirmation ───►│  User dialog
+         │◄────── confirmed ──────────│
+         │                            │`}
+</Diagram>
+
+## Security Model
+
+MCP Apps applies multiple layers of isolation to keep embedded UIs safe. Each UI bundle runs in a sandboxed iframe with a strict Content Security Policy that prevents XSS and limits external resource loading. All communication between the UI and the host is auditable JSON-RPC — not arbitrary code execution. UI bundles can be reviewed before deployment, and tool invocation still requires explicit user approval. Each UI resource runs in its own origin, preventing cross-UI attacks.
+
+<Callout type="warning" title="Bundle Security">
+Always serve UI bundles from trusted sources. Review third-party UI components before including them in your MCP server.
+</Callout>
+
+<Callout type="tip" title="Data Validation">
+Validate all data passed to UI components. Never include sensitive data such as tokens or passwords in `_meta.ui.data` as it may be visible in network logs.
+</Callout>
+
+## Client Support
+
+<Table>
+  <thead>
+    <tr>
+      <th>Client</th>
+      <th>Status</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Claude (Web)</strong></td>
+      <td>Available</td>
+      <td>Full support for all UI features</td>
+    </tr>
+    <tr>
+      <td><strong>Claude (Desktop)</strong></td>
+      <td>Available</td>
+      <td>Full support for all UI features</td>
+    </tr>
+    <tr>
+      <td><strong>Goose</strong></td>
+      <td>Available</td>
+      <td>Full support</td>
+    </tr>
+    <tr>
+      <td><strong>VS Code Insiders</strong></td>
+      <td>Available</td>
+      <td>Via GitHub Copilot MCP extension</td>
+    </tr>
+    <tr>
+      <td><strong>ChatGPT</strong></td>
+      <td>Rolling out</td>
+      <td>Gradual rollout in progress</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Getting Started
+
+To add MCP Apps to an existing MCP server, install the ext-apps package (`npm install @modelcontextprotocol/ext-apps`), create a UI bundle using any web framework, register the bundle as a `ui://` resource in your server, and return `_meta.ui` from the relevant tool with the `resourceUri` and any data the UI needs. The host handles the rest — fetching, sandboxing, and rendering — automatically.
+
+<Callout type="info" title="Learn More">
+See the official announcement at [blog.modelcontextprotocol.io](https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/) for full documentation and reference examples.
+</Callout>

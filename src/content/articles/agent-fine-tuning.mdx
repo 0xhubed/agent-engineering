@@ -1,0 +1,229 @@
+---
+title: "Agent-Assisted Fine-Tuning"
+description: "How coding agents automate the entire LLM fine-tuning workflow from GPU selection to model deployment using natural language instructions."
+category: "Advanced"
+date: "2024-04-10"
+type: "topic"
+tags:
+  - fine-tuning
+  - training
+  - llm
+  - gpu
+featured: false
+---
+
+Fine-tuning LLMs has traditionally demanded deep MLOps expertise: selecting hardware, configuring training scripts, managing datasets, monitoring jobs, and deploying models. Coding agents have changed this calculus entirely. Tools like Claude Code and OpenAI Codex can now handle the complete workflow autonomously, making custom model training accessible to developers without ML infrastructure experience. Teams report spending $20–30 total for multiple training runs including failed experiments — cheaper than one hour of ML consulting.
+
+## Why Agent-Assisted Fine-Tuning?
+
+The friction in fine-tuning is rarely the math — it is the dozens of operational decisions that precede actual training. Which GPU should you pick for a 7B model with LoRA? What batch size fits in 24 GB of VRAM? Does your dataset have the right column format for DPO? Coding agents handle these decisions automatically: they validate dataset format before incurring GPU costs, select hardware appropriate to model size and budget, generate training configuration, submit jobs to compute platforms, and monitor progress through a conversational interface.
+
+<Callout type="info" title="Real-World Impact">
+Teams report spending $20–30 total for multiple training runs including failed experiments — cheaper than one hour of ML consulting. The agent handles hardware selection, job orchestration, and monitoring, removing friction from the fine-tuning process.
+</Callout>
+
+## Architecture
+
+<Diagram title="Agent-Assisted Fine-Tuning Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                      CODING AGENT                                │
+│              (Claude Code / Codex / Gemini CLI)                  │
+│                                                                  │
+│  User: "Fine-tune Qwen-7B on my customer support data"          │
+│                                                                  │
+│  Agent Actions:                                                  │
+│  1. Validate dataset format                                      │
+│  2. Select hardware (a10g-large for 7B + LoRA)                  │
+│  3. Generate training configuration                              │
+│  4. Submit job to compute platform                               │
+│  5. Monitor progress and report status                           │
+│  6. Convert to GGUF for local deployment                         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ Skills / Plugins
+                              │
+         ┌────────────────────┼────────────────────┐
+         │                    │                    │
+         ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│  Hugging Face   │  │    Unsloth      │  │   Local LLM     │
+│     Jobs        │  │                 │  │  (llama.cpp)    │
+│                 │  │                 │  │                 │
+│ - Managed GPU   │  │ - 2x faster     │  │ - Private data  │
+│ - Auto scaling  │  │ - 30% less VRAM │  │ - No API costs  │
+│ - Trackio logs  │  │ - GGUF export   │  │ - Offline use   │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+         │                    │                    │
+         └────────────────────┼────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │  Fine-Tuned     │
+                    │     Model       │
+                    │                 │
+                    │ • HF Hub        │
+                    │ • GGUF local    │
+                    │ • API endpoint  │
+                    └─────────────────┘`}
+</Diagram>
+
+## Training Methods
+
+Agents support multiple training methods and automatically select the best approach based on your dataset and goals. Supervised Fine-Tuning (SFT) is best for high-quality input-output demonstration pairs — customer support conversations, code generation examples, and domain-specific question answering. The dataset needs a `messages` column with conversation format. Direct Preference Optimization (DPO) suits alignment tasks where you have preference-annotated data with `chosen` and `rejected` columns; it requires no separate reward model and is typically applied after SFT. Group Relative Policy Optimization (GRPO) excels at verifiable tasks with programmatic success criteria such as math reasoning and structured code generation, where the model learns from comparing multiple sampled responses against a reward function.
+
+For best results, combine methods in sequence: SFT to teach behaviors, DPO for alignment, and GRPO for reasoning capability.
+
+<Table>
+  <thead>
+    <tr>
+      <th>Method</th>
+      <th>Best For</th>
+      <th>Dataset Requirements</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>SFT</strong></td>
+      <td>Teaching specific behaviors, domain adaptation</td>
+      <td><code>messages</code> column with conversations</td>
+    </tr>
+    <tr>
+      <td><strong>DPO</strong></td>
+      <td>Alignment, preference learning, safety</td>
+      <td><code>chosen</code> and <code>rejected</code> columns</td>
+    </tr>
+    <tr>
+      <td><strong>GRPO</strong></td>
+      <td>Math, code, verifiable reasoning tasks</td>
+      <td>Tasks with programmatic success criteria</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Fine-Tuning Frameworks
+
+Several frameworks can be driven by coding agents. Unsloth delivers 2x faster training with 30% less VRAM through kernel-level optimizations and supports native GGUF export for local deployment:
+
+```python
+from unsloth import FastLanguageModel
+import torch
+
+# Load model with 4-bit quantization
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Qwen2.5-7B-Instruct-bnb-4bit",
+    max_seq_length=4096,
+    dtype=None,  # Auto-detect
+    load_in_4bit=True,
+)
+
+# Add LoRA adapters (2x faster than standard)
+model = FastLanguageModel.get_peft_model(
+    model,
+    r=32,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj",
+                    "gate_proj", "up_proj", "down_proj"],
+    lora_alpha=64,
+    lora_dropout=0,
+    bias="none",
+    use_gradient_checkpointing="unsloth",  # 30% less VRAM
+    random_state=42,
+)
+
+# Train with HuggingFace Trainer
+from trl import SFTTrainer
+from transformers import TrainingArguments
+
+trainer = SFTTrainer(
+    model=model,
+    tokenizer=tokenizer,
+    train_dataset=dataset,
+    args=TrainingArguments(
+        per_device_train_batch_size=2,
+        gradient_accumulation_steps=4,
+        warmup_steps=100,
+        num_train_epochs=3,
+        learning_rate=2e-4,
+        fp16=not torch.cuda.is_bf16_supported(),
+        bf16=torch.cuda.is_bf16_supported(),
+        output_dir="outputs",
+    ),
+)
+
+trainer.train()
+
+# Save and convert to GGUF
+model.save_pretrained_gguf(
+    "outputs-gguf",
+    tokenizer,
+    quantization_method="q4_k_m"
+)
+```
+
+Axolotl handles multi-GPU production workloads via YAML configuration with DeepSpeed and FSDP support. LLaMA-Factory provides a zero-code web UI for beginners and supports over 100 model architectures. HuggingFace TRL is the official library for RLHF pipelines and research-grade flexibility.
+
+## LoRA and QLoRA
+
+Parameter-efficient fine-tuning through LoRA trains small adapter layers — typically with rank 32 and alpha 64 — rather than full model weights. This updates roughly 1% of the original parameters while preserving base model quality and allowing multiple adapters per base model. QLoRA combines LoRA with 4-bit NormalFloat quantization, enabling a 70B model to train on a single 24 GB GPU.
+
+<Callout type="info" title="When to Use Which">
+Use LoRA for 95% of production fine-tuning needs — it is efficient and maintains quality. Use QLoRA when VRAM is limited or training very large models. Use full fine-tuning only when maximum accuracy is critical and resources are abundant.
+</Callout>
+
+## Hardware and Cost Guide
+
+<Table>
+  <thead>
+    <tr>
+      <th>Model Size</th>
+      <th>Recommended GPU</th>
+      <th>Training Time</th>
+      <th>Estimated Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>&lt;1B</td>
+      <td>t4-small</td>
+      <td>Minutes</td>
+      <td>$1–2</td>
+    </tr>
+    <tr>
+      <td>1–3B</td>
+      <td>t4-medium / a10g-small</td>
+      <td>Hours</td>
+      <td>$5–15</td>
+    </tr>
+    <tr>
+      <td>3–7B</td>
+      <td>a10g-large (LoRA)</td>
+      <td>Hours</td>
+      <td>$15–40</td>
+    </tr>
+    <tr>
+      <td>7–13B</td>
+      <td>a100-large (LoRA)</td>
+      <td>Hours</td>
+      <td>$40–100</td>
+    </tr>
+    <tr>
+      <td>70B+</td>
+      <td>Multi-GPU / QLoRA</td>
+      <td>Many hours</td>
+      <td>$100+</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="tip" title="Cost Optimization">
+Start with small test runs (100 examples) to validate your workflow before committing to full training. The agent automatically suggests appropriate hardware to balance cost and performance.
+</Callout>
+
+## Skill Transfer as an Alternative
+
+An alternative to weight-based fine-tuning is transferring expertise from expensive frontier models to cheaper ones via structured context — what HuggingFace's `upskill` tool calls the "Robin Hood" approach. A capable teacher model (like Claude Opus) solves a problem and exports the execution trace as a skill: a structured directory with a `SKILL.md` file (~500 tokens) encoding domain expertise and a `skill_meta.json` defining evaluation test cases. Smaller student models then load the skill as context.
+
+Skills don't improve all models equally. Always measure per model using `upskill eval` before deployment — some models may regress. Skills work best for specialized domains like CUDA kernel patterns, API usage conventions, and project-specific guidelines, where concise structured context can meaningfully encode expertise.
+
+## Best Practices
+
+Always validate dataset format on CPU before incurring GPU costs, then run a test job with 100 examples before full training. Save checkpoints every 500 steps for long runs to enable recovery from failures and evaluation at intermediate stages. Watch training loss via Trackio or Weights & Biases — flat loss means the model is not learning; spiking loss indicates issues with learning rate or data quality. Push datasets to Hugging Face Hub with version tags for reproducibility. Run the fine-tuned model through your evaluation suite before production deployment.

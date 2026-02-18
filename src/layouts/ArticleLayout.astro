@@ -1,0 +1,99 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  category: string;
+  date: string;
+  source_url?: string;
+  tags: string[];
+}
+
+const { title, description, category, date, source_url, tags } = Astro.props;
+
+// Format date nicely — append T12:00:00 to avoid timezone off-by-one
+let displayDate = date;
+const dt = new Date(date + 'T12:00:00');
+if (!isNaN(dt.getTime())) {
+  displayDate = dt.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+---
+
+<BaseLayout title={title} description={description} type="article">
+  <article class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+
+    <!-- Section label -->
+    <div class="mb-3">
+      <span class="section-label">{category}</span>
+    </div>
+
+    <!-- Headline -->
+    <h1 class="font-display font-bold text-ink leading-tight mb-4" style="font-size: clamp(1.75rem, 4vw, 2.75rem);">
+      {title}
+    </h1>
+
+    <!-- Italic lede -->
+    <p class="font-serif italic text-ink-muted text-lg leading-relaxed mb-4">
+      {description}
+    </p>
+
+    <!-- Double rule -->
+    <hr class="rule-double mb-4" />
+
+    <!-- Byline / dateline row -->
+    <div class="flex items-center justify-between mb-8">
+      <span class="byline">By the Editors</span>
+      <span class="font-serif text-xs text-ink-muted">{displayDate}</span>
+    </div>
+
+    <!-- Article body with drop cap -->
+    <div class="drop-cap prose max-w-none
+      prose-headings:font-display prose-headings:text-ink
+      prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4 prose-h2:border-b prose-h2:border-newsprint-200 prose-h2:pb-2
+      prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-3
+      prose-p:font-serif prose-p:text-ink-light prose-p:leading-relaxed
+      prose-a:text-ink prose-a:underline prose-a:decoration-newsprint-400
+      prose-strong:text-ink prose-strong:font-semibold
+      prose-ul:font-serif prose-ol:font-serif
+      prose-li:text-ink-light
+      prose-blockquote:border-l-4 prose-blockquote:border-newsprint-400 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-ink-muted
+      prose-code:font-mono prose-code:text-sm
+      prose-pre:bg-newsprint-100 prose-pre:border prose-pre:border-newsprint-200 prose-pre:rounded-none
+    ">
+      <slot />
+    </div>
+
+    <!-- Tags -->
+    {tags.length > 0 && (
+      <div class="mt-10 pt-4 border-t border-newsprint-200">
+        <div class="flex flex-wrap gap-2 items-center">
+          <span class="font-serif text-xs text-ink-faint uppercase tracking-widest mr-2">Tags:</span>
+          {tags.map(tag => (
+            <span class="tag-chip">{tag}</span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {source_url && (
+      <div class="mt-4">
+        <a href={source_url} class="font-serif text-xs text-ink-muted" target="_blank" rel="noopener noreferrer">
+          Original source ↗
+        </a>
+      </div>
+    )}
+
+    <!-- Back link -->
+    <div class="mt-8 pt-6 border-t border-newsprint-200">
+      <a href={`${import.meta.env.BASE_URL}articles/`} class="font-serif text-sm text-ink-muted no-underline hover:text-ink">
+        &larr; Back to Articles
+      </a>
+    </div>
+
+  </article>
+</BaseLayout>

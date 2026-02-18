@@ -3,14 +3,12 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Callout from '../../components/Callout.astro';
 import Table from '../../components/Table.astro';
 import Diagram from '../../components/Diagram.astro';
-import CodeBlock from '../../components/CodeBlock.astro';
 
 const benchmarks = [
   {
     name: 'SWE-bench Verified',
     description: 'Gold standard for code agents. 500 human-verified GitHub issues from 12 Python repositories. Agent must generate patches that pass test suites.',
     category: 'Software Engineering',
-    metrics: ['Resolved Rate', 'Patch Validity', 'Test Pass Rate'],
     topScore: '72%',
     topAgent: 'Claude 3.5 Sonnet + Devin',
     difficulty: 'Hard',
@@ -21,7 +19,6 @@ const benchmarks = [
     name: 'SWE-bench Full',
     description: 'Complete dataset of 2,294 real GitHub issues. More diverse but noisier than Verified subset.',
     category: 'Software Engineering',
-    metrics: ['Resolved Rate', 'Category Breakdown'],
     topScore: '51%',
     topAgent: 'Various',
     difficulty: 'Hard',
@@ -32,7 +29,6 @@ const benchmarks = [
     name: 'WebArena',
     description: 'Web navigation benchmark with 812 tasks across 5 self-hosted websites (shopping, Reddit, GitLab, OpenStreetMap, Wikipedia).',
     category: 'Web Navigation',
-    metrics: ['Task Success Rate', 'Action Efficiency'],
     topScore: '42%',
     topAgent: 'GPT-4V + SoM',
     difficulty: 'Hard',
@@ -43,7 +39,6 @@ const benchmarks = [
     name: 'GAIA',
     description: 'General AI Assistant benchmark. 466 questions requiring web search, file processing, and multi-step reasoning.',
     category: 'General Assistant',
-    metrics: ['Level 1/2/3 Accuracy', 'Exact Match'],
     topScore: '75% (L1)',
     topAgent: 'Various',
     difficulty: 'Medium-Hard',
@@ -54,7 +49,6 @@ const benchmarks = [
     name: 'τ-bench (Tau-bench)',
     description: 'Multi-turn conversations requiring tool use across airline, retail, and banking domains with simulated APIs.',
     category: 'Tool + Conversation',
-    metrics: ['Pass Rate', 'Tool Accuracy', 'Response Quality'],
     topScore: '45% (Retail)',
     topAgent: 'GPT-4',
     difficulty: 'Medium',
@@ -65,7 +59,6 @@ const benchmarks = [
     name: 'AgentBench',
     description: 'Multi-dimensional evaluation across 8 environments: OS, DB, KG, Digital Cards, Lateral Thinking, House-Holding, Web Shopping, Web Browsing.',
     category: 'Multi-Environment',
-    metrics: ['Per-Environment Score', 'Overall Capability'],
     topScore: 'Model-dependent',
     topAgent: 'GPT-4',
     difficulty: 'Varied',
@@ -76,7 +69,6 @@ const benchmarks = [
     name: 'HumanEval',
     description: 'Code generation benchmark. 164 Python programming problems testing functional correctness.',
     category: 'Code Generation',
-    metrics: ['Pass@1', 'Pass@10', 'Pass@100'],
     topScore: '95%+',
     topAgent: 'Various',
     difficulty: 'Medium',
@@ -87,7 +79,6 @@ const benchmarks = [
     name: 'MBPP',
     description: 'Mostly Basic Python Problems. 974 entry-level programming tasks.',
     category: 'Code Generation',
-    metrics: ['Pass@1', 'Pass@80'],
     topScore: '85%+',
     topAgent: 'Various',
     difficulty: 'Easy-Medium',
@@ -96,314 +87,31 @@ const benchmarks = [
   },
 ];
 
+const difficultyStyle = (d: string) => {
+  if (d === 'Hard') return 'font-small-caps text-xs text-red-800 border border-red-300 px-1.5 py-0.5';
+  if (d === 'Medium') return 'font-small-caps text-xs text-amber-800 border border-amber-300 px-1.5 py-0.5';
+  return 'font-small-caps text-xs text-ink-muted border border-newsprint-300 px-1.5 py-0.5';
+};
 
-const methodologyCode = [
-  {
-    language: 'pseudo',
-    label: 'Pseudo-code',
-    code: `// Benchmark Evaluation Methodology
-// Standard approach for running agent benchmarks
-
-1. ENVIRONMENT SETUP
-   // Isolated, reproducible environment
-   create_docker_container(benchmark_image)
-   setup_dependencies(benchmark.requirements)
-   initialize_test_harness()
-
-2. AGENT CONFIGURATION
-   configure_agent(
-       model = "agent_model_name",
-       max_tokens = 4096,
-       temperature = 0,  // Deterministic for reproducibility
-       tools = benchmark.available_tools
-   )
-
-3. EVALUATION LOOP
-   for each task in benchmark.tasks:
-       // Record start time
-       start_time = now()
-
-       // Agent attempts task
-       result = agent.execute(task.input)
-
-       // Capture metrics
-       metrics = {
-           "latency": now() - start_time,
-           "tokens_used": result.total_tokens,
-           "tool_calls": result.tool_call_count,
-           "trajectory": result.reasoning_trace
-       }
-
-       // Evaluate result
-       passed = benchmark.evaluate(result.output, task.expected)
-       record_result(task.id, passed, metrics)
-
-4. AGGREGATE RESULTS
-   compute_accuracy()
-   compute_confidence_intervals()
-   generate_breakdown_by_category()
-   export_results(format="json")`
-  },
-  {
-    language: 'python',
-    label: 'Python',
-    code: `import json
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any
-from datetime import datetime
-import numpy as np
-from scipy import stats
-
-@dataclass
-class BenchmarkConfig:
-    name: str
-    version: str
-    agent_model: str
-    temperature: float = 0.0
-    max_tokens: int = 4096
-    timeout_seconds: int = 1800
-
-@dataclass
-class TaskResult:
-    task_id: str
-    passed: bool
-    latency_ms: float
-    tokens_used: int
-    tool_calls: int
-    trajectory: List[str]
-    output: str
-    error: str = None
-
-@dataclass
-class BenchmarkResults:
-    config: BenchmarkConfig
-    results: List[TaskResult]
-    timestamp: str
-    total_time_seconds: float
-
-    @property
-    def accuracy(self) -> float:
-        return sum(r.passed for r in self.results) / len(self.results)
-
-    @property
-    def confidence_interval(self) -> tuple:
-        """95% confidence interval using Wilson score."""
-        n = len(self.results)
-        p = self.accuracy
-        z = 1.96  # 95% CI
-        denominator = 1 + z**2/n
-        centre = (p + z**2/(2*n)) / denominator
-        spread = z * np.sqrt((p*(1-p) + z**2/(4*n))/n) / denominator
-        return (centre - spread, centre + spread)
-
-    def to_json(self) -> str:
-        return json.dumps({
-            "config": asdict(self.config),
-            "summary": {
-                "accuracy": self.accuracy,
-                "confidence_interval": self.confidence_interval,
-                "total_tasks": len(self.results),
-                "passed": sum(r.passed for r in self.results),
-                "avg_latency_ms": np.mean([r.latency_ms for r in self.results]),
-                "avg_tokens": np.mean([r.tokens_used for r in self.results]),
-            },
-            "results": [asdict(r) for r in self.results],
-            "timestamp": self.timestamp,
-            "total_time_seconds": self.total_time_seconds
-        }, indent=2)
-
-
-class BenchmarkRunner:
-    def __init__(self, config: BenchmarkConfig, agent):
-        self.config = config
-        self.agent = agent
-        self.results: List[TaskResult] = []
-
-    async def run(self, tasks: List[Dict]) -> BenchmarkResults:
-        start = datetime.now()
-
-        for task in tasks:
-            result = await self._run_task(task)
-            self.results.append(result)
-
-        return BenchmarkResults(
-            config=self.config,
-            results=self.results,
-            timestamp=start.isoformat(),
-            total_time_seconds=(datetime.now() - start).total_seconds()
-        )
-
-    async def _run_task(self, task: Dict) -> TaskResult:
-        task_start = datetime.now()
-        try:
-            response = await self.agent.execute(
-                task["input"],
-                timeout=self.config.timeout_seconds
-            )
-            passed = self._evaluate(response.output, task["expected"])
-
-            return TaskResult(
-                task_id=task["id"],
-                passed=passed,
-                latency_ms=(datetime.now() - task_start).total_seconds() * 1000,
-                tokens_used=response.tokens_used,
-                tool_calls=len(response.tool_calls),
-                trajectory=response.reasoning_trace,
-                output=response.output
-            )
-        except Exception as e:
-            return TaskResult(
-                task_id=task["id"],
-                passed=False,
-                latency_ms=(datetime.now() - task_start).total_seconds() * 1000,
-                tokens_used=0,
-                tool_calls=0,
-                trajectory=[],
-                output="",
-                error=str(e)
-            )`
-  },
-  {
-    language: 'csharp',
-    label: 'C#',
-    code: `public record BenchmarkConfig(
-    string Name,
-    string Version,
-    string AgentModel,
-    double Temperature = 0.0,
-    int MaxTokens = 4096,
-    int TimeoutSeconds = 1800
-);
-
-public record TaskResult(
-    string TaskId,
-    bool Passed,
-    double LatencyMs,
-    int TokensUsed,
-    int ToolCalls,
-    List<string> Trajectory,
-    string Output,
-    string? Error = null
-);
-
-public class BenchmarkResults
-{
-    public BenchmarkConfig Config { get; init; }
-    public List<TaskResult> Results { get; init; } = new();
-    public DateTime Timestamp { get; init; }
-    public double TotalTimeSeconds { get; init; }
-
-    public double Accuracy =>
-        (double)Results.Count(r => r.Passed) / Results.Count;
-
-    public (double Lower, double Upper) ConfidenceInterval
-    {
-        get
-        {
-            // Wilson score interval
-            int n = Results.Count;
-            double p = Accuracy;
-            double z = 1.96; // 95% CI
-            double denom = 1 + z * z / n;
-            double centre = (p + z * z / (2 * n)) / denom;
-            double spread = z * Math.Sqrt((p * (1 - p) + z * z / (4 * n)) / n) / denom;
-            return (centre - spread, centre + spread);
-        }
-    }
-
-    public string ToJson() => JsonSerializer.Serialize(new
-    {
-        Config,
-        Summary = new
-        {
-            Accuracy,
-            ConfidenceInterval,
-            TotalTasks = Results.Count,
-            Passed = Results.Count(r => r.Passed),
-            AvgLatencyMs = Results.Average(r => r.LatencyMs),
-            AvgTokens = Results.Average(r => r.TokensUsed)
-        },
-        Results,
-        Timestamp,
-        TotalTimeSeconds
-    }, new JsonSerializerOptions { WriteIndented = true });
-}
-
-public class BenchmarkRunner
-{
-    private readonly BenchmarkConfig _config;
-    private readonly IAgent _agent;
-    private readonly List<TaskResult> _results = new();
-
-    public BenchmarkRunner(BenchmarkConfig config, IAgent agent)
-    {
-        _config = config;
-        _agent = agent;
-    }
-
-    public async Task<BenchmarkResults> RunAsync(List<BenchmarkTask> tasks)
-    {
-        var start = DateTime.UtcNow;
-
-        foreach (var task in tasks)
-        {
-            var result = await RunTaskAsync(task);
-            _results.Add(result);
-        }
-
-        return new BenchmarkResults
-        {
-            Config = _config,
-            Results = _results,
-            Timestamp = start,
-            TotalTimeSeconds = (DateTime.UtcNow - start).TotalSeconds
-        };
-    }
-
-    private async Task<TaskResult> RunTaskAsync(BenchmarkTask task)
-    {
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var response = await _agent.ExecuteAsync(
-                task.Input,
-                TimeSpan.FromSeconds(_config.TimeoutSeconds)
-            );
-
-            bool passed = Evaluate(response.Output, task.Expected);
-
-            return new TaskResult(
-                task.Id, passed, sw.ElapsedMilliseconds,
-                response.TokensUsed, response.ToolCalls.Count,
-                response.ReasoningTrace, response.Output
-            );
-        }
-        catch (Exception ex)
-        {
-            return new TaskResult(
-                task.Id, false, sw.ElapsedMilliseconds,
-                0, 0, new List<string>(), "", ex.Message
-            );
-        }
-    }
-}`
-  }
-];
+const categories = [...new Set(benchmarks.map(b => b.category))];
 ---
 
 <BaseLayout title="Benchmarks">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <div class="mb-12">
-      <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-4">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="font-display font-bold text-ink" style="font-size: clamp(1.75rem, 4vw, 3rem);">
         Agent Benchmarks
       </h1>
-      <p class="text-lg text-slate-600 dark:text-slate-300 max-w-3xl">
-        Standardized benchmarks for measuring AI agent capabilities. From software engineering to web navigation, these benchmarks define the state of the art.
+      <p class="font-serif italic text-ink-muted mt-2 max-w-2xl mx-auto">
+        Standardized measures of AI agent capability — from software engineering to web navigation.
       </p>
+      <hr class="rule-double mt-6" />
     </div>
 
-    <!-- Overview Diagram -->
-    <section class="mb-12">
+    <!-- Landscape Diagram -->
+    <section class="mb-10">
       <Diagram>
 {`┌─────────────────────────────────────────────────────────────────────────────┐
 │                        Agent Benchmark Landscape                             │
@@ -423,20 +131,16 @@ public class BenchmarkRunner
 │  │ AssistantBench     │             │ ToolBench          │                  │
 │  └────────────────────┘             └────────────────────┘                  │
 │                                                                             │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
-│  Human Baseline ████████████████████████████████████████████ 78-95%         │
-│  Current SOTA   ██████████████████████                       40-72%         │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    │
+│  Human Baseline ████████████████████████████████████████████ 78-95%        │
+│  Current SOTA   ██████████████████████                       40-72%        │
 │                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘`}
       </Diagram>
     </section>
 
-    <!-- Leaderboard Summary -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Current State of the Art (2025)
-      </h2>
+    <!-- State of the Art -->
+    <section class="mb-10">
+      <h2 class="font-display font-bold text-ink text-xl mb-4">Current State of the Art (2025)</h2>
       <Callout type="info" title="Human vs AI Gap">
         The gap between human performance and AI agent performance remains significant on most benchmarks, especially those requiring long-horizon planning, error recovery, and real-world interaction.
       </Callout>
@@ -446,314 +150,84 @@ public class BenchmarkRunner
             <tr>
               <th>Benchmark</th>
               <th>Top Score</th>
-              <th>Top Agent</th>
+              <th>Leading System</th>
               <th>Human Baseline</th>
-              <th>Gap</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>SWE-bench Verified</td>
+              <td><strong>SWE-bench Verified</strong></td>
               <td>72%</td>
               <td>Claude 3.5 + Devin</td>
-              <td>~95%</td>
-              <td>23%</td>
+              <td>~100%</td>
             </tr>
             <tr>
-              <td>WebArena</td>
-              <td>42%</td>
-              <td>GPT-4V + SoM</td>
-              <td>78%</td>
-              <td>36%</td>
-            </tr>
-            <tr>
-              <td>GAIA Level 1</td>
+              <td><strong>GAIA (L1)</strong></td>
               <td>75%</td>
               <td>Various</td>
               <td>92%</td>
-              <td>17%</td>
             </tr>
             <tr>
-              <td>GAIA Level 2</td>
-              <td>60%</td>
-              <td>Various</td>
-              <td>92%</td>
-              <td>32%</td>
+              <td><strong>WebArena</strong></td>
+              <td>42%</td>
+              <td>GPT-4V + SoM</td>
+              <td>78%</td>
             </tr>
             <tr>
-              <td>GAIA Level 3</td>
-              <td>40%</td>
-              <td>Various</td>
-              <td>92%</td>
-              <td>52%</td>
-            </tr>
-            <tr>
-              <td>t-bench Retail</td>
-              <td>45%</td>
-              <td>GPT-4</td>
-              <td>~94%</td>
-              <td>49%</td>
-            </tr>
-            <tr>
-              <td>HumanEval</td>
+              <td><strong>HumanEval</strong></td>
               <td>95%+</td>
               <td>Various</td>
-              <td>~95%</td>
-              <td>~0%</td>
+              <td>~100%</td>
             </tr>
           </tbody>
         </Table>
       </div>
     </section>
 
-    <!-- Benchmark Cards -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Benchmark Details
-      </h2>
-      <div class="grid gap-6 lg:grid-cols-2">
-        {benchmarks.map((benchmark) => (
-          <div class="p-6 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-            <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
-              <div>
-                <h3 class="text-xl font-semibold text-slate-900 dark:text-white">
-                  {benchmark.name}
-                </h3>
-                <div class="flex gap-2 mt-2">
-                  <span class="inline-block px-2 py-0.5 text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
-                    {benchmark.category}
-                  </span>
-                  <span class={`inline-block px-2 py-0.5 text-xs font-medium rounded ${
-                    benchmark.difficulty === 'Hard' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' :
-                    benchmark.difficulty === 'Medium' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
-                    benchmark.difficulty === 'Easy-Medium' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' :
-                    'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                  }`}>
-                    {benchmark.difficulty}
+    <!-- Benchmark cards by category -->
+    {categories.map(cat => (
+      <section class="mb-10">
+        <h2 class="section-label mb-4">{cat}</h2>
+        <div class="space-y-0 divide-y divide-newsprint-200">
+          {benchmarks.filter(b => b.category === cat).map(bm => (
+            <div class="py-5">
+              <div class="flex items-start justify-between gap-4 mb-2">
+                <div>
+                  <a href={bm.link} target="_blank" rel="noopener noreferrer"
+                     class="font-display font-bold text-ink text-lg hover:underline no-underline">
+                    {bm.name}
+                  </a>
+                  <span class={`ml-3 font-serif ${difficultyStyle(bm.difficulty)}`}>
+                    {bm.difficulty}
                   </span>
                 </div>
-              </div>
-              <div class="text-right">
-                <div class="text-2xl font-bold text-primary-600 dark:text-primary-400">
-                  {benchmark.topScore}
-                </div>
-                <div class="text-xs text-slate-500 dark:text-slate-400">Top Score</div>
-              </div>
-            </div>
-            <p class="text-slate-600 dark:text-slate-400 mb-4">
-              {benchmark.description}
-            </p>
-            <div class="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h4 class="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Metrics:</h4>
-                <div class="flex flex-wrap gap-2">
-                  {benchmark.metrics.map((metric) => (
-                    <span class="px-2 py-1 text-xs bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300 rounded">
-                      {metric}
-                    </span>
-                  ))}
+                <div class="text-right shrink-0">
+                  <div class="font-display font-bold text-ink text-xl">{bm.topScore}</div>
+                  <div class="font-serif text-xs text-ink-muted">top score</div>
                 </div>
               </div>
-              <div class="text-sm text-slate-500 dark:text-slate-400">
-                {benchmark.tasks} tasks
+              <p class="font-serif text-sm text-ink-muted leading-relaxed">{bm.description}</p>
+              <div class="flex gap-4 mt-2 font-serif text-xs text-ink-faint">
+                <span>{bm.tasks.toLocaleString()} tasks</span>
+                <span>·</span>
+                <span>Best: {bm.topAgent}</span>
               </div>
             </div>
-            {benchmark.link && (
-              <a
-                href={benchmark.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="mt-4 inline-flex items-center text-sm text-primary-600 dark:text-primary-400 hover:underline"
-              >
-                Learn more
-                <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </a>
-            )}
-          </div>
-        ))}
-      </div>
-    </section>
+          ))}
+        </div>
+      </section>
+    ))}
 
-    <!-- Methodology Section -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Evaluation Methodology
-      </h2>
-      <p class="text-slate-600 dark:text-slate-400 mb-6">
-        Proper benchmarking requires reproducible methodology. Key principles:
+    <!-- Methodology note -->
+    <section class="mt-10 pt-6 border-t border-newsprint-300">
+      <h2 class="font-display font-bold text-ink text-xl mb-4">Evaluation Methodology</h2>
+      <p class="font-serif text-ink-light leading-relaxed mb-4">
+        Rigorous benchmark evaluation requires deterministic execution (temperature=0), isolated environments, and statistical confidence intervals. A common error is reporting accuracy without confidence bounds — on small benchmarks like HumanEval (164 tasks), a 2-point difference may not be statistically significant.
       </p>
-
-      <div class="grid md:grid-cols-2 gap-6 mb-8">
-        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Environment Isolation</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">
-            Run evaluations in containerized environments (Docker) with pinned dependencies. This ensures reproducibility across runs and machines.
-          </p>
-        </div>
-        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Deterministic Settings</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">
-            Use temperature=0 and fixed seeds where possible. Report settings that can't be made deterministic.
-          </p>
-        </div>
-        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Confidence Intervals</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">
-            Report 95% confidence intervals, not just point estimates. Small test sets can have wide intervals.
-          </p>
-        </div>
-        <div class="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-2">Category Breakdown</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">
-            Report performance by task category/difficulty. Aggregate scores hide important patterns.
-          </p>
-        </div>
-      </div>
-
-      <CodeBlock tabs={methodologyCode} title="Benchmark Evaluation Framework" />
+      <Callout type="tip" title="Wilson Score Intervals">
+        Always report 95% confidence intervals alongside benchmark scores. The Wilson score interval is preferred over the normal approximation for proportions near 0 or 1.
+      </Callout>
     </section>
 
-    <!-- Results Schema -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Results Schema
-      </h2>
-      <p class="text-slate-600 dark:text-slate-400 mb-6">
-        Standardized JSON schema for benchmark results enables comparison across agents and runs.
-      </p>
-      <div class="bg-slate-900 dark:bg-slate-950 rounded-lg overflow-hidden">
-        <div class="flex items-center justify-between px-4 py-2 border-b border-slate-700">
-          <span class="text-sm font-medium text-slate-300">benchmark_results.schema.json</span>
-        </div>
-        <pre class="p-4 overflow-x-auto"><code class="text-sm text-slate-300">{`{
-  "config": {
-    "name": "SWE-bench Verified",
-    "version": "1.0",
-    "agent_model": "claude-3-sonnet-20240229",
-    "temperature": 0.0,
-    "max_tokens": 4096,
-    "tools_enabled": ["file_read", "file_write", "bash", "search"]
-  },
-  "summary": {
-    "accuracy": 0.52,
-    "confidence_interval": [0.48, 0.56],
-    "total_tasks": 500,
-    "passed": 260,
-    "failed": 240,
-    "avg_latency_ms": 45000,
-    "avg_tokens_per_task": 12500,
-    "total_cost_usd": 125.50
-  },
-  "category_breakdown": {
-    "django": { "passed": 45, "total": 85, "accuracy": 0.53 },
-    "flask": { "passed": 32, "total": 60, "accuracy": 0.53 },
-    "scikit-learn": { "passed": 28, "total": 55, "accuracy": 0.51 }
-  },
-  "results": [
-    {
-      "task_id": "django__django-11039",
-      "passed": true,
-      "latency_ms": 38500,
-      "tokens_used": 11200,
-      "tool_calls": 15,
-      "trajectory": ["search", "read", "read", "think", "write", "bash"],
-      "output": "patch content..."
-    }
-  ],
-  "timestamp": "2025-01-26T10:30:00Z",
-  "total_time_seconds": 22500
-}`}</code></pre>
-      </div>
-    </section>
-
-    <!-- Benchmark Selection Guide -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Which Benchmark Should You Use?
-      </h2>
-      <Diagram>
-{`┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Benchmark Selection Guide                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   What does your agent do?                                                  │
-│                                                                             │
-│   ├── Software engineering (code, bugs, PRs)?                               │
-│   │   └──▶ SWE-bench (Verified for quality, Full for breadth)               │
-│   │                                                                         │
-│   ├── Code generation only?                                                 │
-│   │   └──▶ HumanEval (quick), MBPP (broader), SWE-bench Lite (realistic)    │
-│   │                                                                         │
-│   ├── Web browsing and automation?                                          │
-│   │   └──▶ WebArena (comprehensive), MiniWoB++ (simpler)                    │
-│   │                                                                         │
-│   ├── Tool/function calling?                                                │
-│   │   └──▶ τ-bench (multi-turn), ToolBench (single-turn)                    │
-│   │                                                                         │
-│   ├── General assistant tasks?                                              │
-│   │   └──▶ GAIA (reasoning), AgentBench (multi-environment)                 │
-│   │                                                                         │
-│   └── Multiple capabilities?                                                │
-│       └──▶ AgentBench (8 environments), custom composite benchmark          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘`}
-      </Diagram>
-    </section>
-
-    <!-- Common Pitfalls -->
-    <section class="mb-12">
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Common Pitfalls
-      </h2>
-      <div class="grid md:grid-cols-2 gap-6">
-        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-          <h3 class="font-semibold text-red-800 dark:text-red-200 mb-2">Benchmark Overfitting</h3>
-          <p class="text-sm text-red-700 dark:text-red-300">
-            Optimizing specifically for benchmark patterns rather than general capability. Agents may game metrics without real improvement.
-          </p>
-        </div>
-        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-          <h3 class="font-semibold text-red-800 dark:text-red-200 mb-2">Data Contamination</h3>
-          <p class="text-sm text-red-700 dark:text-red-300">
-            LLMs trained on benchmark data have artificially inflated scores. Use held-out test sets and check for contamination.
-          </p>
-        </div>
-        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-          <h3 class="font-semibold text-red-800 dark:text-red-200 mb-2">Ignoring Cost</h3>
-          <p class="text-sm text-red-700 dark:text-red-300">
-            High scores achieved with 100x more tokens may not be practical. Always report cost alongside accuracy.
-          </p>
-        </div>
-        <div class="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
-          <h3 class="font-semibold text-red-800 dark:text-red-200 mb-2">Cherry-Picking</h3>
-          <p class="text-sm text-red-700 dark:text-red-300">
-            Running many times and reporting best result, or selecting favorable subsets. Report all runs with confidence intervals.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- Related Links -->
-    <section>
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6">
-        Related Topics
-      </h2>
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <a href="/topics/evaluation/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Evaluation & Metrics</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Comprehensive guide to agent evaluation</p>
-        </a>
-        <a href="/topics/tool-use/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">Tool Use</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Foundation for tool-based benchmarks</p>
-        </a>
-        <a href="/topics/react-pattern/" class="block p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors">
-          <h3 class="font-semibold text-slate-900 dark:text-white mb-1">ReAct Pattern</h3>
-          <p class="text-sm text-slate-600 dark:text-slate-400">Agent architecture underlying benchmarks</p>
-        </a>
-      </div>
-    </section>
   </div>
 </BaseLayout>

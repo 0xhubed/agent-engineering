@@ -1,0 +1,633 @@
+---
+title: "Model Context Protocol (MCP)"
+description: "An open standard from Anthropic that defines how AI agents connect to external tools, data sources, and services through a composable server architecture."
+category: "Protocols"
+date: "2024-03-10"
+type: "topic"
+tags: [mcp, protocol, anthropic, integration]
+featured: false
+---
+
+Before MCP, every application that wanted to connect an AI assistant to an external service needed to write custom integration code. A coding assistant that needed access to GitHub, a Slack channel, and a database required three separate, non-composable integrations, none of which could be reused by other applications. The Model Context Protocol changes this by defining a standard interface — think of it as USB for AI tools. Any MCP-compatible client can work with any MCP server, and servers built for one application work immediately in any other application that supports the protocol.
+
+## What is MCP?
+
+The Model Context Protocol (MCP) is an open standard that defines how AI applications communicate with external tools and data sources. It was created by Anthropic and has been adopted by a growing number of AI applications and development tools. The protocol defines three core primitives: tools (functions the model can invoke), resources (data the model can read), and prompts (pre-defined templates for common tasks).
+
+The architecture is simple: an MCP client (embedded in the AI application) spawns one or more MCP servers as separate processes, communicates with them over stdio using JSON-RPC, and routes tool calls and resource reads to the appropriate server. Servers run in isolation from each other and from the host application, providing a natural security boundary.
+
+<Diagram title="MCP Architecture">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                        AI APPLICATION                            │
+│  (Claude Desktop, VS Code, Custom Agent)                        │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                      MCP CLIENT                            │ │
+│  │  • Discovers servers from config                           │ │
+│  │  • Manages connections                                     │ │
+│  │  • Routes tool calls to correct server                     │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└───────────────┬────────────────┬────────────────┬───────────────┘
+                │ stdio          │ stdio          │ stdio
+                ▼                ▼                ▼
+┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
+│   MCP SERVER      │ │   MCP SERVER      │ │   MCP SERVER      │
+│   (GitHub)        │ │   (Slack)         │ │   (Database)      │
+│                   │ │                   │ │                   │
+│ Tools:            │ │ Tools:            │ │ Tools:            │
+│ • search_repos    │ │ • send_message    │ │ • query           │
+│ • get_file        │ │ • list_channels   │ │ • insert          │
+│ • create_issue    │ │ • search_messages │ │ • update          │
+│                   │ │                   │ │                   │
+│ Resources:        │ │ Resources:        │ │ Resources:        │
+│ • github://repos  │ │ • slack://users   │ │ • db://tables     │
+└───────────────────┘ └───────────────────┘ └───────────────────┘
+         │                    │                    │
+         ▼                    ▼                    ▼
+    GitHub API           Slack API            PostgreSQL`}
+</Diagram>
+
+<Callout type="info" title="Why MCP Matters">
+Before MCP, every application needed custom integrations for each service. MCP provides a standard interface, allowing developers to build tools once and use them with any MCP-compatible AI assistant.
+</Callout>
+
+## Building an MCP Server
+
+An MCP server exposes tools, resources, and optionally prompts through a standard interface. The Python SDK provides decorators that map directly onto the protocol's capabilities:
+
+```python
+from mcp.server import Server, NotificationOptions
+from mcp.server.models import InitializationOptions
+from mcp.types import Tool, TextContent, Resource
+import mcp.server.stdio
+
+# Create an MCP server
+server = Server("github-server")
+
+# Define available tools
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    return [
+        Tool(
+            name="search_repos",
+            description="Search GitHub repositories by query",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 10
+                    }
+                },
+                "required": ["query"]
+            }
+        ),
+        Tool(
+            name="get_file",
+            description="Get file contents from a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "path": {"type": "string"}
+                },
+                "required": ["owner", "repo", "path"]
+            }
+        ),
+        Tool(
+            name="create_issue",
+            description="Create a new issue in a repository",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "owner": {"type": "string"},
+                    "repo": {"type": "string"},
+                    "title": {"type": "string"},
+                    "body": {"type": "string"}
+                },
+                "required": ["owner", "repo", "title"]
+            }
+        )
+    ]
+
+# Handle tool calls
+@server.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    if name == "search_repos":
+        results = await github_api.search_repos(arguments["query"])
+        return [TextContent(type="text", text=json.dumps(results))]
+
+    elif name == "get_file":
+        content = await github_api.get_file(
+            arguments["owner"],
+            arguments["repo"],
+            arguments["path"]
+        )
+        return [TextContent(type="text", text=content)]
+
+    elif name == "create_issue":
+        issue = await github_api.create_issue(
+            arguments["owner"],
+            arguments["repo"],
+            arguments["title"],
+            arguments.get("body", "")
+        )
+        return [TextContent(type="text", text=f"Created issue #{issue.number}")]
+
+    raise ValueError(f"Unknown tool: {name}")
+
+# Run the server
+async def main():
+    async with mcp.server.stdio.stdio_server() as (read, write):
+        await server.run(
+            read,
+            write,
+            InitializationOptions(
+                server_name="github-server",
+                server_version="1.0.0"
+            )
+        )
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
+```
+
+## Building an MCP Client
+
+An MCP client connects to one or more servers, aggregates their tools, and routes requests. The client is responsible for discovering available servers from configuration, spawning their processes, and maintaining the connections across the session lifetime.
+
+```python
+import asyncio
+from mcp.client.session import ClientSession
+from mcp.client.stdio import StdioServerParameters, stdio_client
+from mcp.types import Tool
+
+class MCPClient:
+    def __init__(self):
+        self.servers: dict[str, ClientSession] = {}
+
+    async def connect_server(
+        self,
+        name: str,
+        command: str,
+        args: list[str] | None = None,
+        env: dict[str, str] | None = None
+    ) -> list[Tool]:
+        """Connect to an MCP server and return its tools."""
+        server_params = StdioServerParameters(
+            command=command,
+            args=args or [],
+            env=env
+        )
+
+        stdio_transport = await stdio_client(server_params)
+        read, write = stdio_transport
+
+        session = ClientSession(read, write)
+        await session.initialize()
+
+        tools_response = await session.list_tools()
+        self.servers[name] = session
+        return tools_response.tools
+
+    async def call_tool(
+        self,
+        server_name: str,
+        tool_name: str,
+        arguments: dict
+    ) -> str:
+        """Call a tool on a specific server."""
+        session = self.servers.get(server_name)
+        if not session:
+            raise ValueError(f"Server not connected: {server_name}")
+        result = await session.call_tool(tool_name, arguments)
+        return result.content[0].text
+
+    async def disconnect_all(self):
+        for session in self.servers.values():
+            await session.close()
+        self.servers.clear()
+
+# Usage
+async def main():
+    client = MCPClient()
+
+    github_tools = await client.connect_server(
+        name="github",
+        command="python",
+        args=["-m", "github_mcp_server"]
+    )
+    print(f"GitHub tools: {[t.name for t in github_tools]}")
+
+    repos = await client.call_tool(
+        "github",
+        "search_repos",
+        {"query": "langchain python"}
+    )
+    print(repos)
+
+    await client.disconnect_all()
+
+asyncio.run(main())
+```
+
+MCP servers are configured via JSON. The standard format used by Claude Desktop and other clients looks like this:
+
+```json
+{
+  "mcpServers": {
+    "github": {
+      "command": "python",
+      "args": ["-m", "github_mcp_server"],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxxx"
+      }
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/slack-mcp-server"],
+      "env": {
+        "SLACK_TOKEN": "xoxb-xxxx"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/filesystem-mcp-server", "/path/to/allowed/dir"]
+    }
+  }
+}
+```
+
+## Resources: Read-Only Data Access
+
+Resources provide a way for models to read data without invoking tools. They use URI schemes for addressing and are conceptually separate from tools: resources are for reading (GET semantics), tools are for actions (POST/PUT/DELETE semantics). Use resources when the model just needs to reference data, not when it needs to trigger a side effect.
+
+<Table caption="Resource URI patterns">
+  <thead>
+    <tr>
+      <th>Pattern</th>
+      <th>Example</th>
+      <th>Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>file://</code></td>
+      <td><code>file:///home/user/doc.md</code></td>
+      <td>Local filesystem access</td>
+    </tr>
+    <tr>
+      <td><code>github://</code></td>
+      <td><code>github://owner/repo/file.py</code></td>
+      <td>GitHub repository contents</td>
+    </tr>
+    <tr>
+      <td><code>db://</code></td>
+      <td><code>db://mydb/users/123</code></td>
+      <td>Database records</td>
+    </tr>
+    <tr>
+      <td><code>api://</code></td>
+      <td><code>api://weather/current/NYC</code></td>
+      <td>External API data</td>
+    </tr>
+  </tbody>
+</Table>
+
+```python
+from mcp.server import Server
+from mcp.types import Resource, ResourceContents, TextResourceContents
+
+server = Server("data-server")
+
+@server.list_resources()
+async def list_resources() -> list[Resource]:
+    return [
+        Resource(
+            uri="data://users",
+            name="User Directory",
+            description="List of all users in the system",
+            mimeType="application/json"
+        ),
+        Resource(
+            uri="data://users/{user_id}",
+            name="User Profile",
+            description="Detailed profile for a specific user",
+            mimeType="application/json"
+        ),
+        Resource(
+            uri="data://reports/{report_type}/{date}",
+            name="Reports",
+            description="Generated reports by type and date",
+            mimeType="application/json"
+        )
+    ]
+
+@server.read_resource()
+async def read_resource(uri: str) -> ResourceContents:
+    parts = uri.replace("data://", "").split("/")
+
+    if parts[0] == "users":
+        if len(parts) == 1:
+            users = await db.get_all_users()
+            return TextResourceContents(
+                uri=uri,
+                mimeType="application/json",
+                text=json.dumps(users)
+            )
+        else:
+            user_id = parts[1]
+            user = await db.get_user(user_id)
+            return TextResourceContents(
+                uri=uri,
+                mimeType="application/json",
+                text=json.dumps(user)
+            )
+
+    raise ValueError(f"Unknown resource: {uri}")
+```
+
+<Callout type="tip" title="Resources vs Tools">
+Resources are for reading data (GET operations). Tools are for actions that modify state (POST, PUT, DELETE). Use resources when the model just needs to reference data.
+</Callout>
+
+## Security Considerations
+
+MCP's process-isolation architecture provides a solid foundation for security, but the protocol alone is not sufficient. Servers must validate all incoming arguments, scope filesystem access to allowed directories, log all tool invocations for audit purposes, and store credentials in environment variables rather than configuration files.
+
+<Table caption="Security layers in MCP">
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>Protection</th>
+      <th>Implementation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Process Isolation</strong></td>
+      <td>Servers run in separate processes</td>
+      <td>stdio communication, no shared memory</td>
+    </tr>
+    <tr>
+      <td><strong>Capability Negotiation</strong></td>
+      <td>Explicit feature opt-in</td>
+      <td>Client declares supported features at init</td>
+    </tr>
+    <tr>
+      <td><strong>Argument Validation</strong></td>
+      <td>Type-safe tool inputs</td>
+      <td>JSON Schema validation before execution</td>
+    </tr>
+    <tr>
+      <td><strong>Path Scoping</strong></td>
+      <td>Limit filesystem access</td>
+      <td>Whitelist allowed directories</td>
+    </tr>
+    <tr>
+      <td><strong>Audit Logging</strong></td>
+      <td>Track all tool invocations</td>
+      <td>Log tool, args, user, timestamp</td>
+    </tr>
+  </tbody>
+</Table>
+
+Path validation is a critical security control for any server that touches the filesystem. The following pattern ensures that all path arguments are resolved and checked against an allowlist before any operation proceeds:
+
+```python
+from mcp.server import Server
+from mcp.types import Tool
+import os
+from pathlib import Path
+
+class SecureMcpServer(Server):
+    def __init__(self, allowed_paths: list[str]):
+        super().__init__("secure-server")
+        self.allowed_paths = [Path(p).resolve() for p in allowed_paths]
+        self.denied_patterns = ["*.env", "*.key", "secrets/*"]
+
+    def validate_path(self, path: str) -> Path:
+        """Ensure path is within allowed directories."""
+        resolved = Path(path).resolve()
+
+        is_allowed = any(
+            resolved.is_relative_to(allowed)
+            for allowed in self.allowed_paths
+        )
+
+        if not is_allowed:
+            raise PermissionError(f"Path not allowed: {path}")
+
+        for pattern in self.denied_patterns:
+            if resolved.match(pattern):
+                raise PermissionError(f"Access denied: {path}")
+
+        return resolved
+
+    @server.call_tool()
+    async def call_tool(self, name: str, arguments: dict):
+        if "path" in arguments:
+            arguments["path"] = str(self.validate_path(arguments["path"]))
+        if "paths" in arguments:
+            arguments["paths"] = [
+                str(self.validate_path(p))
+                for p in arguments["paths"]
+            ]
+        return await self._execute_tool(name, arguments)
+
+server = SecureMcpServer(
+    allowed_paths=os.environ.get("MCP_ALLOWED_PATHS", "").split(":"),
+)
+```
+
+<Callout type="danger" title="Never Trust User Input">
+Always validate and sanitize arguments before passing to external systems. MCP tools can be invoked with any arguments the model generates, including adversarially crafted ones from prompt injection.
+</Callout>
+
+<Callout type="warning" title="Secret Management">
+Store API keys and credentials in environment variables, not in config files. Use secret managers for production deployments.
+</Callout>
+
+## Available MCP Servers
+
+A growing ecosystem of pre-built servers covers the most common integration needs:
+
+<Table caption="Available MCP servers">
+  <thead>
+    <tr>
+      <th>Server</th>
+      <th>Tools Provided</th>
+      <th>Package</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Filesystem</strong></td>
+      <td>read, write, list, search files</td>
+      <td><code>@anthropic/filesystem-mcp-server</code></td>
+    </tr>
+    <tr>
+      <td><strong>GitHub</strong></td>
+      <td>repos, issues, PRs, code search</td>
+      <td><code>@anthropic/github-mcp-server</code></td>
+    </tr>
+    <tr>
+      <td><strong>Slack</strong></td>
+      <td>messages, channels, users</td>
+      <td><code>@anthropic/slack-mcp-server</code></td>
+    </tr>
+    <tr>
+      <td><strong>PostgreSQL</strong></td>
+      <td>query, schema inspection</td>
+      <td><code>mcp-server-postgres</code></td>
+    </tr>
+    <tr>
+      <td><strong>SQLite</strong></td>
+      <td>query, schema, modifications</td>
+      <td><code>mcp-server-sqlite</code></td>
+    </tr>
+    <tr>
+      <td><strong>Brave Search</strong></td>
+      <td>web search, news search</td>
+      <td><code>@anthropic/brave-search-mcp-server</code></td>
+    </tr>
+    <tr>
+      <td><strong>Memory</strong></td>
+      <td>persistent key-value storage</td>
+      <td><code>@anthropic/memory-mcp-server</code></td>
+    </tr>
+    <tr>
+      <td><strong>Puppeteer</strong></td>
+      <td>browser automation</td>
+      <td><code>@anthropic/puppeteer-mcp-server</code></td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="info" title="Community Servers">
+The MCP ecosystem is growing rapidly. Check github.com/modelcontextprotocol for the latest servers, including community-contributed integrations for hundreds of services.
+</Callout>
+
+## MCP Apps: Interactive UI Components
+
+MCP Apps is an official extension to the protocol that enables tools to return interactive UI components — dashboards, forms, visualizations, workflows — that render directly in conversations rather than returning plain text. When a user asks an agent to "show me Q4 revenue breakdown," the tool can return an interactive bar chart rather than a text summary.
+
+<Diagram title="MCP Apps Architecture">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                      MCP CLIENT (Claude, VS Code)                │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │                    Conversation View                        │ │
+│  │                                                             │ │
+│  │  User: "Show me Q4 revenue breakdown"                       │ │
+│  │                                                             │ │
+│  │  Assistant: [Calls analyze_revenue tool]                    │ │
+│  │                                                             │ │
+│  │  ┌─────────────────────────────────────────────────────┐   │ │
+│  │  │           SANDBOXED IFRAME (ui://)                   │   │ │
+│  │  │  Revenue by Region - Q4 2025                        │   │ │
+│  │  │  ┌────┐ ┌────┐ ┌────┐ ┌────┐                       │   │ │
+│  │  │  │ NA │ │ EU │ │APAC│ │LATAM│  [Export]            │   │ │
+│  │  │  │████│ │██  │ │███ │ │█   │                       │   │ │
+│  │  │  └────┘ └────┘ └────┘ └────┘                       │   │ │
+│  │  │  Click any bar to drill down...                     │   │ │
+│  │  └─────────────────────────────────────────────────────┘   │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+
+Tool Response Structure:
+{
+  "content": [{ "type": "text", "text": "Q4 analysis ready" }],
+  "_meta": {
+    "ui": {
+      "resourceUri": "ui://revenue-dashboard",
+      "data": { "results": [...], "interactive": true }
+    }
+  }
+}`}
+</Diagram>
+
+The tool returns a standard text content block alongside a `_meta.ui` field that references a `ui://` resource URI. The client loads that resource (a sandboxed HTML/JS bundle) into an iframe and passes the tool's data to it. All communication between the iframe and the host application goes through JSON-RPC, making it auditable. The UI bundle is pre-declared and reviewable before use, preventing injection of arbitrary code through tool results.
+
+```python
+from mcp.server import Server
+from mcp.types import Tool, TextContent, Resource
+
+server = Server("analytics-server")
+
+@server.call_tool()
+async def call_tool(name: str, arguments: dict):
+    if name == "analyze_data":
+        results = await db.query(arguments["query"])
+
+        return {
+            "content": [
+                TextContent(
+                    type="text",
+                    text=f"Analysis complete: {len(results)} records"
+                )
+            ],
+            "_meta": {
+                "ui": {
+                    "resourceUri": "ui://data-explorer",
+                    "data": {
+                        "results": results,
+                        "visualization": "interactive-table",
+                        "allowExport": True
+                    }
+                }
+            }
+        }
+
+@server.read_resource()
+async def read_resource(uri: str):
+    if uri == "ui://data-explorer":
+        return {
+            "uri": uri,
+            "mimeType": "text/html",
+            "text": load_ui_bundle("data-explorer.html")
+        }
+```
+
+MCP Apps is supported in Claude (web and desktop), Goose, Visual Studio Code Insiders, and is rolling out to additional clients.
+
+## MCP vs Other Approaches
+
+<Table caption="Comparing integration approaches">
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>Pros</th>
+      <th>Cons</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>MCP</strong></td>
+      <td>Standardized, composable, secure isolation</td>
+      <td>Requires server implementation</td>
+    </tr>
+    <tr>
+      <td><strong>Direct API calls</strong></td>
+      <td>Simple for single integrations</td>
+      <td>Custom code per service, no standard</td>
+    </tr>
+    <tr>
+      <td><strong>LangChain Tools</strong></td>
+      <td>Rich ecosystem, Python-native</td>
+      <td>Python only, no process isolation</td>
+    </tr>
+    <tr>
+      <td><strong>OpenAI Plugins</strong></td>
+      <td>OpenAPI-based, easy to build</td>
+      <td>OpenAI-specific, limited capabilities</td>
+    </tr>
+  </tbody>
+</Table>
+
+The core advantage of MCP over direct API calls or framework-specific tools is composability. A GitHub MCP server built for Claude Desktop works without modification in any other MCP client. Investment in server implementation compounds across every application that adopts the protocol, rather than being siloed within a single integration.

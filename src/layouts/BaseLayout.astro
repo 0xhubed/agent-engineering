@@ -1,36 +1,50 @@
 ---
+import '../styles/global.css';
+
 interface Props {
   title: string;
   description?: string;
   type?: 'website' | 'article';
   keywords?: string[];
+  showMasthead?: boolean;
 }
 
 const {
   title,
-  description = 'Learn about AI agent architectures, patterns, and benchmarks',
+  description = 'The practitioner\'s journal of AI agent architecture, patterns, and engineering.',
   type = 'website',
-  keywords = ['AI agents', 'LLM', 'agent engineering', 'tool use', 'ReAct', 'MCP', 'multi-agent systems']
+  keywords = ['AI agents', 'LLM', 'agent engineering', 'tool use', 'ReAct', 'MCP', 'multi-agent systems'],
+  showMasthead = false,
 } = Astro.props;
+
 const currentPath = Astro.url.pathname;
 const canonicalUrl = new URL(currentPath, Astro.site).href;
+const base = import.meta.env.BASE_URL;
 
-// JSON-LD structured data
+// Format today's date in newspaper style
+const today = new Date();
+const dateStr = today.toLocaleDateString('en-US', {
+  weekday: 'long',
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+// Escape </script> injection vectors in JSON-LD
+function safeJsonLd(obj: object): string {
+  return JSON.stringify(obj)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026');
+}
+
 const websiteSchema = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": "Agent Engineering",
-  "description": "A comprehensive resource for understanding AI agent architectures, design patterns, and implementation strategies.",
-  "url": "https://agents-engineering.com",
-  "author": {
-    "@type": "Person",
-    "name": "Daniel Huber"
-  },
-  "potentialAction": {
-    "@type": "SearchAction",
-    "target": "https://agents-engineering.com/topics/?q={search_term_string}",
-    "query-input": "required name=search_term_string"
-  }
+  "description": description,
+  "url": Astro.site?.href ?? 'https://agentengineering.dev',
+  "author": { "@type": "Person", "name": "Daniel Huber" },
 };
 
 const articleSchema = type === 'article' ? {
@@ -39,15 +53,9 @@ const articleSchema = type === 'article' ? {
   "headline": title,
   "description": description,
   "url": canonicalUrl,
-  "author": {
-    "@type": "Person",
-    "name": "Daniel Huber"
-  },
-  "publisher": {
-    "@type": "Organization",
-    "name": "Agent Engineering"
-  },
-  "keywords": keywords.join(", ")
+  "author": { "@type": "Person", "name": "Daniel Huber" },
+  "publisher": { "@type": "Organization", "name": "Agent Engineering" },
+  "keywords": keywords.join(", "),
 } : null;
 ---
 
@@ -74,98 +82,95 @@ const articleSchema = type === 'article' ? {
     <meta name="twitter:title" content={`${title} | Agent Engineering`} />
     <meta name="twitter:description" content={description} />
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=EB+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <title>{title} | Agent Engineering</title>
 
-    <!-- JSON-LD Structured Data -->
-    <script is:inline type="application/ld+json" set:html={JSON.stringify(websiteSchema)} />
-    {articleSchema && <script is:inline type="application/ld+json" set:html={JSON.stringify(articleSchema)} />}
+    <script is:inline type="application/ld+json" set:html={safeJsonLd(websiteSchema)} />
+    {articleSchema && <script is:inline type="application/ld+json" set:html={safeJsonLd(articleSchema)} />}
   </head>
   <body class="min-h-screen flex flex-col">
-    <!-- Header -->
-    <header class="sticky top-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-14">
+
+    <!-- Dateline bar -->
+    <div class="border-b border-newsprint-300 bg-newsprint-100">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-1 flex items-center justify-between">
+        <span class="font-serif text-xs text-ink-muted italic">agentengineering.dev</span>
+        <span class="font-serif text-xs text-ink-muted">{dateStr}</span>
+      </div>
+    </div>
+
+    {showMasthead && (
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4">
+        <div class="masthead">
+          <div class="masthead-title">Agent Engineering</div>
+          <div class="masthead-subtitle">The Practitioner's Journal of AI Agent Architecture</div>
+          <div class="masthead-dateline">Vol. I &nbsp;·&nbsp; {dateStr}</div>
+        </div>
+      </div>
+    )}
+
+    <!-- Navigation bar -->
+    <header class="sticky top-0 z-50 bg-newsprint-50/95 backdrop-blur-sm border-b border-ink">
+      <div style="border-top: 1px solid theme('colors.newsprint.400'); margin-bottom: -1px;"></div>
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-11">
           <!-- Logo -->
-          <a href="/" class="text-slate-900 dark:text-white hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-            <span class="font-medium">Agent Engineering</span>
+          <a href={base} class="font-display font-bold text-ink no-underline hover:no-underline text-lg tracking-tight">
+            Agent Engineering
           </a>
 
           <!-- Desktop Navigation -->
           <nav class="hidden md:flex items-center gap-8">
-            <a href="/topics/" class:list={[
-              "text-sm transition-colors",
-              currentPath.startsWith('/topics')
-                ? "text-slate-900 dark:text-white"
-                : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            <a href={`${base}articles/`} class:list={[
+              "font-serif text-sm no-underline hover:no-underline transition-colors",
+              currentPath.startsWith('/articles') || currentPath.startsWith('/topics')
+                ? "text-ink font-medium"
+                : "text-ink-muted hover:text-ink"
             ]}>
-              Topics
+              Articles
             </a>
-            <a href="/benchmarks/" class:list={[
-              "text-sm transition-colors",
+            <a href={`${base}benchmarks/`} class:list={[
+              "font-serif text-sm no-underline hover:no-underline transition-colors",
               currentPath.startsWith('/benchmarks')
-                ? "text-slate-900 dark:text-white"
-                : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                ? "text-ink font-medium"
+                : "text-ink-muted hover:text-ink"
             ]}>
               Benchmarks
             </a>
-            <a href="/resources/" class:list={[
-              "text-sm transition-colors",
+            <a href={`${base}resources/`} class:list={[
+              "font-serif text-sm no-underline hover:no-underline transition-colors",
               currentPath.startsWith('/resources')
-                ? "text-slate-900 dark:text-white"
-                : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                ? "text-ink font-medium"
+                : "text-ink-muted hover:text-ink"
             ]}>
               Resources
             </a>
           </nav>
 
-          <!-- Dark Mode Toggle & Mobile Menu -->
-          <div class="flex items-center gap-4">
-            <button
-              id="theme-toggle"
-              class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              aria-label="Toggle dark mode"
-            >
-              <svg class="w-4 h-4 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"/>
-              </svg>
-              <svg class="w-4 h-4 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"/>
-              </svg>
-            </button>
-
-            <!-- Mobile Menu Button -->
-            <button
-              id="mobile-menu-btn"
-              class="md:hidden text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              aria-label="Open menu"
-            >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/>
-              </svg>
-            </button>
-          </div>
+          <!-- Mobile Menu Button -->
+          <button
+            id="mobile-menu-btn"
+            class="md:hidden text-ink-muted hover:text-ink transition-colors"
+            aria-label="Open menu"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
         </div>
       </div>
-
-      <!-- Mobile Navigation -->
-      <nav id="mobile-menu" class="hidden md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-        <div class="px-4 py-3 space-y-1">
-          <a href="/topics/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-            Topics
-          </a>
-          <a href="/benchmarks/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-            Benchmarks
-          </a>
-          <a href="/resources/" class="block px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
-            Resources
-          </a>
-        </div>
-      </nav>
     </header>
+
+    <!-- Mobile Navigation -->
+    <nav id="mobile-menu" class="hidden border-b border-newsprint-300 bg-newsprint-50">
+      <div class="max-w-6xl mx-auto px-4 py-3 space-y-1">
+        <a href={`${base}articles/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Articles</a>
+        <a href={`${base}benchmarks/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Benchmarks</a>
+        <a href={`${base}resources/`} class="block px-3 py-2 font-serif text-sm text-ink-muted hover:text-ink no-underline">Resources</a>
+      </div>
+    </nav>
 
     <!-- Main Content -->
     <main class="flex-1">
@@ -173,49 +178,21 @@ const articleSchema = type === 'article' ? {
     </main>
 
     <!-- Footer -->
-    <footer class="border-t border-slate-200 dark:border-slate-800">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <p class="text-sm text-slate-400 dark:text-slate-500">
-          Agent Engineering by Daniel Huber
+    <footer class="mt-16">
+      <hr class="rule-double max-w-6xl mx-auto px-4" />
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
+        <p class="font-serif text-sm text-ink-muted italic">
+          Agent Engineering &mdash; by Daniel Huber
+        </p>
+        <p class="font-serif text-xs text-ink-faint mt-1">
+          A practitioner's reference for AI agent architecture and engineering patterns.
         </p>
       </div>
     </footer>
 
     <script>
-      // Theme toggle
-      const themeToggle = document.getElementById('theme-toggle');
-      const html = document.documentElement;
-
-      // Check for saved theme preference or default to system preference
-      const getThemePreference = () => {
-        if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
-          return localStorage.getItem('theme');
-        }
-        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      };
-
-      const setTheme = (theme: string) => {
-        if (theme === 'dark') {
-          html.classList.add('dark');
-        } else {
-          html.classList.remove('dark');
-        }
-        localStorage.setItem('theme', theme);
-      };
-
-      // Set initial theme
-      setTheme(getThemePreference()!);
-
-      // Toggle theme on button click
-      themeToggle?.addEventListener('click', () => {
-        const currentTheme = html.classList.contains('dark') ? 'dark' : 'light';
-        setTheme(currentTheme === 'dark' ? 'light' : 'dark');
-      });
-
-      // Mobile menu toggle
       const mobileMenuBtn = document.getElementById('mobile-menu-btn');
       const mobileMenu = document.getElementById('mobile-menu');
-
       mobileMenuBtn?.addEventListener('click', () => {
         mobileMenu?.classList.toggle('hidden');
       });
@@ -228,7 +205,3 @@ const articleSchema = type === 'article' ? {
     </script>
   </body>
 </html>
-
-<style>
-  @import '../styles/global.css';
-</style>

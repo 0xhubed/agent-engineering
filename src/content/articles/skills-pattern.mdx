@@ -1,0 +1,527 @@
+---
+title: "Skills Pattern"
+description: "A filesystem-based approach to tool management that achieves 98% token savings by loading tool definitions on-demand rather than sending all tools on every request."
+category: "Advanced"
+date: "2024-03-01"
+type: "topic"
+tags: [skills, tool-management, token-savings]
+featured: false
+---
+
+Traditional function calling requires sending every tool definition with every API request. For a capable agent with 50 specialized tools, each definition averaging 3,000 tokens, that is 150,000 tokens of overhead per request — before any user message, context, or reasoning has been included. This scaling problem makes complex agents prohibitively expensive, and it gets worse as you add capabilities. The Skills Pattern solves this by treating tools as files on disk that are loaded on demand, rather than static definitions passed wholesale with every call.
+
+## The Problem: Context Bloat from Tools
+
+The core insight is simple: an agent almost never needs all of its tools simultaneously. A user asking to "search the web for recent news about AI" needs the web-search skill. They do not need the code-review skill, the data-analysis skill, or the email-composer skill. Sending all of those definitions with every request wastes tokens, inflates latency, and degrades reasoning quality by crowding the context with irrelevant information.
+
+The Skills Pattern solves this by giving the agent access to a `skills/` directory. The agent reads skill files as needed — exactly like a developer reads documentation — rather than having everything preloaded into memory whether it is relevant or not.
+
+```
+50 tools × 3,000 tokens/tool = 150,000 tokens/request (traditional)
+50 skills × 50 tokens/metadata + 1 skill × 1,000 tokens = 3,500 tokens (skills pattern)
+Savings: 97.7%
+```
+
+## Three Pillars of the Skills Pattern
+
+<Diagram title="Skills Pattern Architecture">
+{`┌─────────────────────────────────────────────────────────────┐
+│                     Skills Pattern                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. FILESYSTEM AS TOOL STORAGE                              │
+│     skills/                                                 │
+│     ├── web-search/SKILL.md                                 │
+│     ├── code-review/SKILL.md                                │
+│     └── data-analysis/SKILL.md                              │
+│                                                             │
+│  2. PROGRESSIVE DISCLOSURE                                  │
+│     ┌──────────┐   ┌───────────────┐   ┌──────────────┐    │
+│     │ Metadata │ → │ Instructions  │ → │  Examples    │    │
+│     │ ~50 tok  │   │ ~1000 tok     │   │ ~2000 tok    │    │
+│     └──────────┘   └───────────────┘   └──────────────┘    │
+│         ↑                  ↑                  ↑             │
+│      Always            On select          If complex        │
+│                                                             │
+│  3. DATABASE-BACKED DISCOVERY (Optional)                    │
+│     ┌─────────────┐                                         │
+│     │ Vector DB   │  ← Embed skill descriptions             │
+│     │ (Chroma,    │  ← Semantic search for relevance        │
+│     │  Qdrant)    │  ← Skip metadata scanning               │
+│     └─────────────┘                                         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+## 1. Filesystem as Tool Storage
+
+Skills are organized as directories, each containing a `SKILL.md` file with YAML frontmatter for metadata and a markdown body for instructions. The agent can list, read, and navigate these files using standard filesystem tools — no special API required. This makes skills introspectable, version-controllable, and user-extensible without code changes.
+
+The following shows how to scan the filesystem and load skill metadata:
+
+```python
+from pathlib import Path
+from dataclasses import dataclass
+import yaml
+
+@dataclass
+class SkillMetadata:
+    name: str
+    description: str
+    triggers: list[str]
+    tools_required: list[str]
+
+def discover_skills(skills_dir: Path) -> dict[str, SkillMetadata]:
+    """Scan filesystem to discover available skills."""
+    skills = {}
+
+    for skill_path in skills_dir.iterdir():
+        if not skill_path.is_dir():
+            continue
+
+        skill_file = skill_path / "SKILL.md"
+        if not skill_file.exists():
+            continue
+
+        # Parse SKILL.md frontmatter
+        content = skill_file.read_text()
+        metadata = parse_skill_frontmatter(content)
+
+        skills[skill_path.name] = SkillMetadata(
+            name=metadata.get("name", skill_path.name),
+            description=metadata.get("description", ""),
+            triggers=metadata.get("triggers", []),
+            tools_required=metadata.get("tools", [])
+        )
+
+    return skills
+
+def parse_skill_frontmatter(content: str) -> dict:
+    """Extract YAML frontmatter from SKILL.md."""
+    if not content.startswith("---"):
+        return {}
+    end_idx = content.find("---", 3)
+    if end_idx == -1:
+        return {}
+    frontmatter = content[3:end_idx].strip()
+    return yaml.safe_load(frontmatter)
+```
+
+Each `SKILL.md` file follows a standard format. The frontmatter captures everything needed for skill selection — name, description, trigger phrases, required tools, and a token estimate for prioritization. The markdown body provides the full instructions that get loaded only when the skill is selected.
+
+The `triggers` field deserves particular attention. These are phrases that help the agent quickly match user requests to relevant skills without reading the full instructions. Specific, domain-relevant trigger phrases dramatically improve selection accuracy. Overly generic triggers like "help me" match everything and should be avoided.
+
+## 2. Progressive Disclosure
+
+Not all skill information is needed for every request. Progressive disclosure loads context in stages, adding only what is necessary at each step.
+
+<Table caption="Three stages of progressive skill loading">
+  <thead>
+    <tr>
+      <th>Stage</th>
+      <th>Content</th>
+      <th>Tokens</th>
+      <th>When Loaded</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>1. Metadata</strong></td>
+      <td>Name, description, triggers</td>
+      <td>~50/skill</td>
+      <td>Always (for selection)</td>
+    </tr>
+    <tr>
+      <td><strong>2. Instructions</strong></td>
+      <td>Full SKILL.md body</td>
+      <td>~500–1000</td>
+      <td>After skill selected</td>
+    </tr>
+    <tr>
+      <td><strong>3. Resources</strong></td>
+      <td>Examples, templates, schemas</td>
+      <td>Variable</td>
+      <td>Only for complex tasks</td>
+    </tr>
+  </tbody>
+</Table>
+
+```python
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+
+class DisclosureLevel(Enum):
+    METADATA = 1     # Name, description, triggers (~50 tokens)
+    INSTRUCTIONS = 2 # Full SKILL.md body (~500-1000 tokens)
+    RESOURCES = 3    # Examples, templates (~variable)
+
+@dataclass
+class SkillContext:
+    name: str
+    level: DisclosureLevel
+    content: str
+    token_count: int
+
+class ProgressiveSkillLoader:
+    def __init__(self, skills_dir: Path):
+        self.skills_dir = skills_dir
+        self._metadata_cache: dict[str, dict] = {}
+
+    def get_skill_list(self) -> list[dict]:
+        """Stage 1: Return minimal metadata for all skills."""
+        skills = []
+        for skill_path in self.skills_dir.iterdir():
+            if not skill_path.is_dir():
+                continue
+            metadata = self._load_metadata(skill_path.name)
+            skills.append({
+                "name": metadata["name"],
+                "description": metadata["description"][:100],  # Truncate
+                "triggers": metadata.get("triggers", [])[:5]   # Limit
+            })
+        return skills
+
+    def load_instructions(self, skill_name: str) -> SkillContext:
+        """Stage 2: Load full instructions on demand."""
+        skill_file = self.skills_dir / skill_name / "SKILL.md"
+        content = skill_file.read_text()
+        body = self._extract_body(content)
+        return SkillContext(
+            name=skill_name,
+            level=DisclosureLevel.INSTRUCTIONS,
+            content=body,
+            token_count=self._estimate_tokens(body)
+        )
+
+    def load_resources(self, skill_name: str) -> SkillContext:
+        """Stage 3: Load examples and additional resources."""
+        examples_dir = self.skills_dir / skill_name / "examples"
+        resources = []
+        if examples_dir.exists():
+            for example_file in examples_dir.iterdir():
+                resources.append(example_file.read_text())
+        combined = "\n---\n".join(resources)
+        return SkillContext(
+            name=skill_name,
+            level=DisclosureLevel.RESOURCES,
+            content=combined,
+            token_count=self._estimate_tokens(combined)
+        )
+
+    def _load_metadata(self, skill_name: str) -> dict:
+        if skill_name not in self._metadata_cache:
+            skill_file = self.skills_dir / skill_name / "SKILL.md"
+            content = skill_file.read_text()
+            self._metadata_cache[skill_name] = parse_skill_frontmatter(content)
+        return self._metadata_cache[skill_name]
+
+# Usage in agent
+class SkillAwareAgent:
+    def __init__(self, loader: ProgressiveSkillLoader):
+        self.loader = loader
+
+    def process(self, query: str) -> str:
+        # Stage 1: Select skill from metadata
+        skill_list = self.loader.get_skill_list()
+        selected = self.llm.select_skill(query, skill_list)
+
+        if not selected:
+            return self.llm.respond_without_skill(query)
+
+        # Stage 2: Load instructions
+        context = self.loader.load_instructions(selected)
+
+        # Stage 3: Load examples for complex tasks
+        if self.is_complex_task(query):
+            resources = self.loader.load_resources(selected)
+            context.content += "\n\n" + resources.content
+
+        return self.llm.respond_with_context(query, context.content)
+```
+
+The token savings compound quickly. With 50 skills and the progressive approach, a typical request uses roughly 3,500 tokens instead of 150,000 — a 97.7% reduction. The vector search variant skips the metadata scan entirely, reducing this further to about 3,000 tokens.
+
+<Callout type="warning" title="Trade-off">
+Progressive disclosure adds latency through extra LLM calls for skill selection. For time-critical applications, consider pre-loading frequently-used skills or using vector search for instant matching.
+</Callout>
+
+## 3. Database-Backed Tool Discovery
+
+For skill libraries with 50 or more skills, scanning metadata files on every request becomes slow. Vector databases enable instant semantic search: embed each skill's description and triggers once at index time, then at runtime query with the user's message to find the closest match without touching the filesystem.
+
+<Diagram title="Vector-Based Skill Discovery">
+{`User Query: "help me analyze this spreadsheet"
+                    │
+                    ▼
+            ┌───────────────┐
+            │ Embed Query   │
+            │ (384-dim vec) │
+            └───────────────┘
+                    │
+                    ▼
+      ┌─────────────────────────┐
+      │     Vector Database     │
+      │  ┌─────────────────┐   │
+      │  │ data-analysis   │●──┼── 0.92 similarity
+      │  │ visualization   │●──┼── 0.78 similarity
+      │  │ web-search      │●──┼── 0.31 similarity
+      │  │ code-review     │●──┼── 0.22 similarity
+      │  └─────────────────┘   │
+      └─────────────────────────┘
+                    │
+                    ▼
+        Top match: data-analysis
+        Load: skills/data-analysis/SKILL.md`}
+</Diagram>
+
+```python
+import chromadb
+from chromadb.utils import embedding_functions
+from dataclasses import dataclass
+
+@dataclass
+class SkillMatch:
+    name: str
+    description: str
+    score: float
+    tools: list[str]
+
+class VectorSkillDiscovery:
+    def __init__(self, persist_dir: str = "./skill_vectors"):
+        self.client = chromadb.PersistentClient(path=persist_dir)
+
+        self.embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+
+        self.collection = self.client.get_or_create_collection(
+            name="skills",
+            embedding_function=self.embedding_fn,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def index_skill(self, skill: dict) -> None:
+        """Add or update a skill in the vector database."""
+        text = f"{skill['name']}: {skill['description']}"
+        if skill.get('triggers'):
+            text += f" Triggers: {', '.join(skill['triggers'])}"
+
+        self.collection.upsert(
+            ids=[skill['name']],
+            documents=[text],
+            metadatas=[{
+                "name": skill['name'],
+                "description": skill['description'],
+                "tools": ",".join(skill.get('tools', [])),
+                "token_estimate": skill.get('token_estimate', 0)
+            }]
+        )
+
+    def find_skills(
+        self,
+        query: str,
+        top_k: int = 3,
+        min_score: float = 0.5
+    ) -> list[SkillMatch]:
+        """Find most relevant skills for a query."""
+        results = self.collection.query(
+            query_texts=[query],
+            n_results=top_k,
+            include=["documents", "metadatas", "distances"]
+        )
+
+        matches = []
+        for i, distance in enumerate(results['distances'][0]):
+            score = 1 - distance
+            if score < min_score:
+                continue
+            metadata = results['metadatas'][0][i]
+            matches.append(SkillMatch(
+                name=metadata['name'],
+                description=metadata['description'],
+                score=score,
+                tools=metadata['tools'].split(',') if metadata['tools'] else []
+            ))
+
+        return matches
+
+    def reindex_all(self, skills_dir) -> int:
+        """Reindex all skills from filesystem."""
+        count = 0
+        for skill_path in skills_dir.iterdir():
+            if not skill_path.is_dir():
+                continue
+            skill_file = skill_path / "SKILL.md"
+            if not skill_file.exists():
+                continue
+            metadata = parse_skill_frontmatter(skill_file.read_text())
+            metadata['name'] = skill_path.name
+            self.index_skill(metadata)
+            count += 1
+        return count
+```
+
+<Table caption="Discovery approaches compared">
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>Pros</th>
+      <th>Cons</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Keyword/Trigger</strong></td>
+      <td>Simple, fast, no dependencies</td>
+      <td>Misses synonyms, brittle</td>
+      <td>&lt;20 skills</td>
+    </tr>
+    <tr>
+      <td><strong>LLM Selection</strong></td>
+      <td>Understands intent</td>
+      <td>Extra API call, latency</td>
+      <td>20–50 skills</td>
+    </tr>
+    <tr>
+      <td><strong>Vector Search</strong></td>
+      <td>Semantic matching, fast</td>
+      <td>Requires embedding model</td>
+      <td>50+ skills</td>
+    </tr>
+    <tr>
+      <td><strong>Hybrid</strong></td>
+      <td>Best accuracy</td>
+      <td>Most complex</td>
+      <td>Production systems</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Evaluation
+
+Skill discovery quality should be measured with explicit test cases that have ground-truth skill assignments. The key metrics are precision at rank 1 (is the top result correct?) and mean reciprocal rank (how high does the correct skill appear on average?). Latency matters too — vector search should complete in under 50ms.
+
+```python
+from dataclasses import dataclass
+import time
+
+@dataclass
+class TestCase:
+    query: str
+    relevant_skills: set[str]
+
+@dataclass
+class EvaluationResult:
+    precision_at_1: float
+    precision_at_3: float
+    recall_at_3: float
+    avg_latency_ms: float
+    mrr: float  # Mean Reciprocal Rank
+
+def evaluate_skill_discovery(
+    test_cases: list[TestCase],
+    discovery
+) -> EvaluationResult:
+    """Evaluate skill discovery accuracy and performance."""
+
+    p1_scores, p3_scores, recall_scores = [], [], []
+    latencies, reciprocal_ranks = [], []
+
+    for case in test_cases:
+        start = time.perf_counter()
+        results = discovery.find_skills(case.query, top_k=3)
+        latencies.append((time.perf_counter() - start) * 1000)
+
+        result_names = [r.name for r in results]
+
+        # Precision@1
+        p1_scores.append(1.0 if result_names[0] in case.relevant_skills else 0.0)
+
+        # Precision@3
+        hits = sum(1 for r in result_names[:3] if r in case.relevant_skills)
+        p3_scores.append(hits / 3)
+
+        # Recall@3
+        recall_scores.append(hits / len(case.relevant_skills))
+
+        # Mean Reciprocal Rank
+        for i, name in enumerate(result_names):
+            if name in case.relevant_skills:
+                reciprocal_ranks.append(1.0 / (i + 1))
+                break
+        else:
+            reciprocal_ranks.append(0.0)
+
+    return EvaluationResult(
+        precision_at_1=sum(p1_scores) / len(p1_scores),
+        precision_at_3=sum(p3_scores) / len(p3_scores),
+        recall_at_3=sum(recall_scores) / len(recall_scores),
+        avg_latency_ms=sum(latencies) / len(latencies),
+        mrr=sum(reciprocal_ranks) / len(reciprocal_ranks)
+    )
+```
+
+<Table caption="Key metrics for skill discovery evaluation">
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>What it Measures</th>
+      <th>Target</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Precision@1</strong></td>
+      <td>Is the top result the right skill?</td>
+      <td>&gt;90%</td>
+    </tr>
+    <tr>
+      <td><strong>Precision@3</strong></td>
+      <td>How many of top 3 are relevant?</td>
+      <td>&gt;80%</td>
+    </tr>
+    <tr>
+      <td><strong>Mean Reciprocal Rank</strong></td>
+      <td>How high is the correct skill ranked?</td>
+      <td>&gt;0.85</td>
+    </tr>
+    <tr>
+      <td><strong>Latency</strong></td>
+      <td>Time to find relevant skill(s)</td>
+      <td>&lt;50ms</td>
+    </tr>
+    <tr>
+      <td><strong>False Positive Rate</strong></td>
+      <td>Skills selected but not relevant</td>
+      <td>&lt;5%</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Real-World Example: Claude Code
+
+Anthropic's Claude Code uses a variant of the Skills Pattern to manage its extensive toolset. Skills are stored as markdown files in a `.claude/skills/` directory. The agent can list, read, and search skill files using the same filesystem tools it uses for code. Skills include triggers, instructions, and examples. New skills can be added by users without redeploying — just create a new `SKILL.md` file.
+
+<Callout type="info" title="User-Extensible Skills">
+A key benefit of filesystem-based skills: users can add custom skills by creating new SKILL.md files. No code changes or redeployment required.
+</Callout>
+
+## Common Pitfalls
+
+<Callout type="danger" title="Overly Generic Triggers">
+Triggers like "help me" or "do this" match everything. Use specific action verbs and domain terms. Each trigger should be narrow enough to discriminate between skills.
+</Callout>
+
+<Callout type="danger" title="Missing Negative Examples">
+Skills should document when NOT to use them. Without negative examples, a skill may be selected for similar-sounding queries where it is actually inappropriate.
+</Callout>
+
+<Callout type="warning" title="Stale Embeddings">
+When using vector search, remember to re-embed skills after updates. Implement hash-based change detection to know when a skill has changed and needs re-indexing.
+</Callout>
+
+<Callout type="warning" title="Too Many Small Skills">
+Prefer fewer, well-documented skills over many tiny ones. Each skill selection adds cognitive load for the agent and one more opportunity for misclassification.
+</Callout>

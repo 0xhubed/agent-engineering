@@ -1,0 +1,257 @@
+---
+title: "Agentic RAG"
+description: "Beyond simple retrieve-then-generate: intelligent agents that decide when, what, and how to retrieve, then critique and correct their own retrieval."
+category: "Advanced"
+date: "2024-04-20"
+type: "topic"
+tags:
+  - rag
+  - retrieval
+  - self-rag
+  - graph-rag
+featured: false
+---
+
+Basic RAG retrieves documents and generates a response. Agentic RAG treats retrieval as a decision the agent makes — when to retrieve, which tool to use, how to formulate the query, whether the results are good enough, and whether another retrieval round is needed. This shift from passive pipeline to active reasoning agent dramatically improves response quality for varied query types and reduces wasted retrieval calls on questions that don't need external information.
+
+## The RAG Evolution
+
+<Diagram title="RAG Architecture Evolution">
+{`BASIC RAG              AGENTIC RAG           SELF-RAG              CORRECTIVE RAG
+──────────────         ──────────────        ──────────────        ──────────────
+
+Query                  Query                 Query                 Query
+  │                      │                     │                     │
+  ▼                      ▼                     ▼                     ▼
+┌─────────┐          ┌─────────┐          ┌─────────┐          ┌─────────┐
+│ ALWAYS  │          │ DECIDE  │          │ DECIDE  │          │ ALWAYS  │
+│RETRIEVE │          │IF NEEDED│          │IF NEEDED│          │RETRIEVE │
+└────┬────┘          └────┬────┘          └────┬────┘          └────┬────┘
+     │                    │                    │                    │
+     ▼                    ▼                    ▼                    ▼
+┌─────────┐          ┌─────────┐          ┌─────────┐          ┌─────────┐
+│ Vector  │          │ Multiple│          │ Retrieve│          │ GRADE   │
+│ Search  │          │ Tools   │          │ + Grade │          │ EACH    │
+└────┬────┘          └────┬────┘          │ Relevance          │ DOCUMENT│
+     │                    │               └────┬────┘          └────┬────┘
+     ▼                    ▼                    ▼               ┌────┴────┐
+┌─────────┐          ┌─────────┐          ┌─────────┐          │ CORRECT │
+│GENERATE │          │GENERATE │          │ Generate│          │ AMBIG.  │
+└─────────┘          └─────────┘          │+ Self-  │          │ INCORR. │
+                                          │ Critique│          └────┬────┘
+                                          └────┬────┘               │
+                                               │                    ▼
+                                          ┌─────────┐          ┌─────────┐
+                                          │ Revise  │          │GENERATE │
+                                          │if Needed│          └─────────┘
+                                          └─────────┘`}
+</Diagram>
+
+<Table caption="RAG approach comparison">
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>When to Retrieve</th>
+      <th>Quality Control</th>
+      <th>Best For</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Basic RAG</strong></td>
+      <td>Always</td>
+      <td>None</td>
+      <td>Simple Q&amp;A</td>
+    </tr>
+    <tr>
+      <td><strong>Agentic RAG</strong></td>
+      <td>Agent decides</td>
+      <td>Tool selection</td>
+      <td>Varied queries</td>
+    </tr>
+    <tr>
+      <td><strong>Self-RAG</strong></td>
+      <td>Agent decides</td>
+      <td>Self-critique</td>
+      <td>Accuracy critical</td>
+    </tr>
+    <tr>
+      <td><strong>Corrective RAG</strong></td>
+      <td>Always</td>
+      <td>Grade + correct</td>
+      <td>Noisy retrieval</td>
+    </tr>
+    <tr>
+      <td><strong>Graph RAG</strong></td>
+      <td>Always (dual)</td>
+      <td>Structured + semantic</td>
+      <td>Entity-rich domains</td>
+    </tr>
+  </tbody>
+</Table>
+
+## 1. Basic RAG (Baseline)
+
+The simplest RAG architecture always retrieves, then generates. There is no intelligence about whether retrieval is needed or whether retrieved documents are relevant. Every query — even greetings — triggers a vector search, and whatever is retrieved gets stuffed into the prompt regardless of quality.
+
+<Callout type="warning" title="Limitations">
+Basic RAG retrieves for every query (even "hello"), uses whatever is retrieved regardless of quality, and only does one retrieval pass. These limitations make it wasteful and prone to irrelevant context pollution.
+</Callout>
+
+## 2. Agentic RAG
+
+An agent with retrieval tools decides when retrieval is needed, which tool to use, and what query to formulate. The agent can perform multiple retrieval rounds if initial results are insufficient.
+
+```python
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolNode
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from typing import TypedDict, Annotated
+import operator
+
+# Define state
+class AgentState(TypedDict):
+    messages: Annotated[list, operator.add]
+    retrieved_docs: list
+    needs_retrieval: bool
+
+# Define tools
+@tool
+def search_documents(query: str, max_results: int = 5) -> str:
+    """Search the document store for relevant information."""
+    results = vector_store.similarity_search(query, k=max_results)
+    return "\n\n".join([doc.page_content for doc in results])
+
+@tool
+def search_web(query: str) -> str:
+    """Search the web for current information."""
+    return web_search_api.search(query)
+
+@tool
+def lookup_entity(entity_name: str) -> str:
+    """Look up specific entity in knowledge base."""
+    return knowledge_base.get(entity_name, "Entity not found")
+
+# Create the agent
+llm = ChatOpenAI(model="gpt-4").bind_tools([
+    search_documents, search_web, lookup_entity
+])
+
+def should_retrieve(state: AgentState) -> str:
+    """Decide if we need to retrieve or can answer."""
+    last_message = state["messages"][-1]
+
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "retrieve"
+    return "answer"
+
+def call_model(state: AgentState) -> dict:
+    """Have the agent reason about what to do."""
+    messages = state["messages"]
+
+    system = """You are a helpful assistant with access to retrieval tools.
+
+    IMPORTANT: Before answering, consider:
+    1. Can you answer this from your knowledge? If yes, just respond.
+    2. Does this need current/specific information? Use search_web.
+    3. Does this need document lookup? Use search_documents.
+    4. Is this about a specific entity? Use lookup_entity.
+
+    Be strategic about retrieval - don't retrieve if unnecessary."""
+
+    response = llm.invoke([{"role": "system", "content": system}] + messages)
+    return {"messages": [response]}
+
+# Build the graph
+workflow = StateGraph(AgentState)
+
+workflow.add_node("agent", call_model)
+workflow.add_node("retrieve", ToolNode([search_documents, search_web, lookup_entity]))
+workflow.add_node("answer", call_model)
+
+workflow.set_entry_point("agent")
+workflow.add_conditional_edges("agent", should_retrieve, {
+    "retrieve": "retrieve",
+    "answer": "answer"
+})
+workflow.add_edge("retrieve", "agent")  # Loop back after retrieval
+workflow.add_edge("answer", END)
+
+app = workflow.compile()
+```
+
+The four key capabilities that differentiate agentic RAG from the baseline are: the agent decides whether retrieval is needed at all; the agent rewrites the user's query into a better retrieval query; the agent selects the appropriate retrieval tool from its available options; and the agent can retrieve multiple times with refined queries when initial results are insufficient.
+
+## 3. Self-RAG
+
+Self-RAG (Asai et al., 2023) adds self-reflection at multiple stages. The model first decides whether retrieval is needed. If yes, it retrieves documents and grades each for relevance, filtering out irrelevant ones. It then generates a response and critiques its own output: is the response fully supported by the sources? Is it useful? If either check fails, it regenerates with that feedback. This process produces structured quality signals — `[Retrieve]`, `[IsRel]`, `[IsSup]`, `[IsUse]` — that make the evaluation process transparent.
+
+Self-RAG is best when accuracy is paramount and you need to minimize hallucinations, accepting higher latency as the trade-off.
+
+## 4. Corrective RAG (CRAG)
+
+CRAG (Yan et al., 2024) focuses on evaluating and correcting retrieval quality before generation. It grades each retrieved document as Correct (directly helps answer the question), Incorrect (not relevant), or Ambiguous (partially relevant). Based on the distribution of grades, it selects one of three strategies: if most documents are Correct, use them directly; if most are Incorrect, fall back to web search; if mixed, combine good documents with refined excerpts from ambiguous ones and web results.
+
+<Diagram title="CRAG Decision Flow">
+{`Retrieved Documents
+        │
+        ▼
+┌───────────────────┐
+│   GRADE EACH      │
+│   DOCUMENT        │
+│                   │
+│  Correct?         │
+│  Incorrect?       │
+│  Ambiguous?       │
+└─────────┬─────────┘
+          │
+    ┌─────┴─────┐
+    │           │
+    ▼           ▼
+All Correct  All Incorrect   Mixed
+    │           │              │
+    ▼           ▼              ▼
+┌───────┐  ┌───────┐    ┌───────────┐
+│ USE   │  │ WEB   │    │ COMBINE   │
+│ DOCS  │  │SEARCH │    │ Correct + │
+└───────┘  └───────┘    │ Refined + │
+                        │ Web       │
+                        └───────────┘`}
+</Diagram>
+
+<Callout type="info" title="Key Innovation">
+CRAG's three-way grading (Correct/Incorrect/Ambiguous) enables nuanced handling: keeping good documents, discarding bad ones, and refining ambiguous ones rather than making an all-or-nothing retrieval decision.
+</Callout>
+
+## 5. Graph RAG
+
+Graph RAG combines vector search with knowledge graph traversal. It extracts named entities from the query, searches the vector store for semantically similar documents, traverses the knowledge graph to find related entities and their relationships, then merges both result sets into a structured context for generation.
+
+This approach excels for multi-hop questions ("Who reports to the person who manages the London office?"), entity-rich domains where structured relationships matter, and scenarios that require combining structured facts from a database with unstructured context from documents.
+
+<Callout type="tip" title="Graph Construction">
+You can build knowledge graphs from documents using LLM-based entity extraction, or use existing structured data like relational databases or ontologies as the graph source.
+</Callout>
+
+## Choosing an Approach
+
+Use Basic RAG when all queries need document lookup, for simple single-turn Q&A, or when latency is critical. Use Agentic RAG when queries vary widely — some needing retrieval, some not — or when multiple retrieval sources are available and complex multi-step reasoning is needed. Use Self-RAG when accuracy is paramount and you need to minimize hallucinations, accepting higher latency as the cost. Use Corrective RAG when retrieval quality varies or your document corpus has mixed quality. Use Graph RAG when data has clear entity relationships, multi-hop reasoning is required, or you have an existing knowledge graph to leverage.
+
+## Common Pitfalls
+
+<Callout type="danger" title="Over-retrieval">
+Retrieving for every query wastes tokens and can confuse the model with irrelevant context.
+</Callout>
+
+<Callout type="danger" title="Chunk Size Mismatch">
+Too small: loses context. Too large: dilutes relevance. Tune chunk size to your use case.
+</Callout>
+
+<Callout type="warning" title="Ignoring Retrieval Quality">
+Just because you retrieved five documents does not mean they are all useful. Grade and filter.
+</Callout>
+
+<Callout type="warning" title="Single-Pass Retrieval">
+Complex questions often need multiple retrieval rounds with refined queries before the agent has sufficient information to answer well.
+</Callout>

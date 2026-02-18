@@ -1,329 +1,161 @@
 ---
+import { getCollection } from 'astro:content';
 import BaseLayout from '../layouts/BaseLayout.astro';
-import CodeBlock from '../components/CodeBlock.astro';
 
-const topics = [
-  {
-    title: 'Tool Use & Function Calling',
-    description: 'Learn how agents extend their capabilities by calling external tools, APIs, and databases.',
-    href: '/topics/tool-use/',
-    available: true,
-  },
-  {
-    title: 'ReAct Pattern',
-    description: 'Master the Reasoning + Acting loop that powers agentic AI behavior.',
-    href: '/topics/react-pattern/',
-    available: true,
-  },
-  {
-    title: 'Memory Systems',
-    description: 'Explore how agents maintain context and learn from past interactions.',
-    href: '/topics/memory/',
-    available: true,
-  },
-  {
-    title: 'Context Engineering',
-    description: 'Optimize what goes into the context window. Write, Select, Compress, and Isolate strategies.',
-    href: '/topics/context-engineering/',
-    available: true,
-  },
-  {
-    title: 'Context Bloat & Rot',
-    description: 'Understanding and mitigating performance degradation in large contexts.',
-    href: '/topics/context-bloat/',
-    available: true,
-  },
-  {
-    title: 'Prompt Caching',
-    description: 'Reduce costs and latency by caching attention computations across requests.',
-    href: '/topics/prompt-caching/',
-    available: true,
-  },
-  {
-    title: 'Skills Pattern',
-    description: 'Filesystem-based tool management with 98% token savings.',
-    href: '/topics/skills-pattern/',
-    available: true,
-  },
-  {
-    title: 'Model Context Protocol',
-    description: 'Open protocol for connecting agents with tools and data sources.',
-    href: '/topics/mcp/',
-    available: true,
-  },
-  {
-    title: 'Agent2Agent Protocol',
-    description: 'Protocol for agent-to-agent discovery and collaboration.',
-    href: '/topics/a2a/',
-    available: true,
-  },
-  {
-    title: 'Learning & Adaptation',
-    description: 'Token-space learning, reflexion, and self-evolving agents.',
-    href: '/topics/learning-adaptation/',
-    available: true,
-  },
-  {
-    title: 'Multi-Agent Systems',
-    description: 'Discover patterns for coordinating multiple specialized agents.',
-    href: '/topics/multi-agent/',
-    available: true,
-  },
-  {
-    title: 'Agentic RAG',
-    description: 'Beyond simple retrieval: Self-RAG, Corrective RAG, and Graph RAG.',
-    href: '/topics/agentic-rag/',
-    available: true,
-  },
-  {
-    title: 'Safety & Guardrails',
-    description: 'Implement safeguards to ensure agents behave safely and predictably.',
-    href: '/topics/safety/',
-    available: true,
-  },
-  {
-    title: 'Evaluation & Metrics',
-    description: 'Measure agent performance: benchmarks, metrics, and LLM-as-Judge.',
-    href: '/topics/evaluation/',
-    available: true,
-  },
-];
+const allArticles = await getCollection('articles');
+const articles = allArticles.sort(
+  (a, b) => new Date(b.data.date).getTime() - new Date(a.data.date).getTime()
+);
 
-const sampleCode = [
-  {
-    language: 'pseudo',
-    label: 'Pseudo-code',
-    code: `function agentLoop(task):
-    context = initializeContext(task)
+const featured = articles.find(a => a.data.featured) ?? articles[0];
+const remaining = articles.filter(a => a.slug !== featured?.slug);
 
-    while not task.isComplete():
-        observation = perceive(context)
-        thought = reason(observation)
-        action = decide(thought)
-        result = execute(action)
-        context = update(context, result)
+const leftCol = remaining.slice(0, 3);
+const rightCol = remaining.slice(3, 6);
+const recent = remaining.slice(6, 9);
 
-    return context.result`,
-  },
-  {
-    language: 'python',
-    label: 'Python',
-    code: `def agent_loop(task: Task) -> Result:
-    context = initialize_context(task)
+function fmtDate(d: string) {
+  const dt = new Date(d + 'T12:00:00');
+  if (isNaN(dt.getTime())) return d;
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
 
-    while not task.is_complete():
-        observation = perceive(context)
-        thought = reason(observation)
-        action = decide(thought)
-        result = execute(action)
-        context = update(context, result)
-
-    return context.result`,
-  },
-  {
-    language: 'csharp',
-    label: 'C#',
-    code: `public Result AgentLoop(Task task)
-{
-    var context = InitializeContext(task);
-
-    while (!task.IsComplete())
-    {
-        var observation = Perceive(context);
-        var thought = Reason(observation);
-        var action = Decide(thought);
-        var result = Execute(action);
-        context = Update(context, result);
-    }
-
-    return context.Result;
-}`,
-  },
-];
+interface NewsItem { title: string; url: string; summary: string; source: string; }
+interface NewsData { last_updated: string | null; items: NewsItem[]; }
+let news: NewsItem[] = [];
+try {
+  const raw = await import('../data/news.json');
+  news = (raw.default as unknown as NewsData).items
+    ?.filter(item => item.url?.startsWith('https://') || item.url?.startsWith('http://'))
+    .slice(0, 4) ?? [];
+} catch { /* no news file */ }
 ---
 
-<BaseLayout title="Home">
-  <!-- Hero Section -->
-  <section class="py-20 sm:py-28">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="max-w-3xl">
-        <h1 class="text-4xl sm:text-5xl font-bold text-slate-900 dark:text-white mb-6 tracking-tight">
-          Agent Engineering
-        </h1>
-        <p class="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed">
-          A comprehensive resource for understanding AI agent architectures, design patterns, and implementation strategies. From basic loops to advanced multi-agent systems.
-        </p>
-        <div class="flex flex-col sm:flex-row gap-4">
-          <a
-            href="/topics/"
-            class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-white bg-slate-900 dark:bg-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors"
-          >
-            Explore Topics
-            <svg class="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
-          </a>
-          <a
-            href="/benchmarks/"
-            class="inline-flex items-center justify-center px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 transition-colors"
-          >
-            View Benchmarks
-          </a>
+<BaseLayout title="Agent Engineering" showMasthead={true}>
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Featured Article -->
+    {featured && (
+      <section class="mb-6">
+        <div class="text-center mb-4">
+          <span class="section-label">{featured.data.category}</span>
         </div>
-      </div>
-    </div>
-  </section>
+        <a href={`/articles/${featured.slug}/`} class="block no-underline group">
+          <h2 class="font-display font-bold text-ink text-center leading-tight mb-3 group-hover:underline"
+              style="font-size: clamp(1.6rem, 3.5vw, 2.5rem);">
+            {featured.data.title}
+          </h2>
+          <p class="font-serif italic text-ink-muted text-center max-w-2xl mx-auto leading-relaxed">
+            {featured.data.description}
+          </p>
+        </a>
+        <div class="flex justify-center gap-4 mt-3">
+          <span class="byline">By the Editors</span>
+          <span class="font-serif text-xs text-ink-faint">{fmtDate(featured.data.date)}</span>
+        </div>
+      </section>
+    )}
 
-  <!-- Code Example Preview -->
-  <section class="py-16 border-t border-slate-200 dark:border-slate-800">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="mb-8">
-        <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-3">
-          Code Examples
-        </h2>
-        <p class="text-slate-600 dark:text-slate-400">
-          Every pattern includes implementations in pseudo-code, Python (LangChain/LangGraph), and C# (Microsoft Agent Framework).
-        </p>
-      </div>
-      <CodeBlock tabs={sampleCode} title="The Basic Agent Loop" />
-    </div>
-  </section>
+    <hr class="rule-double mb-6" />
 
-  <!-- Topics Grid -->
-  <section class="py-16 border-t border-slate-200 dark:border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="mb-10">
-        <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-3">
-          Topics
-        </h2>
-        <p class="text-slate-600 dark:text-slate-400">
-          Core concepts and patterns for building AI agents.
-        </p>
-      </div>
-      <div class="grid gap-px bg-slate-200 dark:bg-slate-700 sm:grid-cols-2 lg:grid-cols-3">
-        {topics.map((topic) => (
-          topic.available ? (
-            <a
-              href={topic.href}
-              class="group block p-6 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            >
-              <h3 class="text-base font-medium text-slate-900 dark:text-white mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
-                {topic.title}
-              </h3>
-              <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                {topic.description}
-              </p>
-            </a>
-          ) : (
-            <div class="block p-6 bg-white dark:bg-slate-900 opacity-50">
-              <div class="flex justify-between items-start mb-2">
-                <h3 class="text-base font-medium text-slate-900 dark:text-white">
-                  {topic.title}
-                </h3>
-                <span class="px-2 py-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  Soon
-                </span>
+    <!-- Two-column grid -->
+    {(leftCol.length > 0 || rightCol.length > 0) && (
+      <section class="mb-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-0 divide-y sm:divide-y-0 sm:divide-x divide-newsprint-300">
+
+          <!-- Left column -->
+          <div class="sm:pr-8 space-y-5">
+            {leftCol.map((article) => (
+              <div class="article-card">
+                <span class="section-label block mb-1">{article.data.category}</span>
+                <a href={`/articles/${article.slug}/`} class="no-underline group">
+                  <h3 class="article-card-title text-xl mb-1 group-hover:underline">
+                    {article.data.title}
+                  </h3>
+                </a>
+                <p class="article-card-summary">{article.data.description}</p>
+                <span class="font-serif text-xs text-ink-faint mt-1 block">{fmtDate(article.data.date)}</span>
               </div>
-              <p class="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                {topic.description}
-              </p>
-            </div>
-          )
-        ))}
-      </div>
-    </div>
-  </section>
+            ))}
+          </div>
 
-  <!-- Benchmarks Preview -->
-  <section class="py-16 border-t border-slate-200 dark:border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="grid lg:grid-cols-2 gap-12 items-start">
-        <div>
-          <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-3">
-            Benchmarks
-          </h2>
-          <p class="text-slate-600 dark:text-slate-400 mb-6">
-            Industry-standard benchmarks for measuring agent capabilities.
-          </p>
-          <dl class="space-y-4">
-            <div>
-              <dt class="font-medium text-slate-900 dark:text-white">SWE-bench</dt>
-              <dd class="text-sm text-slate-500 dark:text-slate-400">Software engineering task completion</dd>
-            </div>
-            <div>
-              <dt class="font-medium text-slate-900 dark:text-white">WebArena</dt>
-              <dd class="text-sm text-slate-500 dark:text-slate-400">Web browsing and interaction tasks</dd>
-            </div>
-            <div>
-              <dt class="font-medium text-slate-900 dark:text-white">GAIA</dt>
-              <dd class="text-sm text-slate-500 dark:text-slate-400">General AI assistant capabilities</dd>
-            </div>
-          </dl>
-          <a
-            href="/benchmarks/"
-            class="inline-flex items-center mt-6 text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-          >
-            View all benchmarks
-            <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
-          </a>
-        </div>
-        <div class="space-y-5">
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-300">SWE-bench Verified</span>
-              <span class="text-sm text-slate-500 dark:text-slate-400">72%</span>
-            </div>
-            <div class="h-1.5 bg-slate-200 dark:bg-slate-700 overflow-hidden">
-              <div class="h-full bg-slate-900 dark:bg-white" style="width: 72%"></div>
-            </div>
+          <!-- Right column -->
+          <div class="sm:pl-8 space-y-5 pt-5 sm:pt-0">
+            {rightCol.map((article) => (
+              <div class="article-card">
+                <span class="section-label block mb-1">{article.data.category}</span>
+                <a href={`/articles/${article.slug}/`} class="no-underline group">
+                  <h3 class="article-card-title text-xl mb-1 group-hover:underline">
+                    {article.data.title}
+                  </h3>
+                </a>
+                <p class="article-card-summary">{article.data.description}</p>
+                <span class="font-serif text-xs text-ink-faint mt-1 block">{fmtDate(article.data.date)}</span>
+              </div>
+            ))}
           </div>
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-300">WebArena</span>
-              <span class="text-sm text-slate-500 dark:text-slate-400">42%</span>
-            </div>
-            <div class="h-1.5 bg-slate-200 dark:bg-slate-700 overflow-hidden">
-              <div class="h-full bg-slate-900 dark:bg-white" style="width: 42%"></div>
-            </div>
-          </div>
-          <div>
-            <div class="flex items-center justify-between mb-1.5">
-              <span class="text-sm text-slate-700 dark:text-slate-300">GAIA Level 1</span>
-              <span class="text-sm text-slate-500 dark:text-slate-400">75%</span>
-            </div>
-            <div class="h-1.5 bg-slate-200 dark:bg-slate-700 overflow-hidden">
-              <div class="h-full bg-slate-900 dark:bg-white" style="width: 75%"></div>
-            </div>
-          </div>
-          <p class="text-xs text-slate-400 dark:text-slate-500 pt-2">
-            Top agent scores as of 2025
-          </p>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- Resources CTA -->
-  <section class="py-16 border-t border-slate-200 dark:border-slate-800">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-2">
-            Resources
-          </h2>
-          <p class="text-slate-600 dark:text-slate-400">
-            Curated papers, frameworks, and tools for building AI agents.
-          </p>
         </div>
-        <a
-          href="/resources/"
-          class="inline-flex items-center px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 transition-colors"
-        >
-          Browse Resources
+      </section>
+    )}
+
+    <hr class="rule-double mb-6" />
+
+    <!-- Recent Dispatches -->
+    {recent.length > 0 && (
+      <section class="mb-10">
+        <h2 class="font-display text-xs tracking-widest uppercase text-ink-muted text-center mb-5"
+            style="letter-spacing: 0.2em;">
+          Recent Dispatches
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          {recent.map((article) => (
+            <div class="article-card">
+              <span class="section-label block mb-1">{article.data.category}</span>
+              <a href={`/articles/${article.slug}/`} class="no-underline group">
+                <h3 class="article-card-title text-base mb-1 group-hover:underline">
+                  {article.data.title}
+                </h3>
+              </a>
+              <p class="article-card-summary text-xs">{article.data.description}</p>
+              <span class="font-serif text-xs text-ink-faint mt-1 block">{fmtDate(article.data.date)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    <!-- All articles link -->
+    {articles.length > 9 && (
+      <div class="text-center mt-4">
+        <a href="/articles/" class="font-serif text-sm text-ink-muted">
+          View all {articles.length} articles &rarr;
         </a>
       </div>
-    </div>
-  </section>
+    )}
+
+    <!-- Latest News -->
+    {news.length > 0 && (
+      <section class="mt-10 pt-6 border-t border-newsprint-300">
+        <h2 class="font-display text-xs tracking-widest uppercase text-ink-muted text-center mb-5"
+            style="letter-spacing: 0.2em;">
+          Latest from the Field
+        </h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {news.map((item) => (
+            <div class="article-card">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" class="no-underline group">
+                <h4 class="font-display font-semibold text-ink text-sm mb-1 group-hover:underline">
+                  {item.title}
+                </h4>
+              </a>
+              <p class="font-serif text-xs text-ink-muted leading-snug">{item.summary}</p>
+              <span class="font-serif text-xs text-ink-faint mt-1 block">{item.source}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+  </div>
 </BaseLayout>

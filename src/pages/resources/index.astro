@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 
-// Type for news items
 interface NewsItem {
   title: string;
   url: string;
@@ -10,7 +9,6 @@ interface NewsItem {
   source: string;
   category: string;
   tags?: string[];
-  processed_at?: string;
 }
 
 interface NewsData {
@@ -18,865 +16,208 @@ interface NewsData {
   items: NewsItem[];
 }
 
-// Import news data (auto-updated daily by GitHub Actions)
 import newsDataRaw from '../../data/news.json';
 const newsData = newsDataRaw as NewsData;
-
 const news: NewsItem[] = newsData.items || [];
 const lastUpdated = newsData.last_updated
-  ? new Date(newsData.last_updated).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
+  ? new Date(newsData.last_updated).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   : null;
 
-// Tag colors for news items
-const tagColors: Record<string, string> = {
-  frameworks: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  models: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  protocols: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  patterns: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  rag: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  evaluation: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  safety: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
-  tools: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-200',
-  research: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200',
-};
-
-// Research papers organized by topic
 const papers = {
-  foundational: [
-    {
-      title: 'ReAct: Synergizing Reasoning and Acting in Language Models',
-      authors: 'Yao et al.',
-      year: 2023,
-      venue: 'ICLR 2023',
-      description: 'Introduces the ReAct paradigm combining reasoning traces with actions.',
-      url: 'https://arxiv.org/abs/2210.03629',
-    },
-    {
-      title: 'Toolformer: Language Models Can Teach Themselves to Use Tools',
-      authors: 'Schick et al.',
-      year: 2023,
-      venue: 'NeurIPS 2023',
-      description: 'Demonstrates self-supervised tool use learning in LLMs.',
-      url: 'https://arxiv.org/abs/2302.04761',
-    },
-    {
-      title: 'Chain-of-Thought Prompting Elicits Reasoning in Large Language Models',
-      authors: 'Wei et al.',
-      year: 2022,
-      venue: 'NeurIPS 2022',
-      description: 'Foundational work on prompting LLMs for step-by-step reasoning.',
-      url: 'https://arxiv.org/abs/2201.11903',
-    },
-    {
-      title: 'Tree of Thoughts: Deliberate Problem Solving with Large Language Models',
-      authors: 'Yao et al.',
-      year: 2023,
-      venue: 'NeurIPS 2023',
-      description: 'Extends CoT with exploration of multiple reasoning paths.',
-      url: 'https://arxiv.org/abs/2305.10601',
-    },
+  'Foundational': [
+    { title: 'ReAct: Synergizing Reasoning and Acting in Language Models', authors: 'Yao et al.', year: 2023, venue: 'ICLR 2023', description: 'Introduces the ReAct paradigm combining reasoning traces with actions.', url: 'https://arxiv.org/abs/2210.03629' },
+    { title: 'Toolformer: Language Models Can Teach Themselves to Use Tools', authors: 'Schick et al.', year: 2023, venue: 'NeurIPS 2023', description: 'Demonstrates self-supervised tool use learning in LLMs.', url: 'https://arxiv.org/abs/2302.04761' },
+    { title: 'Chain-of-Thought Prompting Elicits Reasoning in Large Language Models', authors: 'Wei et al.', year: 2022, venue: 'NeurIPS 2022', description: 'Foundational work on prompting LLMs for step-by-step reasoning.', url: 'https://arxiv.org/abs/2201.11903' },
+    { title: 'Tree of Thoughts: Deliberate Problem Solving with Large Language Models', authors: 'Yao et al.', year: 2023, venue: 'NeurIPS 2023', description: 'Extends CoT with exploration of multiple reasoning paths.', url: 'https://arxiv.org/abs/2305.10601' },
   ],
-  memory: [
-    {
-      title: 'Generative Agents: Interactive Simulacra of Human Behavior',
-      authors: 'Park et al.',
-      year: 2023,
-      venue: 'UIST 2023',
-      description: 'Agents with memory for believable social simulation.',
-      url: 'https://arxiv.org/abs/2304.03442',
-    },
-    {
-      title: 'MemGPT: Towards LLMs as Operating Systems',
-      authors: 'Packer et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Hierarchical memory management for unbounded context.',
-      url: 'https://arxiv.org/abs/2310.08560',
-    },
-    {
-      title: 'Reflexion: Language Agents with Verbal Reinforcement Learning',
-      authors: 'Shinn et al.',
-      year: 2023,
-      venue: 'NeurIPS 2023',
-      description: 'Agents that learn from self-reflection and memory.',
-      url: 'https://arxiv.org/abs/2303.11366',
-    },
+  'Memory': [
+    { title: 'Generative Agents: Interactive Simulacra of Human Behavior', authors: 'Park et al.', year: 2023, venue: 'UIST 2023', description: 'Agents with memory for believable social simulation.', url: 'https://arxiv.org/abs/2304.03442' },
+    { title: 'MemGPT: Towards LLMs as Operating Systems', authors: 'Packer et al.', year: 2023, venue: 'arXiv', description: 'Hierarchical memory management for unbounded context.', url: 'https://arxiv.org/abs/2310.08560' },
+    { title: 'Reflexion: Language Agents with Verbal Reinforcement Learning', authors: 'Shinn et al.', year: 2023, venue: 'NeurIPS 2023', description: 'Agents that learn from self-reflection and memory.', url: 'https://arxiv.org/abs/2303.11366' },
   ],
-  multiAgent: [
-    {
-      title: 'AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation',
-      authors: 'Wu et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Framework for multi-agent conversation and collaboration.',
-      url: 'https://arxiv.org/abs/2308.08155',
-    },
-    {
-      title: 'MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework',
-      authors: 'Hong et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Role-based multi-agent system for software development.',
-      url: 'https://arxiv.org/abs/2308.00352',
-    },
-    {
-      title: 'Encouraging Divergent Thinking in Large Language Models through Multi-Agent Debate',
-      authors: 'Liang et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Multiple agents debate to improve reasoning quality.',
-      url: 'https://arxiv.org/abs/2305.19118',
-    },
+  'Multi-Agent': [
+    { title: 'AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation', authors: 'Wu et al.', year: 2023, venue: 'arXiv', description: 'Framework for multi-agent conversation and collaboration.', url: 'https://arxiv.org/abs/2308.08155' },
+    { title: 'MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework', authors: 'Hong et al.', year: 2023, venue: 'arXiv', description: 'Role-based multi-agent system for software development.', url: 'https://arxiv.org/abs/2308.00352' },
+    { title: 'Encouraging Divergent Thinking in Large Language Models through Multi-Agent Debate', authors: 'Liang et al.', year: 2023, venue: 'arXiv', description: 'Multiple agents debate to improve reasoning quality.', url: 'https://arxiv.org/abs/2305.19118' },
   ],
-  rag: [
-    {
-      title: 'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks',
-      authors: 'Lewis et al.',
-      year: 2020,
-      venue: 'NeurIPS 2020',
-      description: 'Original RAG paper combining retrieval with generation.',
-      url: 'https://arxiv.org/abs/2005.11401',
-    },
-    {
-      title: 'Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection',
-      authors: 'Asai et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Agents that decide when and what to retrieve.',
-      url: 'https://arxiv.org/abs/2310.11511',
-    },
-    {
-      title: 'Corrective Retrieval Augmented Generation',
-      authors: 'Yan et al.',
-      year: 2024,
-      venue: 'arXiv',
-      description: 'Self-correcting retrieval with web search fallback.',
-      url: 'https://arxiv.org/abs/2401.15884',
-    },
-    {
-      title: 'From Local to Global: A Graph RAG Approach to Query-Focused Summarization',
-      authors: 'Edge et al.',
-      year: 2024,
-      venue: 'arXiv',
-      description: 'Knowledge graph-based RAG for complex queries.',
-      url: 'https://arxiv.org/abs/2404.16130',
-    },
+  'RAG': [
+    { title: 'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks', authors: 'Lewis et al.', year: 2020, venue: 'NeurIPS 2020', description: 'Original RAG paper combining retrieval with generation.', url: 'https://arxiv.org/abs/2005.11401' },
+    { title: 'Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection', authors: 'Asai et al.', year: 2023, venue: 'arXiv', description: 'Agents that decide when and what to retrieve.', url: 'https://arxiv.org/abs/2310.11511' },
+    { title: 'Corrective Retrieval Augmented Generation', authors: 'Yan et al.', year: 2024, venue: 'arXiv', description: 'Self-correcting retrieval with web search fallback.', url: 'https://arxiv.org/abs/2401.15884' },
+    { title: 'From Local to Global: A Graph RAG Approach to Query-Focused Summarization', authors: 'Edge et al.', year: 2024, venue: 'arXiv', description: 'Knowledge graph-based RAG for complex queries.', url: 'https://arxiv.org/abs/2404.16130' },
   ],
-  benchmarks: [
-    {
-      title: 'SWE-bench: Can Language Models Resolve Real-World GitHub Issues?',
-      authors: 'Jimenez et al.',
-      year: 2024,
-      venue: 'ICLR 2024',
-      description: 'Benchmark for evaluating code agents on real issues.',
-      url: 'https://arxiv.org/abs/2310.06770',
-    },
-    {
-      title: 'WebArena: A Realistic Web Environment for Building Autonomous Agents',
-      authors: 'Zhou et al.',
-      year: 2024,
-      venue: 'ICLR 2024',
-      description: 'Benchmark for web navigation and interaction.',
-      url: 'https://arxiv.org/abs/2307.13854',
-    },
-    {
-      title: 'GAIA: A Benchmark for General AI Assistants',
-      authors: 'Mialon et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Multi-step reasoning benchmark for AI assistants.',
-      url: 'https://arxiv.org/abs/2311.12983',
-    },
-    {
-      title: 'AgentBench: Evaluating LLMs as Agents',
-      authors: 'Liu et al.',
-      year: 2023,
-      venue: 'arXiv',
-      description: 'Multi-environment evaluation of agent capabilities.',
-      url: 'https://arxiv.org/abs/2308.03688',
-    },
-  ],
-  safety: [
-    {
-      title: 'Constitutional AI: Harmlessness from AI Feedback',
-      authors: 'Bai et al.',
-      year: 2022,
-      venue: 'arXiv',
-      description: 'Self-supervision for safe AI behavior.',
-      url: 'https://arxiv.org/abs/2212.08073',
-    },
-    {
-      title: 'Red Teaming Language Models with Language Models',
-      authors: 'Perez et al.',
-      year: 2022,
-      venue: 'EMNLP 2022',
-      description: 'Automated red teaming for safety evaluation.',
-      url: 'https://arxiv.org/abs/2202.03286',
-    },
+  'Safety': [
+    { title: 'Constitutional AI: Harmlessness from AI Feedback', authors: 'Bai et al.', year: 2022, venue: 'arXiv', description: 'Self-supervision for safe AI behavior.', url: 'https://arxiv.org/abs/2212.08073' },
+    { title: 'Red Teaming Language Models with Language Models', authors: 'Perez et al.', year: 2022, venue: 'EMNLP 2022', description: 'Automated red teaming for safety evaluation.', url: 'https://arxiv.org/abs/2202.03286' },
   ],
 };
 
-// Frameworks organized by category
-const frameworks = {
-  orchestration: [
-    {
-      name: 'LangGraph',
-      description: 'Library for building stateful, multi-actor applications with LLMs. Graph-based control flow.',
-      url: 'https://langchain-ai.github.io/langgraph/',
-      language: 'Python',
-    },
-    {
-      name: 'AutoGen',
-      description: 'Microsoft framework for multi-agent conversations. Supports diverse agent types.',
-      url: 'https://microsoft.github.io/autogen/',
-      language: 'Python',
-    },
-    {
-      name: 'CrewAI',
-      description: 'Framework for orchestrating role-playing AI agents. Focus on collaboration.',
-      url: 'https://www.crewai.com/',
-      language: 'Python',
-    },
-    {
-      name: 'Semantic Kernel',
-      description: 'Microsoft SDK for building AI agents. Multi-language support.',
-      url: 'https://github.com/microsoft/semantic-kernel',
-      language: 'Python/C#/Java',
-    },
-    {
-      name: 'Microsoft Agent Framework',
-      description: 'Open-source framework unifying AutoGen and Semantic Kernel for multi-agent workflows.',
-      url: 'https://github.com/microsoft/agent-framework',
-      language: 'Python/C#',
-    },
-  ],
-  tooling: [
-    {
-      name: 'LangChain',
-      description: 'Framework for developing LLM-powered applications. Large ecosystem.',
-      url: 'https://langchain.com',
-      language: 'Python/JS',
-    },
-    {
-      name: 'LlamaIndex',
-      description: 'Data framework for LLM applications. Focus on RAG and data ingestion.',
-      url: 'https://www.llamaindex.ai/',
-      language: 'Python',
-    },
-    {
-      name: 'Haystack',
-      description: 'End-to-end NLP framework. Production-ready pipelines.',
-      url: 'https://haystack.deepset.ai/',
-      language: 'Python',
-    },
-  ],
-  evaluation: [
-    {
-      name: 'DeepEval',
-      description: 'Open-source evaluation framework for LLMs. Agent-specific metrics.',
-      url: 'https://docs.confident-ai.com/',
-      language: 'Python',
-    },
-    {
-      name: 'RAGAS',
-      description: 'Evaluation framework for RAG applications. Component-level metrics.',
-      url: 'https://docs.ragas.io/',
-      language: 'Python',
-    },
-    {
-      name: 'Promptfoo',
-      description: 'CLI tool for testing and evaluating prompts. CI/CD integration.',
-      url: 'https://www.promptfoo.dev/',
-      language: 'Node.js',
-    },
-  ],
-  protocols: [
-    {
-      name: 'Model Context Protocol (MCP)',
-      description: 'Anthropic protocol for connecting AI with tools and data sources.',
-      url: 'https://modelcontextprotocol.io/',
-      language: 'Multi-language',
-    },
-    {
-      name: 'MCP Apps',
-      description: 'MCP extension for interactive UI components rendered directly in AI conversations.',
-      url: 'https://blog.modelcontextprotocol.io/posts/2026-01-26-mcp-apps/',
-      language: 'Multi-language',
-    },
-    {
-      name: 'Agent2Agent Protocol (A2A)',
-      description: 'Google protocol for agent-to-agent communication and discovery.',
-      url: 'https://google.github.io/A2A/',
-      language: 'Multi-language',
-    },
-    {
-      name: 'Agent Payments Protocol (AP2)',
-      description: 'Google protocol for secure agent authentication and payment transactions.',
-      url: 'https://cloud.google.com/blog/products/ai-machine-learning/announcing-agents-to-payments-ap2-protocol',
-      language: 'Multi-language',
-    },
-    {
-      name: 'Universal Commerce Protocol (UCP)',
-      description: 'Open standard by Google and Shopify for agentic commerce from discovery to purchase.',
-      url: 'https://ucp.dev/latest/',
-      language: 'Multi-language',
-    },
-  ],
-};
+const frameworks = [
+  { name: 'LangGraph', description: 'Stateful, multi-actor applications with LLMs. Graph-based control flow.', url: 'https://langchain-ai.github.io/langgraph/', lang: 'Python' },
+  { name: 'LangChain', description: 'Framework for LLM-powered applications. Large ecosystem of integrations.', url: 'https://langchain.com', lang: 'Python/JS' },
+  { name: 'AutoGen', description: 'Microsoft framework for multi-agent conversations. Diverse agent types.', url: 'https://microsoft.github.io/autogen/', lang: 'Python' },
+  { name: 'CrewAI', description: 'Orchestrating role-playing AI agents. Focus on crew-based collaboration.', url: 'https://www.crewai.com/', lang: 'Python' },
+  { name: 'Semantic Kernel', description: 'Microsoft SDK for building AI agents. Multi-language support.', url: 'https://github.com/microsoft/semantic-kernel', lang: 'Python/C#/Java' },
+  { name: 'Microsoft Agent Framework', description: 'Unifying AutoGen and Semantic Kernel for multi-agent workflows.', url: 'https://github.com/microsoft/agent-framework', lang: 'Python/C#' },
+  { name: 'LlamaIndex', description: 'Data framework for LLM applications. Focus on RAG and data ingestion.', url: 'https://www.llamaindex.ai/', lang: 'Python' },
+  { name: 'Haystack', description: 'End-to-end NLP framework. Production-ready pipelines.', url: 'https://haystack.deepset.ai/', lang: 'Python' },
+];
 
-// Tools organized by category
-const tools = {
-  development: [
-    {
-      name: 'Claude Code',
-      description: 'Anthropic CLI for AI-assisted software development with full codebase context.',
-      url: 'https://docs.anthropic.com/claude-code',
-    },
-    {
-      name: 'Cursor',
-      description: 'AI-first code editor with integrated agent capabilities and multi-file editing.',
-      url: 'https://cursor.sh',
-    },
-    {
-      name: 'GitHub Copilot',
-      description: 'AI pair programmer for code suggestions, chat, and workspace understanding.',
-      url: 'https://github.com/features/copilot',
-    },
-    {
-      name: 'Cody',
-      description: 'Sourcegraph AI coding assistant with codebase-aware context.',
-      url: 'https://sourcegraph.com/cody',
-    },
-    {
-      name: 'Aider',
-      description: 'Open-source AI pair programming in your terminal. Git-aware.',
-      url: 'https://aider.chat',
-    },
-  ],
-  automation: [
-    {
-      name: 'Devin',
-      description: 'Autonomous AI software engineer. End-to-end development.',
-      url: 'https://www.cognition-labs.com/devin',
-    },
-    {
-      name: 'OpenHands',
-      description: 'Open-source AI software development platform. Research-focused.',
-      url: 'https://github.com/All-Hands-AI/OpenHands',
-    },
-    {
-      name: 'SWE-agent',
-      description: 'Princeton agent for SWE-bench. Open-source reference implementation.',
-      url: 'https://github.com/princeton-nlp/SWE-agent',
-    },
-  ],
-  observability: [
-    {
-      name: 'LangSmith',
-      description: 'Platform for debugging, testing, and monitoring LLM applications.',
-      url: 'https://smith.langchain.com/',
-    },
-    {
-      name: 'Weights & Biases',
-      description: 'ML experiment tracking with LLM evaluation features.',
-      url: 'https://wandb.ai/',
-    },
-    {
-      name: 'Braintrust',
-      description: 'Enterprise platform for AI product development. Evals and logging.',
-      url: 'https://braintrustdata.com/',
-    },
-  ],
-};
+const protocols = [
+  { name: 'Model Context Protocol (MCP)', description: "Anthropic's open protocol for connecting AI with tools and data sources.", url: 'https://modelcontextprotocol.io/', org: 'Anthropic' },
+  { name: 'Agent2Agent Protocol (A2A)', description: "Google's protocol for agent-to-agent communication and discovery.", url: 'https://google.github.io/A2A/', org: 'Google' },
+  { name: 'Universal Commerce Protocol (UCP)', description: 'Open standard for agentic commerce from discovery to purchase.', url: 'https://ucp.dev/latest/', org: 'Google + Shopify' },
+];
+
+const evalTools = [
+  { name: 'DeepEval', description: 'Open-source evaluation framework for LLMs. Agent-specific metrics.', url: 'https://docs.confident-ai.com/' },
+  { name: 'RAGAS', description: 'Evaluation framework for RAG applications. Component-level metrics.', url: 'https://docs.ragas.io/' },
+  { name: 'Promptfoo', description: 'CLI tool for testing and evaluating prompts. CI/CD integration.', url: 'https://www.promptfoo.dev/' },
+  { name: 'LangSmith', description: 'Platform for debugging, testing, and monitoring LLM applications.', url: 'https://smith.langchain.com/' },
+  { name: 'Braintrust', description: 'Enterprise platform for AI product development. Evals and logging.', url: 'https://braintrustdata.com/' },
+];
 ---
 
 <BaseLayout title="Resources">
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-    <div class="mb-12">
-      <h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-4 tracking-tight">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+    <!-- Header -->
+    <div class="text-center mb-8">
+      <h1 class="font-display font-bold text-ink" style="font-size: clamp(1.75rem, 4vw, 3rem);">
         Resources
       </h1>
-      <p class="text-slate-600 dark:text-slate-400 max-w-2xl">
-        Curated research papers, frameworks, and tools for understanding and building AI agents.
+      <p class="font-serif italic text-ink-muted mt-2 max-w-2xl mx-auto">
+        Curated research papers, frameworks, protocols, and tools for the practitioner.
       </p>
+      <hr class="rule-double mt-6" />
     </div>
 
-    <!-- Quick Navigation -->
-    <nav class="mb-12 flex flex-wrap gap-6 text-sm">
-      {news.length > 0 && (
-        <a href="#news" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">News</a>
-      )}
-      <a href="#papers" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Papers</a>
-      <a href="#frameworks" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Frameworks</a>
-      <a href="#tools" class="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Tools</a>
+    <!-- Nav -->
+    <nav class="mb-10 flex flex-wrap gap-6">
+      {news.length > 0 && <a href="#news" class="font-serif text-sm text-ink-muted hover:text-ink no-underline">Dispatches</a>}
+      <a href="#papers" class="font-serif text-sm text-ink-muted hover:text-ink no-underline">Research</a>
+      <a href="#frameworks" class="font-serif text-sm text-ink-muted hover:text-ink no-underline">Frameworks</a>
+      <a href="#protocols" class="font-serif text-sm text-ink-muted hover:text-ink no-underline">Protocols</a>
+      <a href="#evaluation" class="font-serif text-sm text-ink-muted hover:text-ink no-underline">Evaluation</a>
     </nav>
 
-    <!-- News Section (Auto-updated daily) -->
+    <!-- News -->
     {news.length > 0 && (
-      <section id="news" class="mb-16">
-        <div class="flex items-center justify-between mb-8">
-          <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">
-            Latest News
-          </h2>
+      <section id="news" class="mb-12">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="section-label">Latest Dispatches</h2>
           {lastUpdated && (
-            <span class="text-sm text-slate-500 dark:text-slate-400">
-              Updated {lastUpdated}
-            </span>
+            <span class="font-serif text-xs text-ink-faint italic">Updated {lastUpdated}</span>
           )}
         </div>
-
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div class="space-y-0 divide-y divide-newsprint-200">
           {news.slice(0, 9).map((item) => (
-            <a
-              href={item.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <div class="flex items-start justify-between gap-2 mb-2">
-                <h3 class="font-semibold text-slate-900 dark:text-white text-sm leading-tight">
+            <div class="py-4">
+              <a href={item.url} target="_blank" rel="noopener noreferrer" class="no-underline group">
+                <h3 class="font-display font-semibold text-ink text-base mb-1 group-hover:underline">
                   {item.title}
                 </h3>
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </div>
-              <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                {item.source}
-                {item.published && (
-                  <span>
-                    {' '}&middot;{' '}
-                    {new Date(item.published).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                )}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">
-                {item.summary}
-              </p>
-              {item.tags && (
-                <div class="flex flex-wrap gap-1">
-                  {item.tags.map((tag) => (
-                    <span class={`text-xs px-2 py-0.5 rounded-full ${tagColors[tag] || 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200'}`}>
-                      {tag}
-                    </span>
-                  ))}
-                </div>
+              </a>
+              <p class="font-serif text-sm text-ink-muted leading-snug">{item.summary}</p>
+              <span class="font-serif text-xs text-ink-faint">{item.source}</span>
+              {item.tags && item.tags.length > 0 && (
+                <span class="ml-2 tag-chip">{item.tags[0]}</span>
               )}
-            </a>
+            </div>
           ))}
         </div>
       </section>
     )}
 
-    <!-- Research Papers Section -->
-    <section id="papers" class="mb-16">
-      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
-        Research Papers
-      </h2>
+    <hr class="rule-thin mb-10" />
 
-      <!-- Foundational Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Foundational
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.foundational.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
-            </a>
-          ))}
+    <!-- Research Papers -->
+    <section id="papers" class="mb-12">
+      <h2 class="font-display font-bold text-ink text-xl mb-6">Research Papers</h2>
+      {Object.entries(papers).map(([section, items]) => (
+        <div class="mb-8">
+          <h3 class="section-label mb-3">{section}</h3>
+          <div class="space-y-0 divide-y divide-newsprint-100">
+            {items.map((paper) => (
+              <div class="py-3">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <a href={paper.url} target="_blank" rel="noopener noreferrer"
+                       class="font-display font-semibold text-ink text-sm hover:underline no-underline">
+                      {paper.title}
+                    </a>
+                    <div class="font-serif text-xs text-ink-muted mt-0.5">
+                      {paper.authors} · {paper.venue}
+                    </div>
+                    <p class="font-serif text-xs text-ink-muted leading-snug mt-1">{paper.description}</p>
+                  </div>
+                  <span class="font-serif text-xs text-ink-faint shrink-0">{paper.year}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      ))}
+    </section>
 
-      <!-- Memory Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Memory & Learning
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.memory.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
+    <hr class="rule-thin mb-10" />
 
-      <!-- Multi-Agent Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Multi-Agent Systems
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.multiAgent.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
+    <!-- Frameworks -->
+    <section id="frameworks" class="mb-12">
+      <h2 class="font-display font-bold text-ink text-xl mb-6">Frameworks</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-0 divide-y sm:divide-y-0">
+        {frameworks.map((fw, i) => (
+          <div class={`py-4 ${i % 2 === 0 ? 'sm:pr-6 sm:border-r border-newsprint-200' : 'sm:pl-6'} ${i >= 2 ? 'border-t border-newsprint-200' : ''}`}>
+            <a href={fw.url} target="_blank" rel="noopener noreferrer" class="no-underline group">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-display font-semibold text-ink text-sm group-hover:underline">{fw.name}</span>
+                <span class="tag-chip">{fw.lang}</span>
+              </div>
             </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- RAG Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          RAG & Retrieval
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.rag.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Benchmarks Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Benchmarks & Evaluation
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.benchmarks.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Safety Papers -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Safety & Alignment
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {papers.safety.map((paper) => (
-            <a
-              href={paper.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-start gap-2">
-                {paper.title}
-                <svg class="w-4 h-4 text-slate-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-500 dark:text-slate-400 mb-2">
-                {paper.authors} ({paper.year}) &middot; {paper.venue}
-              </p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {paper.description}
-              </p>
-            </a>
-          ))}
-        </div>
+            <p class="font-serif text-xs text-ink-muted leading-snug">{fw.description}</p>
+          </div>
+        ))}
       </div>
     </section>
 
-    <!-- Frameworks Section -->
-    <section id="frameworks" class="mb-16">
-      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
-        Frameworks & Libraries
-      </h2>
+    <hr class="rule-thin mb-10" />
 
-      <!-- Orchestration -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Agent Orchestration
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {frameworks.orchestration.map((fw) => (
-            <a
-              href={fw.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                {fw.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">{fw.language}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {fw.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Tooling -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          LLM Tooling
-        </h3>
-        <div class="grid gap-4 md:grid-cols-3">
-          {frameworks.tooling.map((fw) => (
-            <a
-              href={fw.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                {fw.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">{fw.language}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {fw.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Evaluation -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Evaluation & Testing
-        </h3>
-        <div class="grid gap-4 md:grid-cols-3">
-          {frameworks.evaluation.map((fw) => (
-            <a
-              href={fw.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                {fw.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">{fw.language}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {fw.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Protocols -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Protocols & Standards
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2">
-          {frameworks.protocols.map((fw) => (
-            <a
-              href={fw.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-1 flex items-center gap-2">
-                {fw.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">{fw.language}</p>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {fw.description}
-              </p>
-            </a>
-          ))}
-        </div>
+    <!-- Protocols -->
+    <section id="protocols" class="mb-12">
+      <h2 class="font-display font-bold text-ink text-xl mb-6">Protocols</h2>
+      <div class="space-y-0 divide-y divide-newsprint-200">
+        {protocols.map((p) => (
+          <div class="py-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <a href={p.url} target="_blank" rel="noopener noreferrer" class="no-underline group">
+                  <span class="font-display font-semibold text-ink text-sm group-hover:underline">{p.name}</span>
+                </a>
+                <p class="font-serif text-xs text-ink-muted leading-snug mt-1">{p.description}</p>
+              </div>
+              <span class="font-serif text-xs text-ink-faint shrink-0 italic">{p.org}</span>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
 
-    <!-- Tools Section -->
-    <section id="tools" class="mb-16">
-      <h2 class="text-2xl font-semibold text-slate-900 dark:text-white mb-8">
-        Tools & Products
-      </h2>
+    <hr class="rule-thin mb-10" />
 
-      <!-- Development Tools -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          AI-Assisted Development
-        </h3>
-        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {tools.development.map((tool) => (
-            <a
-              href={tool.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                {tool.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {tool.description}
-              </p>
+    <!-- Evaluation -->
+    <section id="evaluation" class="mb-12">
+      <h2 class="font-display font-bold text-ink text-xl mb-6">Evaluation Tools</h2>
+      <div class="space-y-0 divide-y divide-newsprint-200">
+        {evalTools.map((tool) => (
+          <div class="py-3">
+            <a href={tool.url} target="_blank" rel="noopener noreferrer" class="no-underline group">
+              <span class="font-display font-semibold text-ink text-sm group-hover:underline">{tool.name}</span>
             </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Automation Tools -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Autonomous Agents
-        </h3>
-        <div class="grid gap-4 md:grid-cols-3">
-          {tools.automation.map((tool) => (
-            <a
-              href={tool.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                {tool.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {tool.description}
-              </p>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <!-- Observability Tools -->
-      <div class="mb-10">
-        <h3 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-          Observability & Debugging
-        </h3>
-        <div class="grid gap-4 md:grid-cols-3">
-          {tools.observability.map((tool) => (
-            <a
-              href={tool.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="block p-5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
-            >
-              <h4 class="font-semibold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                {tool.name}
-                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                </svg>
-              </h4>
-              <p class="text-sm text-slate-600 dark:text-slate-300">
-                {tool.description}
-              </p>
-            </a>
-          ))}
-        </div>
+            <p class="font-serif text-xs text-ink-muted leading-snug mt-0.5">{tool.description}</p>
+          </div>
+        ))}
       </div>
     </section>
 
-    <!-- Related Topics -->
-    <section class="pt-8 border-t border-slate-200 dark:border-slate-800">
-      <h2 class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">
-        Related
-      </h2>
-      <div class="flex flex-wrap gap-4">
-        <a href="/topics/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Topics</a>
-        <a href="/benchmarks/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Benchmarks</a>
-        <a href="/topics/evaluation/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Evaluation</a>
-        <a href="/topics/safety/" class="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">Safety</a>
-      </div>
-    </section>
   </div>
 </BaseLayout>

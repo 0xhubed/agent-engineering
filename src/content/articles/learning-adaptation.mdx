@@ -1,0 +1,591 @@
+---
+title: "Learning & Adaptation"
+description: "How AI agents improve over time without retraining: token-space learning from successful trajectories, Reflexion self-critique, and self-evolving architectures."
+category: "Advanced"
+date: "2024-04-01"
+type: "topic"
+tags:
+  - learning
+  - reflexion
+  - self-improvement
+featured: false
+---
+
+Traditional machine learning models improve by updating their weights during training runs. Production LLM agents cannot do this — retraining on every interaction is computationally prohibitive and operationally impractical. Yet agents do get better over time, and that improvement has to happen somewhere. The answer lies in three complementary techniques that all operate at inference time by manipulating context rather than touching model weights: learning in token space, Reflexion, and self-evolving agent patterns. Each occupies a different position on the spectrum between safety and autonomy, and each is suited to different deployment contexts.
+
+## The Learning Challenge
+
+The gap between static prompts and genuinely adaptive agents is significant. A system with a fixed system prompt behaves identically on day one and day three hundred, regardless of how many tasks it has processed. The three approaches below address this at increasing levels of complexity and risk.
+
+<Callout type="info" title="No Weight Updates">
+All of these techniques work at inference time by manipulating context, not by changing model weights. This makes them practical for deployed systems where retraining is not an option.
+</Callout>
+
+<Diagram title="Agent Learning Approaches">
+{`Safety/Control ◄──────────────────────────────────────► Autonomy/Risk
+
+┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
+│   STATIC        │   TOKEN SPACE   │   REFLEXION     │  SELF-EVOLVING  │
+│   PROMPTS       │   LEARNING      │                 │                 │
+├─────────────────┼─────────────────┼─────────────────┼─────────────────┤
+│                 │                 │                 │                 │
+│ Fixed system    │ Dynamic few-    │ Self-critique   │ Prompt/code     │
+│ prompt, no      │ shot examples   │ and iterative   │ modification    │
+│ adaptation      │ from trajectory │ improvement     │ by agent        │
+│                 │ storage         │                 │                 │
+│                 │                 │                 │                 │
+│ • Predictable   │ • Learns from   │ • Improves on   │ • Autonomous    │
+│ • Consistent    │   successes     │   failures      │   improvement   │
+│ • No learning   │ • Safe (read-   │ • Multi-attempt │ • Risky if      │
+│                 │   only context) │   solving       │   unsupervised  │
+│                 │                 │                 │                 │
+└─────────────────┴─────────────────┴─────────────────┴─────────────────┘
+
+       ▲                  ▲                  ▲                  ▲
+       │                  │                  │                  │
+  Most systems       Production         Research          Experimental
+  today              ready              interest          (safety concerns)`}
+</Diagram>
+
+## 1. Learning in Token Space
+
+The simplest and most production-ready approach stores successful task completions in a vector database and retrieves them as few-shot examples when a similar task arrives. The model's behavior changes without any weight updates — the learning is entirely encoded in the dynamically assembled prompt.
+
+<Diagram title="Token Space Learning Flow">
+{`┌─────────────────────────────────────────────────────────────────┐
+│                        NEW TASK                                  │
+│                    "Parse this JSON"                             │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │   EMBED TASK    │
+                    │   DESCRIPTION   │
+                    └─────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                     TRAJECTORY STORE                            │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Task: "Parse XML file"          Similarity: 0.72       │   │
+│  │  Steps: read_file → parse → extract                     │   │
+│  ├─────────────────────────────────────────────────────────┤   │
+│  │  Task: "Extract data from JSON"  Similarity: 0.91  ◄───┼───│
+│  │  Steps: read_file → json.loads → filter_keys            │   │
+│  ├─────────────────────────────────────────────────────────┤   │
+│  │  Task: "Convert CSV to dict"     Similarity: 0.68       │   │
+│  │  Steps: read_file → csv.reader → to_dict                │   │
+│  └─────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    DYNAMIC PROMPT                                │
+│  System: You are a data processing assistant...                 │
+│                                                                  │
+│  Example 1: (from trajectory store)                              │
+│  User: Extract data from JSON                                    │
+│  Assistant: read_file → json.loads → filter_keys                 │
+│                                                                  │
+│  Current task:                                                   │
+│  User: Parse this JSON                                           │
+└─────────────────────────────────────────────────────────────────┘`}
+</Diagram>
+
+```python
+import chromadb
+from dataclasses import dataclass
+from typing import Optional
+import json
+
+@dataclass
+class Trajectory:
+    task: str
+    steps: list[dict]  # {thought, action, observation}
+    outcome: dict
+    success: bool
+
+class TokenSpaceLearner:
+    """Learn from experience without updating model weights."""
+
+    def __init__(self, collection_name: str = "trajectories"):
+        self.client = chromadb.PersistentClient(path="./learning_db")
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+    def store_trajectory(self, trajectory: Trajectory) -> None:
+        """Store a successful trajectory for future reference."""
+        if not trajectory.success:
+            return  # Only learn from successes
+
+        doc = f"Task: {trajectory.task}\n"
+        doc += f"Approach: {self._summarize_approach(trajectory.steps)}"
+
+        self.collection.add(
+            ids=[f"traj_{hash(trajectory.task)}_{len(self.collection.get()['ids'])}"],
+            documents=[doc],
+            metadatas=[{
+                "task": trajectory.task,
+                "steps": json.dumps(trajectory.steps),
+                "outcome": json.dumps(trajectory.outcome),
+                "success": trajectory.success
+            }]
+        )
+
+    def recall_similar(
+        self,
+        task: str,
+        k: int = 3,
+        min_similarity: float = 0.5
+    ) -> list[Trajectory]:
+        """Retrieve trajectories from similar past tasks."""
+        results = self.collection.query(
+            query_texts=[task],
+            n_results=k,
+            include=["metadatas", "distances"]
+        )
+
+        trajectories = []
+        for i, distance in enumerate(results['distances'][0]):
+            similarity = 1 - distance
+            if similarity < min_similarity:
+                continue
+
+            metadata = results['metadatas'][0][i]
+            trajectories.append(Trajectory(
+                task=metadata['task'],
+                steps=json.loads(metadata['steps']),
+                outcome=json.loads(metadata['outcome']),
+                success=metadata['success']
+            ))
+
+        return trajectories
+
+    def build_few_shot_prompt(
+        self,
+        task: str,
+        system_message: str,
+        k: int = 3
+    ) -> list[dict]:
+        """Build a prompt with dynamic few-shot examples."""
+        examples = self.recall_similar(task, k=k)
+
+        messages = [{"role": "system", "content": system_message}]
+
+        for ex in examples:
+            messages.append({
+                "role": "user",
+                "content": f"Task: {ex.task}"
+            })
+            messages.append({
+                "role": "assistant",
+                "content": self._format_trajectory(ex.steps)
+            })
+
+        messages.append({
+            "role": "user",
+            "content": f"Task: {task}"
+        })
+
+        return messages
+
+    def _summarize_approach(self, steps: list[dict]) -> str:
+        actions = [s.get('action', '') for s in steps]
+        return " -> ".join(actions[:5])
+
+    def _format_trajectory(self, steps: list[dict]) -> str:
+        formatted = []
+        for step in steps:
+            formatted.append(f"Thought: {step.get('thought', '')}")
+            formatted.append(f"Action: {step.get('action', '')}")
+            if 'observation' in step:
+                formatted.append(f"Observation: {step['observation']}")
+        return "\n".join(formatted)
+
+# Usage
+learner = TokenSpaceLearner()
+
+learner.store_trajectory(Trajectory(
+    task="Parse the JSON file and extract all email addresses",
+    steps=[
+        {"thought": "Need to read the file first", "action": "read_file('data.json')"},
+        {"thought": "Parse JSON and find emails", "action": "extract_emails(data)"},
+    ],
+    outcome={"emails_found": 15},
+    success=True
+))
+
+prompt = learner.build_few_shot_prompt(
+    task="Extract phone numbers from the CSV file",
+    system_message="You are a data extraction assistant."
+)
+```
+
+<Table>
+  <thead>
+    <tr>
+      <th>Benefit</th>
+      <th>Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>No retraining</strong></td>
+      <td>Learning happens through context, not weight updates</td>
+    </tr>
+    <tr>
+      <td><strong>Immediate</strong></td>
+      <td>New experiences are available for the next request</td>
+    </tr>
+    <tr>
+      <td><strong>Interpretable</strong></td>
+      <td>You can inspect exactly what examples were retrieved</td>
+    </tr>
+    <tr>
+      <td><strong>Safe</strong></td>
+      <td>Read-only operation; cannot corrupt the model</td>
+    </tr>
+    <tr>
+      <td><strong>Domain-specific</strong></td>
+      <td>Naturally adapts to your specific use cases over time</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="tip" title="Quality Over Quantity">
+Store only high-quality successful trajectories. A few excellent examples are better than many mediocre ones. Consider adding a quality gate before storing.
+</Callout>
+
+## 2. Reflexion
+
+Reflexion (Shinn et al., 2023) enables agents to learn from failures through self-reflection. Instead of failing and moving on, the agent analyzes what went wrong, generates a structured reflection, and retries with that insight in context. Successful reflections are also stored in long-term memory and brought forward to inform future tasks of a similar type.
+
+<Diagram title="Reflexion Loop">
+{`                    ┌─────────────┐
+                    │    TASK     │
+                    └──────┬──────┘
+                           │
+           ┌───────────────┼───────────────┐
+           │               ▼               │
+           │      ┌───────────────┐        │
+           │      │    ACTOR      │        │
+           │      │  (Generate    │        │
+           │      │   Trajectory) │        │
+           │      └───────┬───────┘        │
+           │              │                │
+           │              ▼                │
+           │      ┌───────────────┐        │
+           │      │   EVALUATOR   │        │
+           │      │  (Check if    │        │
+           │      │   Correct)    │        │
+           │      └───────┬───────┘        │
+           │              │                │
+           │      ┌───────┴───────┐        │
+           │      │               │        │
+           │   Success         Failure     │
+           │      │               │        │
+           │      ▼               ▼        │
+           │   ┌─────┐     ┌───────────┐   │
+           │   │DONE │     │ REFLECTOR │   │
+           │   └─────┘     │           │   │
+           │               │ "What went│   │
+           │               │  wrong?"  │   │
+           │               └─────┬─────┘   │
+           │                     │         │
+           │                     ▼         │
+           │              ┌───────────┐    │
+           │              │  MEMORY   │    │
+           │              │(Reflections)   │
+           │              └─────┬─────┘    │
+           │                    │          │
+           └────────────────────┘          │
+                    (retry with            │
+                     reflections)          │
+                                           │
+    ┌──────────────────────────────────────┘
+    │
+    ▼
+┌─────────────┐
+│ LONG-TERM   │
+│ MEMORY      │
+│ (Learnings) │
+└─────────────┘`}
+</Diagram>
+
+```python
+from dataclasses import dataclass, field
+from typing import Callable
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
+from pydantic import BaseModel, Field
+
+class ReflectionOutput(BaseModel):
+    what_went_wrong: str = Field(description="What went wrong in this attempt")
+    why_it_failed: str = Field(description="Root cause of the failure")
+    improvements: list[str] = Field(description="Specific improvements for next attempt")
+
+@dataclass
+class Reflection:
+    task: str
+    attempt: int
+    trajectory: str
+    outcome: str
+    what_went_wrong: str
+    why_it_failed: str
+    improvements: list[str]
+
+@dataclass
+class ReflexionAgent:
+    """Agent that learns from self-reflection on failures."""
+
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
+    short_term_memory: list[Reflection] = field(default_factory=list)
+    long_term_memory: list[Reflection] = field(default_factory=list)
+
+    def solve(
+        self,
+        task: str,
+        max_attempts: int = 3,
+        evaluator: Callable = None
+    ) -> tuple[str, bool]:
+        """Attempt to solve task with reflection on failures."""
+        self.short_term_memory = []
+
+        for attempt in range(max_attempts):
+            trajectory = self._generate_trajectory(task, attempt)
+            success, errors = evaluator(trajectory) if evaluator else (False, [])
+
+            if success:
+                reflection = self._generate_reflection(task, attempt, trajectory, "SUCCESS", [])
+                self.long_term_memory.append(reflection)
+                return trajectory, True
+
+            reflection = self._generate_reflection(task, attempt, trajectory, "FAILURE", errors)
+            self.short_term_memory.append(reflection)
+
+        return self._select_best_attempt(), False
+
+    def _generate_trajectory(self, task: str, attempt: int) -> str:
+        """Generate a solution attempt using LangChain."""
+        messages = [("system", self._build_system_prompt())]
+
+        if self.long_term_memory:
+            learnings = self._format_learnings(self.long_term_memory[-5:])
+            messages.append(("system", f"Learnings from past tasks:\n{learnings}"))
+
+        if self.short_term_memory:
+            reflections = self._format_reflections(self.short_term_memory)
+            messages.append(("user", f"Previous attempts and reflections:\n{reflections}"))
+
+        messages.append(("user", f"Task: {task}"))
+
+        prompt = ChatPromptTemplate.from_messages(messages)
+        chain = prompt | self.llm
+        response = chain.invoke({})
+        return response.content
+
+    def _generate_reflection(
+        self, task: str, attempt: int, trajectory: str, outcome: str, errors: list[str]
+    ) -> Reflection:
+        """Generate structured reflection using LangChain JSON parser."""
+        parser = JsonOutputParser(pydantic_object=ReflectionOutput)
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "Analyze this attempt and generate a reflection."),
+            ("user", """Task: {task}
+
+Attempt #{attempt}:
+{trajectory}
+
+Outcome: {outcome}
+Errors: {errors}
+
+{format_instructions}""")
+        ])
+
+        chain = prompt | self.llm | parser
+        data = chain.invoke({
+            "task": task,
+            "attempt": attempt + 1,
+            "trajectory": trajectory,
+            "outcome": outcome,
+            "errors": ', '.join(errors) if errors else 'None',
+            "format_instructions": parser.get_format_instructions()
+        })
+
+        return Reflection(
+            task=task, attempt=attempt, trajectory=trajectory, outcome=outcome,
+            what_went_wrong=data.get("what_went_wrong", ""),
+            why_it_failed=data.get("why_it_failed", ""),
+            improvements=data.get("improvements", [])
+        )
+
+# Usage
+agent = ReflexionAgent()
+
+def code_evaluator(trajectory: str) -> tuple[bool, list[str]]:
+    try:
+        exec(trajectory)
+        return True, []
+    except Exception as e:
+        return False, [str(e)]
+
+solution, success = agent.solve(
+    task="Write a function to find the nth Fibonacci number",
+    evaluator=code_evaluator
+)
+```
+
+A good reflection includes four elements: a specific description of what went wrong (not vague), a root cause analysis of why it failed, a concrete alternative approach to try next, and a generalizable insight that might apply to related tasks in the future. Vague or non-actionable reflections can actually degrade performance, so the quality of the reflector prompt matters as much as the structure.
+
+<Callout type="warning" title="Reflection Quality">
+Poor reflections — vague or non-actionable — can hurt performance rather than help. The reflector model must generate specific, actionable insights to drive improvement on the next attempt.
+</Callout>
+
+## 3. Self-Evolving Agents
+
+<Callout type="danger" title="Experimental and Safety-Critical">
+Self-evolving agents modify their own behavior. This is an active research area with significant safety considerations. Use with extreme caution in production systems.
+</Callout>
+
+The most advanced form of agent learning involves agents that modify their own prompts, generate new tools, or write and execute new code based on observed performance. Self-critique loops are the safest variant — the agent revises its output within a single session without persisting any changes. Prompt evolution is more consequential: the agent updates its system prompt based on failure patterns, and those updates persist across sessions. Tool generation is riskier still, requiring sandboxed execution of LLM-generated code. Architecture evolution, where the agent modifies its own structure, remains highly experimental.
+
+<Table>
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>What Evolves</th>
+      <th>Safety Level</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Self-Critique (SCA)</strong></td>
+      <td>Output quality through revision</td>
+      <td>Safe (no persistent changes)</td>
+    </tr>
+    <tr>
+      <td><strong>Prompt Evolution</strong></td>
+      <td>System prompts based on performance</td>
+      <td>Moderate (prompts can drift)</td>
+    </tr>
+    <tr>
+      <td><strong>Tool Generation</strong></td>
+      <td>New tools and functions</td>
+      <td>Risky (code execution)</td>
+    </tr>
+    <tr>
+      <td><strong>Architecture Evolution</strong></td>
+      <td>Agent structure itself</td>
+      <td>Highly experimental</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="danger" title="Sandbox All Generated Code">
+Never execute LLM-generated code without sandboxing. Use restricted execution environments with no filesystem or network access.
+</Callout>
+
+<Callout type="warning" title="Version Control Prompts">
+If evolving prompts, maintain a full history. Prompt drift can lead to unexpected behavior that is hard to diagnose weeks later.
+</Callout>
+
+<Callout type="warning" title="Human-in-the-Loop">
+For any persistent changes — new tools, modified prompts — require human approval before deployment into production.
+</Callout>
+
+## Choosing an Approach
+
+<Table>
+  <thead>
+    <tr>
+      <th>Factor</th>
+      <th>Token Space</th>
+      <th>Reflexion</th>
+      <th>Self-Evolving</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Complexity</strong></td>
+      <td>Low</td>
+      <td>Medium</td>
+      <td>High</td>
+    </tr>
+    <tr>
+      <td><strong>Safety</strong></td>
+      <td>High</td>
+      <td>High</td>
+      <td>Low</td>
+    </tr>
+    <tr>
+      <td><strong>Latency Impact</strong></td>
+      <td>Minimal</td>
+      <td>2-3x per task</td>
+      <td>Variable</td>
+    </tr>
+    <tr>
+      <td><strong>Best For</strong></td>
+      <td>Routine tasks</td>
+      <td>Complex reasoning</td>
+      <td>Research</td>
+    </tr>
+    <tr>
+      <td><strong>Production Ready</strong></td>
+      <td>Yes</td>
+      <td>Yes (with limits)</td>
+      <td>No</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="tip" title="Start Simple">
+Begin with token space learning. It is safe, immediately effective, and straightforward to implement with any vector database. Add Reflexion for tasks that frequently fail on the first attempt. Reserve self-evolution for controlled research environments.
+</Callout>
+
+## Evaluation Metrics
+
+<Table caption="Metrics for evaluating agent learning">
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th>What it Measures</th>
+      <th>Applies To</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Learning Curve</strong></td>
+      <td>Performance improvement over tasks</td>
+      <td>All approaches</td>
+    </tr>
+    <tr>
+      <td><strong>Sample Efficiency</strong></td>
+      <td>Tasks needed to reach performance level</td>
+      <td>Token space, Reflexion</td>
+    </tr>
+    <tr>
+      <td><strong>Reflection Quality</strong></td>
+      <td>Actionability of generated reflections</td>
+      <td>Reflexion</td>
+    </tr>
+    <tr>
+      <td><strong>Retry Reduction</strong></td>
+      <td>Fewer attempts needed over time</td>
+      <td>Reflexion</td>
+    </tr>
+    <tr>
+      <td><strong>Transfer Learning</strong></td>
+      <td>Performance on related but new tasks</td>
+      <td>All approaches</td>
+    </tr>
+    <tr>
+      <td><strong>Stability</strong></td>
+      <td>Variance in performance over time</td>
+      <td>Self-evolving</td>
+    </tr>
+  </tbody>
+</Table>

@@ -1,0 +1,718 @@
+---
+title: "Context Bloat & Context Rot"
+description: "How performance degrades within supported context limits, and practical strategies to detect, measure, and mitigate both failure modes."
+category: "Context Layer"
+date: "2024-02-15"
+type: "topic"
+tags: [context-rot, degradation, performance]
+featured: false
+---
+
+Long context windows are one of the most advertised capabilities in modern language models, yet the marketing rarely mentions that filling those windows is dangerous. Performance degradation happens well before a model's stated token limit is reached, and the causes fall into two distinct categories: context bloat, where sheer volume overwhelms attention mechanisms, and context rot, where accumulated information becomes stale, contradictory, or actively misleading. Both problems are silent — the model keeps generating text, but the quality quietly collapses.
+
+## Two Distinct Problems
+
+Context bloat occurs when too much information crowds the context window, diluting attention away from the tokens that actually matter. The transformer attention mechanism is a finite resource: every token competes with every other token for attention scores, and the softmax operation that normalizes those scores amplifies the effect as context grows. Add enough irrelevant tokens and the relevant ones become statistically invisible.
+
+Context rot is a different failure mode. It occurs when information that was once accurate becomes outdated over time, or when updates accumulate alongside the original facts they were meant to replace. A context that began correctly — "the API endpoint is /v2/data" — becomes dangerous once that endpoint is deprecated and a newer message adds "/v3/data" without removing the old one. The model may follow the outdated instruction, follow the newer one, or oscillate unpredictably between them.
+
+<Callout type="warning" title="The Hidden Cost">
+A model with a 128K context window does not mean 128K is optimal. Research shows that smaller, curated contexts often outperform maxed-out contexts on many tasks. Effective limits are frequently 30–50% of advertised values.
+</Callout>
+
+## Understanding Context Bloat
+
+The most well-documented manifestation of bloat is the "lost in the middle" effect, documented by Liu et al. (2023). When relevant information is placed at the beginning or end of a long context, models recall it reliably. When that same information is buried in the middle, recall accuracy drops by 20–40% at large context sizes. The attention distribution is U-shaped: high at the edges, low across the center.
+
+<Diagram title="The 'Lost in the Middle' Effect">
+{`                    ATTENTION DISTRIBUTION
+
+High │    ████                              ████
+     │    ████                              ████
+     │    ████                              ████
+Attn │    ████                              ████
+     │    ████      ░░░░░░░░░░░░░░░░        ████
+     │    ████      ░░░░░░░░░░░░░░░░        ████
+Low  │    ████      ░░░░░░░░░░░░░░░░        ████
+     └────────────────────────────────────────────
+          START         MIDDLE              END
+
+████ = High attention (information well-retained)
+░░░░ = Low attention (information often missed)
+
+Research finding: Information in the middle of long contexts
+is recalled with 20-40% lower accuracy than at the edges.`}
+</Diagram>
+
+This has direct architectural implications. Critical instructions, key facts, and tool definitions should be placed at the beginning of the context — not buried after pages of background material. When you cannot control placement, mitigation strategies like reordering by relevance score can partially compensate.
+
+<Table caption="Research findings on context length vs performance">
+  <thead>
+    <tr>
+      <th>Study</th>
+      <th>Finding</th>
+      <th>Implication</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Liu et al. (2023)</td>
+      <td>"Lost in the Middle" — U-shaped recall curve</td>
+      <td>Place critical info at start/end</td>
+    </tr>
+    <tr>
+      <td>Letta Context-Bench</td>
+      <td>Performance degrades before reaching stated limits</td>
+      <td>Test actual performance, not specs</td>
+    </tr>
+    <tr>
+      <td>Anthropic (2024)</td>
+      <td>Curated 10K context beats padded 100K</td>
+      <td>Quality over quantity</td>
+    </tr>
+    <tr>
+      <td>NIAH Benchmarks</td>
+      <td>Recall varies by position and context size</td>
+      <td>Benchmark your specific use case</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="info" title="Why Bloat Hurts Performance">
+Attention is a finite resource. More tokens compete for attention scores. Irrelevant tokens dilute attention away from important content, and the softmax operation amplifies this effect as context grows.
+</Callout>
+
+## Understanding Context Rot
+
+Context rot unfolds over time. A long-running agent session, or a system prompt that incorporates live data fetched at session start, will naturally drift out of sync with the world. Stock prices change, API endpoints are versioned, user preferences are updated. None of these invalidate the old entries in the context — they just silently coexist with them.
+
+<Diagram title="Context Rot Over Time">
+{`Time T0: Fresh context
+┌────────────────────────────────────────┐
+│ "Stock price is $150" (accurate)       │
+│ "User prefers dark mode" (accurate)    │
+│ "API endpoint is /v2/data" (accurate)  │
+└────────────────────────────────────────┘
+                    │
+                    │ Time passes...
+                    ▼
+Time T1: Partially stale
+┌────────────────────────────────────────┐
+│ "Stock price is $150" [!] (now $175)   │
+│ "User prefers dark mode" (still true)  │
+│ "API endpoint is /v2/data" (still true)│
+└────────────────────────────────────────┘
+                    │
+                    │ More time passes...
+                    ▼
+Time T2: Contradictions emerge
+┌────────────────────────────────────────┐
+│ "Stock price is $150" [x] (outdated)   │
+│ "Stock price is $175" (newer message)  │
+│ "User prefers dark mode" (still true)  │
+│ "API endpoint is /v3/data" (updated)   │
+│ "API endpoint is /v2/data" (old)       │ ← CONTRADICTION
+└────────────────────────────────────────┘`}
+</Diagram>
+
+Four types of rot deserve explicit treatment. Temporal staleness occurs naturally as external state changes without corresponding context updates. Contradictions arise when new information is appended rather than used to replace old information. Superseded decisions remain as ghost instructions long after a better approach was chosen. Accumulation noise — the residue of failed tool calls, retried operations, and exploratory dead ends — grows with every iteration of a long agent loop.
+
+<Table caption="Types of context rot and their symptoms">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>Cause</th>
+      <th>Symptoms</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Temporal staleness</strong></td>
+      <td>Information ages naturally</td>
+      <td>Incorrect facts, outdated recommendations</td>
+    </tr>
+    <tr>
+      <td><strong>Contradictions</strong></td>
+      <td>Updated info alongside old</td>
+      <td>Inconsistent responses, confusion</td>
+    </tr>
+    <tr>
+      <td><strong>Superseded decisions</strong></td>
+      <td>Old decisions remain in context</td>
+      <td>Agent follows outdated instructions</td>
+    </tr>
+    <tr>
+      <td><strong>Accumulation noise</strong></td>
+      <td>Failed attempts stay in history</td>
+      <td>Repeating same mistakes</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Measuring Context Health: Needle-in-Haystack Testing
+
+Before applying mitigations, it is worth measuring how badly your specific model and context configuration are actually affected. The needle-in-haystack (NIAH) test is the standard benchmark for this: embed a specific retrievable fact (the "needle") inside a large block of filler content (the "haystack"), then query the model for that fact. Run this across a range of context sizes and needle positions to build a recall matrix.
+
+<Diagram title="Needle-in-Haystack Test Setup">
+{`Test Matrix:
+
+Context Size: 4K → 8K → 16K → 32K → 64K → 128K
+                            │
+                            ▼
+                    ┌───────────────────┐
+                    │   Filler Content  │
+                    │   (paragraphs,    │
+                    │    documents)     │
+                    │                   │
+              →     │   [NEEDLE]        │  ← Insert at position
+                    │   "Code: XYZ-123" │
+                    │                   │
+                    │   More filler...  │
+                    └───────────────────┘
+                            │
+                            ▼
+                    Query: "What is the code?"
+                            │
+                            ▼
+                    Check: Does response
+                    contain "XYZ-123"?
+
+Positions tested: Start (10%), Middle (50%), End (90%)`}
+</Diagram>
+
+A typical result matrix reveals that middle-position recall degrades far more steeply than start or end recall as context grows:
+
+```
+Context Size    Start    Middle    End
+─────────────────────────────────────
+    4,000       98%       96%      98%
+    8,000       97%       91%      97%
+   16,000       95%       82%      96%
+   32,000       93%       71%      94%
+   64,000       89%       58%      91%
+  128,000       84%       43%      87%
+```
+
+The following implementation runs a full NIAH test suite using LangChain:
+
+```python
+import random
+import string
+from dataclasses import dataclass
+from typing import List
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import SystemMessage, HumanMessage
+import tiktoken
+
+@dataclass
+class NeedleTestConfig:
+    context_sizes: List[int] = None
+    positions: List[str] = None
+    num_trials: int = 5
+    needle_template: str = "The secret code is: {code}"
+
+    def __post_init__(self):
+        if self.context_sizes is None:
+            self.context_sizes = [4000, 8000, 16000, 32000, 64000]
+        if self.positions is None:
+            self.positions = ["start", "middle", "end"]
+
+@dataclass
+class TestResult:
+    context_size: int
+    position: str
+    success: bool
+    actual_tokens: int
+    response: str
+
+class NeedleInHaystackTest:
+    def __init__(self, model: str = "gpt-4"):
+        self.llm = ChatOpenAI(model=model, max_tokens=50)
+        self.enc = tiktoken.get_encoding("cl100k_base")
+
+    def run(self, config: NeedleTestConfig) -> List[TestResult]:
+        """Run needle-in-haystack tests."""
+        results = []
+
+        for size in config.context_sizes:
+            for position in config.positions:
+                for trial in range(config.num_trials):
+                    result = self._run_single(size, position, config)
+                    results.append(result)
+                    print(f"Size: {size}, Pos: {position}, "
+                          f"Trial: {trial+1}, Success: {result.success}")
+
+        return results
+
+    def _run_single(
+        self,
+        target_size: int,
+        position: str,
+        config: NeedleTestConfig
+    ) -> TestResult:
+        """Run a single needle test."""
+        code = ''.join(random.choices(
+            string.ascii_uppercase + string.digits, k=8
+        ))
+        needle = config.needle_template.format(code=code)
+        filler = self._generate_filler(target_size)
+        context = self._insert_needle(filler, needle, position)
+
+        messages = [
+            SystemMessage(content=context),
+            HumanMessage(content="What is the secret code? Reply with just the code.")
+        ]
+
+        response = self.llm.invoke(messages)
+        answer = response.content
+        success = code in answer
+
+        return TestResult(
+            context_size=target_size,
+            position=position,
+            success=success,
+            actual_tokens=len(self.enc.encode(context)),
+            response=answer
+        )
+
+    def _generate_filler(self, target_tokens: int) -> str:
+        paragraphs = [
+            "The quarterly report shows significant growth in "
+            "multiple sectors. Revenue increased by 15% compared "
+            "to the previous quarter, driven by strong performance "
+            "in the technology division.",
+            "Market analysis indicates favorable conditions for "
+            "expansion. Consumer sentiment remains positive, with "
+            "confidence indices reaching their highest levels in "
+            "eighteen months.",
+        ]
+        result = []
+        current_tokens = 0
+        while current_tokens < target_tokens:
+            para = random.choice(paragraphs)
+            result.append(para)
+            current_tokens = len(self.enc.encode(" ".join(result)))
+        return " ".join(result)
+
+    def _insert_needle(self, filler: str, needle: str, position: str) -> str:
+        sentences = filler.split(". ")
+        if position == "start":
+            idx = len(sentences) // 10
+        elif position == "middle":
+            idx = len(sentences) // 2
+        else:
+            idx = int(len(sentences) * 0.9)
+        sentences.insert(idx, needle)
+        return ". ".join(sentences)
+
+    def analyze(self, results: List[TestResult]) -> dict:
+        from collections import defaultdict
+        by_size = defaultdict(lambda: defaultdict(list))
+        for r in results:
+            by_size[r.context_size][r.position].append(r.success)
+        analysis = {}
+        for size, positions in sorted(by_size.items()):
+            analysis[size] = {}
+            for pos, successes in positions.items():
+                rate = sum(successes) / len(successes) * 100
+                analysis[size][pos] = f"{rate:.1f}%"
+        return analysis
+```
+
+## Context Health Management
+
+Active management prevents both bloat and rot from silently degrading agent performance. A context health manager applies three phases on each request: compressing older messages when token counts approach a soft limit, flagging or annotating messages containing time-sensitive claims that have aged past a staleness threshold, and scanning for contradictions that should be explicitly resolved before inference.
+
+```python
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional
+import tiktoken
+
+@dataclass
+class ContextHealthConfig:
+    soft_limit_tokens: int = 8000
+    hard_limit_tokens: int = 12000
+    preserve_recent_count: int = 5
+    max_staleness_days: int = 7
+    compression_model: str = "gpt-4o-mini"
+
+class ContextHealthManager:
+    def __init__(self, client, config: ContextHealthConfig):
+        self.client = client
+        self.config = config
+        self.enc = tiktoken.get_encoding("cl100k_base")
+
+    def manage(self, messages: List[Dict]) -> List[Dict]:
+        """Apply all context health checks."""
+        current_tokens = self._count_tokens(messages)
+
+        # Phase 1: Check for bloat
+        if current_tokens > self.config.soft_limit_tokens:
+            messages = self._compress_older(messages)
+
+        # Phase 2: Check for rot (stale information)
+        messages = self._handle_staleness(messages)
+
+        # Phase 3: Check for contradictions
+        messages = self._resolve_contradictions(messages)
+
+        return messages
+
+    def _compress_older(self, messages: List[Dict]) -> List[Dict]:
+        """Compress older messages to reduce bloat."""
+        preserve = self.config.preserve_recent_count
+        if len(messages) <= preserve:
+            return messages
+        older = messages[:-preserve]
+        recent = messages[-preserve:]
+        summary = self._summarize(older)
+        return [
+            {
+                "role": "system",
+                "content": f"Previous conversation summary:\n{summary}"
+            },
+            *recent
+        ]
+
+    def _handle_staleness(self, messages: List[Dict]) -> List[Dict]:
+        """Identify and handle stale information."""
+        result = []
+        for msg in messages:
+            staleness = self._check_staleness(msg)
+            if staleness > self.config.max_staleness_days:
+                result.append({
+                    **msg,
+                    "content": f"[STALE - {staleness} days old] "
+                               f"{msg['content']}"
+                })
+            else:
+                result.append(msg)
+        return result
+
+    def _check_staleness(self, message: Dict) -> int:
+        """Check if message contains stale information."""
+        timestamp = message.get("timestamp")
+        if not timestamp:
+            return 0
+        age = datetime.now() - timestamp
+        content = message.get("content", "").lower()
+        time_sensitive_indicators = [
+            "current", "now", "today", "latest",
+            "price", "status", "available"
+        ]
+        if any(ind in content for ind in time_sensitive_indicators):
+            return age.days
+        return 0
+
+    def _resolve_contradictions(self, messages: List[Dict]) -> List[Dict]:
+        """Detect and resolve contradictions."""
+        check_prompt = f"""
+Analyze these messages for contradictions. List any
+conflicting information (e.g., "Message 3 says X is Y
+but Message 7 says X is Z").
+
+Messages:
+{self._format_messages(messages)}
+
+Contradictions (or "None found"):
+"""
+        response = self.client.chat.completions.create(
+            model=self.config.compression_model,
+            messages=[{"role": "user", "content": check_prompt}]
+        )
+        contradictions = response.choices[0].message.content
+        if "none found" in contradictions.lower():
+            return messages
+        return [
+            {
+                "role": "system",
+                "content": f"WARNING: Contradictions detected. "
+                          f"Prefer recent information.\n"
+                          f"{contradictions}"
+            },
+            *messages
+        ]
+
+    def _summarize(self, messages: List[Dict]) -> str:
+        formatted = self._format_messages(messages)
+        response = self.client.chat.completions.create(
+            model=self.config.compression_model,
+            messages=[{
+                "role": "user",
+                "content": f"""Summarize this conversation, preserving:
+1. Key decisions made
+2. Important facts discovered
+3. Pending tasks or questions
+
+Conversation:
+{formatted}
+
+Summary:"""
+            }]
+        )
+        return response.choices[0].message.content
+
+    def _format_messages(self, messages: List[Dict]) -> str:
+        return "\n".join([
+            f"{m['role'].upper()}: {m.get('content', '')[:500]}"
+            for m in messages
+        ])
+
+    def _count_tokens(self, messages: List[Dict]) -> int:
+        return sum(
+            len(self.enc.encode(str(m.get("content", ""))))
+            for m in messages
+        )
+```
+
+## Mitigation Strategies
+
+A full mitigation pipeline applies four stages in sequence. First, messages are reordered by semantic relevance to the current query, placing the most relevant content at the attention-dense start and end positions, and the least relevant content in the low-attention middle. Second, a sliding window with overlap replaces the oldest content with a summary while preserving continuity messages at the boundary. Third, semantic deduplication removes near-identical messages that add token cost without information value. Fourth, freshness indicators annotate time-sensitive content with its age, giving the model explicit metadata about reliability.
+
+<Diagram title="Combined Mitigation Pipeline">
+{`Input Context (potentially bloated/rotted)
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │      1. REORDER BY IMPORTANCE     │
+    │  Score relevance to current query │
+    │  Place important at start/end     │
+    └───────────────────────────────────┘
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │      2. SLIDING WINDOW            │
+    │  Summarize old content            │
+    │  Keep overlap for continuity      │
+    └───────────────────────────────────┘
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │      3. SEMANTIC DEDUPLICATION    │
+    │  Remove near-duplicate messages   │
+    │  Keep most recent version         │
+    └───────────────────────────────────┘
+                    │
+                    ▼
+    ┌───────────────────────────────────┐
+    │      4. FRESHNESS INDICATORS      │
+    │  Mark message ages                │
+    │  Flag potential staleness         │
+    └───────────────────────────────────┘
+                    │
+                    ▼
+    Healthy Context (ready for inference)`}
+</Diagram>
+
+```python
+from typing import List, Dict
+import numpy as np
+from sentence_transformers import SentenceTransformer
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+import tiktoken
+
+class ContextMitigationPipeline:
+    def __init__(
+        self,
+        hard_limit: int = 16000,
+        window_size: int = 10,
+        overlap: int = 2
+    ):
+        self.llm = ChatOpenAI(model="gpt-4o-mini")
+        self.hard_limit = hard_limit
+        self.window_size = window_size
+        self.overlap = overlap
+        self.embedder = SentenceTransformer("all-MiniLM-L6-v2")
+        self.enc = tiktoken.get_encoding("cl100k_base")
+
+    def process(self, messages: List[Dict], query: str) -> List[Dict]:
+        """Apply all mitigation strategies."""
+        messages = self._reorder_by_importance(messages, query)
+
+        if self._count_tokens(messages) > self.hard_limit:
+            messages = self._apply_sliding_window(messages)
+
+        messages = self._deduplicate(messages)
+        messages = self._add_freshness_indicators(messages)
+        return messages
+
+    def _reorder_by_importance(self, messages: List[Dict], query: str) -> List[Dict]:
+        """Reorder to place important content at attention hotspots."""
+        query_emb = self.embedder.encode(query)
+        scored = []
+        for msg in messages:
+            content = msg.get("content", "")
+            msg_emb = self.embedder.encode(content)
+            relevance = np.dot(query_emb, msg_emb) / (
+                np.linalg.norm(query_emb) * np.linalg.norm(msg_emb)
+            )
+            scored.append((msg, relevance))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        n = len(scored)
+        high = [m for m, _ in scored[:n//3]]
+        medium = [m for m, _ in scored[n//3:2*n//3]]
+        low = [m for m, _ in scored[2*n//3:]]
+        reordered = []
+        reordered.extend(high[:len(high)//2])
+        reordered.extend(low)
+        reordered.extend(medium)
+        reordered.extend(high[len(high)//2:])
+        return reordered
+
+    def _apply_sliding_window(self, messages: List[Dict]) -> List[Dict]:
+        """Apply sliding window with overlap."""
+        if len(messages) <= self.window_size:
+            return messages
+        outside = messages[:-(self.window_size + self.overlap)]
+        if outside:
+            summary = self._summarize(outside)
+            summary_msg = {
+                "role": "system",
+                "content": f"Summary of earlier conversation:\n{summary}"
+            }
+        else:
+            summary_msg = None
+        overlap_msgs = messages[-(self.window_size + self.overlap):-self.window_size]
+        window_msgs = messages[-self.window_size:]
+        result = []
+        if summary_msg:
+            result.append(summary_msg)
+        result.extend(overlap_msgs)
+        result.extend(window_msgs)
+        return result
+
+    def _deduplicate(self, messages: List[Dict], threshold: float = 0.9) -> List[Dict]:
+        """Remove semantically duplicate messages."""
+        unique = []
+        embeddings = []
+        for msg in messages:
+            content = msg.get("content", "")
+            if not content:
+                unique.append(msg)
+                continue
+            msg_emb = self.embedder.encode(content)
+            is_duplicate = False
+            for existing_emb in embeddings:
+                similarity = np.dot(msg_emb, existing_emb) / (
+                    np.linalg.norm(msg_emb) * np.linalg.norm(existing_emb)
+                )
+                if similarity > threshold:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                unique.append(msg)
+                embeddings.append(msg_emb)
+        return unique
+
+    def _add_freshness_indicators(self, messages: List[Dict]) -> List[Dict]:
+        from datetime import datetime
+        result = []
+        for msg in messages:
+            timestamp = msg.get("timestamp")
+            content = msg.get("content", "")
+            if timestamp:
+                age_days = (datetime.now() - timestamp).days
+                if age_days > 0:
+                    content = f"[{age_days}d ago] {content}"
+            result.append({**msg, "content": content})
+        return result
+
+    def _summarize(self, messages: List[Dict]) -> str:
+        formatted = "\n".join([
+            f"{m['role']}: {m.get('content', '')[:300]}"
+            for m in messages
+        ])
+        prompt = ChatPromptTemplate.from_messages([
+            ("user", "Summarize concisely:\n{content}")
+        ])
+        chain = prompt | self.llm
+        response = chain.invoke({"content": formatted})
+        return response.content
+
+    def _count_tokens(self, messages: List[Dict]) -> int:
+        return sum(
+            len(self.enc.encode(str(m.get("content", ""))))
+            for m in messages
+        )
+```
+
+<Table caption="Mitigation strategies and their effectiveness">
+  <thead>
+    <tr>
+      <th>Strategy</th>
+      <th>Addresses</th>
+      <th>Effectiveness</th>
+      <th>Overhead</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Position reordering</strong></td>
+      <td>Bloat (lost in middle)</td>
+      <td>10–25% recall improvement</td>
+      <td>Low (embedding cost)</td>
+    </tr>
+    <tr>
+      <td><strong>Sliding window</strong></td>
+      <td>Bloat (size limit)</td>
+      <td>Prevents limit errors</td>
+      <td>Medium (summarization)</td>
+    </tr>
+    <tr>
+      <td><strong>Deduplication</strong></td>
+      <td>Bloat + Rot</td>
+      <td>10–30% token reduction</td>
+      <td>Low (embedding cost)</td>
+    </tr>
+    <tr>
+      <td><strong>Freshness tracking</strong></td>
+      <td>Rot (staleness)</td>
+      <td>Varies by task</td>
+      <td>Very low</td>
+    </tr>
+    <tr>
+      <td><strong>Contradiction detection</strong></td>
+      <td>Rot (conflicts)</td>
+      <td>Prevents confused reasoning</td>
+      <td>Medium (LLM call)</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Best Practices
+
+<Callout type="tip" title="Set Conservative Limits">
+Do not use the full advertised context. Set soft limits at 50–70% of maximum to leave headroom. Monitor performance and adjust based on your specific use case.
+</Callout>
+
+<Callout type="tip" title="Prioritize Recent Information">
+When contradictions exist, prefer recent content. Add timestamps to messages and train users (or downstream models) that newer information supersedes older.
+</Callout>
+
+<Callout type="tip" title="Use Progressive Summarization">
+Do not summarize everything at once. Use a progressive scheme: very old content receives aggressive compression, somewhat old content receives moderate compression, recent content is kept intact.
+</Callout>
+
+<Callout type="warning" title="Test Your Specific Model">
+Context handling varies significantly between models. What works for GPT-4 may not work for Claude or open models. Always benchmark your actual deployment.
+</Callout>
+
+## Common Pitfalls
+
+<Callout type="danger" title="Trusting Advertised Limits">
+"128K context" does not mean 128K performs well. Always test with needle-in-haystack and real tasks. Effective limits are often 30–50% of advertised.
+</Callout>
+
+<Callout type="danger" title="Ignoring Position Effects">
+Content placement matters significantly. Critical information in the middle of context may be missed 40% of the time at large context sizes.
+</Callout>
+
+<Callout type="danger" title="Accumulating Everything">
+"More context is always better" is false. Indiscriminately appending all tool outputs and conversation history leads to rapid degradation.
+</Callout>
+
+<Callout type="warning" title="Aggressive Compression">
+Over-summarizing loses critical nuance. Test compressed contexts with fact-recall questions to ensure important details survive compression.
+</Callout>

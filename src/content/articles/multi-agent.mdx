@@ -1,0 +1,298 @@
+---
+title: "Multi-Agent Orchestration"
+description: "Patterns and frameworks for coordinating multiple specialized AI agents including supervisor, peer-to-peer, debate, and mixture of experts."
+category: "Advanced"
+date: "2024-04-15"
+type: "topic"
+tags:
+  - multi-agent
+  - orchestration
+  - coordination
+featured: false
+---
+
+Single agents hit hard limits on complex tasks. They can only hold so much context, reason through so many steps, and maintain so many specialized capabilities simultaneously. Multi-agent systems address this by distributing work across cooperating specialists — a researcher who gathers information, an analyst who interprets it, a writer who communicates it, and a critic who challenges the result. The coordination overhead is real, but so is the capability gain when tasks genuinely require multiple forms of expertise.
+
+## Why Multi-Agent Systems?
+
+The core value propositions are specialization, parallelization, verification, and robustness. Different agents can be configured with distinct tools, prompts, and model choices tuned to their role. Independent subtasks can run concurrently rather than sequentially. Agents can check each other's work through critic patterns that catch errors a single agent might miss. Multiple perspectives reduce single points of failure and surface considerations that a solo agent would overlook.
+
+<Callout type="warning" title="Complexity Trade-off">
+Multi-agent systems add coordination overhead, debugging complexity, and cost. Use them when a single agent genuinely cannot handle the task, not as a default architecture.
+</Callout>
+
+## Orchestration Patterns
+
+<Diagram title="Multi-Agent Orchestration Patterns">
+{`SUPERVISOR                 PEER-TO-PEER              DEBATE
+────────────────────       ────────────────────      ────────────────────
+
+    ┌──────────┐               ┌───┐                   ┌──────────┐
+    │SUPERVISOR│           ┌───┤ A ├───┐               │ PROPOSER │
+    └────┬─────┘           │   └───┘   │               └────┬─────┘
+         │                 │     │     │                    │
+    ┌────┼────┐           ┌▼─┐  │   ┌─▼┐              ┌────▼─────┐
+    │    │    │           │B │◄─┼──►│ C│              │  CRITIC  │
+    ▼    ▼    ▼           └──┘  │   └──┘              └────┬─────┘
+  ┌──┐ ┌──┐ ┌──┐               ┌▼─┐                        │
+  │W1│ │W2│ │W3│               │ D│                   ┌────▼─────┐
+  └──┘ └──┘ └──┘               └──┘                   │  JUDGE   │
+                                                      └──────────┘
+
+
+MIXTURE OF EXPERTS         HIERARCHICAL              SEQUENTIAL
+────────────────────       ────────────────────      ────────────────────
+
+      ┌────────┐                ┌────┐               ┌──┐   ┌──┐   ┌──┐
+      │ ROUTER │                │LEAD│               │A1├──►│A2├──►│A3│
+      └───┬────┘                └─┬──┘               └──┘   └──┘   └──┘
+          │                   ┌──┼──┐
+     ┌────┼────┐              ▼  ▼  ▼
+     │    │    │            ┌──┐┌──┐┌──┐
+     ▼    ▼    ▼            │M1││M2││M3│
+   ┌──┐ ┌──┐ ┌──┐           └┬─┘└┬─┘└┬─┘
+   │E1│ │E2│ │E3│            │   │   │
+   └──┘ └──┘ └──┘          ┌─┼───┼───┼─┐
+     │    │    │           ▼ ▼   ▼   ▼ ▼
+     └────┼────┘          ┌──┐ ┌──┐ ┌──┐
+          ▼               │W1│ │W2│ │W3│
+     ┌────────┐           └──┘ └──┘ └──┘
+     │COMBINER│
+     └────────┘`}
+</Diagram>
+
+## 1. Supervisor Pattern
+
+A central supervisor agent coordinates specialized worker agents, deciding which worker handles each subtask and synthesizing results. The supervisor maintains a routing decision loop: it receives the task, decides whether to delegate to a worker or respond directly, collects worker output, and iterates until complete.
+
+```python
+from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+from typing import TypedDict, Literal
+
+# Define state
+class OrchestratorState(TypedDict):
+    messages: list
+    next_worker: str | None
+
+# Create specialized agents
+llm = ChatOpenAI(model="gpt-4")
+
+researcher = create_react_agent(
+    llm,
+    tools=[search_tool, browse_tool],
+    state_modifier="You are a research specialist."
+)
+
+analyst = create_react_agent(
+    llm,
+    tools=[analyze_tool, chart_tool],
+    state_modifier="You are a data analyst."
+)
+
+writer = create_react_agent(
+    llm,
+    tools=[write_tool, format_tool],
+    state_modifier="You are a technical writer."
+)
+
+# Supervisor decides routing
+def supervisor_node(state: OrchestratorState):
+    """Supervisor decides which worker to invoke next."""
+    messages = state["messages"]
+
+    response = llm.invoke([
+        {"role": "system", "content": SUPERVISOR_PROMPT},
+        *messages,
+        {"role": "user", "content": "What should happen next?"}
+    ])
+
+    decision = parse_supervisor_response(response.content)
+
+    if decision["action"] == "RESPOND":
+        return {"messages": messages + [response], "next_worker": None}
+
+    return {"messages": messages, "next_worker": decision["target_worker"]}
+
+def route_to_worker(state: OrchestratorState) -> Literal["researcher", "analyst", "writer", "end"]:
+    """Route to appropriate worker or end."""
+    if state["next_worker"] is None:
+        return "end"
+    return state["next_worker"]
+
+# Build the graph
+workflow = StateGraph(OrchestratorState)
+
+workflow.add_node("supervisor", supervisor_node)
+workflow.add_node("researcher", researcher)
+workflow.add_node("analyst", analyst)
+workflow.add_node("writer", writer)
+
+workflow.set_entry_point("supervisor")
+workflow.add_conditional_edges(
+    "supervisor",
+    route_to_worker,
+    {
+        "researcher": "researcher",
+        "analyst": "analyst",
+        "writer": "writer",
+        "end": END
+    }
+)
+
+# Workers return to supervisor
+for worker in ["researcher", "analyst", "writer"]:
+    workflow.add_edge(worker, "supervisor")
+
+app = workflow.compile()
+
+result = app.invoke({
+    "messages": [{"role": "user", "content": "Research AI trends and write a summary"}],
+    "next_worker": None
+})
+```
+
+The supervisor pattern offers clear control flow and a central point for monitoring, but creates a single point of failure and can bottleneck on the supervisor's own reasoning capacity.
+
+## 2. Peer-to-Peer Pattern
+
+Agents communicate directly without a central coordinator. Each agent advertises its capabilities, handles incoming messages by deciding whether to process them or forward them, and broadcasts help requests to the network when needed. This pattern suits loosely coupled tasks where agents have distinct capabilities and can self-organize. It becomes unwieldy when tight coordination is required, because the absence of a coordinator makes debugging and tracing more difficult.
+
+```python
+import asyncio
+from dataclasses import dataclass, field
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+@dataclass
+class Message:
+    sender: str
+    recipient: str
+    content: dict
+    message_type: str = "REQUEST"
+
+@dataclass
+class PeerAgent:
+    name: str
+    capabilities: list[str]
+    system_prompt: str
+    llm: ChatOpenAI = field(default_factory=lambda: ChatOpenAI(model="gpt-4"))
+    inbox: asyncio.Queue = field(default_factory=asyncio.Queue)
+
+    async def receive(self, message: Message) -> dict:
+        """Handle incoming message."""
+        if message.message_type == "REQUEST":
+            if self._can_handle(message.content):
+                result = await self._process(message.content)
+                return {"status": "completed", "result": result}
+            return {"status": "cannot_handle"}
+
+        elif message.message_type == "HELP_REQUEST":
+            if self._can_help(message.content.get("required_capabilities", [])):
+                return {
+                    "status": "can_help",
+                    "agent": self.name,
+                    "capabilities": self.capabilities
+                }
+            return {"status": "cannot_help"}
+
+        return {"status": "unknown_message_type"}
+
+    async def _process(self, content: dict) -> str:
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", self.system_prompt),
+            ("user", "{task}")
+        ])
+        chain = prompt | self.llm
+        response = await chain.ainvoke({"task": content.get("task", str(content))})
+        return response.content
+
+    def _can_handle(self, content: dict) -> bool:
+        required = content.get("required_capabilities", [])
+        return all(cap in self.capabilities for cap in required)
+
+    def _can_help(self, required: list[str]) -> bool:
+        return any(cap in self.capabilities for cap in required)
+```
+
+## 3. Debate Pattern
+
+Agents argue and critique each other to reach better conclusions. A proposer makes an initial case, a critic identifies flaws and suggests alternatives, and the proposer responds by defending or revising its position. After a fixed number of rounds, a judge evaluates the final proposal. Research has shown that debate patterns improve factual accuracy and reduce hallucinations by forcing agents to defend their claims against adversarial scrutiny.
+
+## 4. Mixture of Experts
+
+A router agent analyzes incoming tasks and selects which specialists — and in what proportion — should handle each request. Outputs from selected experts are then combined by weighted merge, best-of selection, or synthesis via a combiner agent. This pattern works well when your workload includes genuinely different task types that benefit from different configurations of tools and prompts.
+
+## Pattern Comparison
+
+<Table>
+  <thead>
+    <tr>
+      <th>Pattern</th>
+      <th>Best For</th>
+      <th>Coordination</th>
+      <th>Complexity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Supervisor</strong></td>
+      <td>Clear task decomposition</td>
+      <td>Centralized</td>
+      <td>Medium</td>
+    </tr>
+    <tr>
+      <td><strong>Peer-to-Peer</strong></td>
+      <td>Loosely-coupled tasks</td>
+      <td>Decentralized</td>
+      <td>High</td>
+    </tr>
+    <tr>
+      <td><strong>Debate</strong></td>
+      <td>Quality/accuracy critical</td>
+      <td>Turn-based</td>
+      <td>Medium</td>
+    </tr>
+    <tr>
+      <td><strong>MoE</strong></td>
+      <td>Varied task types</td>
+      <td>Router-based</td>
+      <td>Medium</td>
+    </tr>
+    <tr>
+      <td><strong>Sequential</strong></td>
+      <td>Pipeline workflows</td>
+      <td>Linear</td>
+      <td>Low</td>
+    </tr>
+    <tr>
+      <td><strong>Hierarchical</strong></td>
+      <td>Large-scale systems</td>
+      <td>Tree structure</td>
+      <td>High</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Common Pitfalls
+
+<Callout type="danger" title="Infinite Loops">
+Agents can get stuck passing tasks back and forth. Always implement maximum iteration limits.
+</Callout>
+
+<Callout type="danger" title="Context Explosion">
+Each agent adds to context. Multi-agent conversations can quickly exceed context limits.
+</Callout>
+
+<Callout type="warning" title="Role Confusion">
+Agents may not stay in their assigned roles. Use clear, distinct system prompts.
+</Callout>
+
+<Callout type="warning" title="Premature Multi-Agent">
+Do not use multi-agent when single-agent suffices. Added complexity should have clear benefits.
+</Callout>
+
+## Evaluation Metrics
+
+Measuring multi-agent systems requires additional metrics beyond single-agent task completion. Coordination overhead compares total tokens consumed to what a single-agent solution would require. Agent utilization tracks whether all agents are contributing meaningfully or whether some are effectively idle. Redundancy detection measures semantic similarity between agent outputs to identify duplicate work. Latency measures wall-clock time, which multi-agent systems can improve through parallelism or worsen through coordination delays.

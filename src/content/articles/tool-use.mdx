@@ -1,0 +1,267 @@
+---
+title: "Tool Use & Function Calling"
+description: "The bridge between language models and real-world actions, enabling agents to query APIs, execute code, and interact with external systems."
+category: "Foundational"
+date: "2024-01-15"
+type: "topic"
+tags:
+  - tool-use
+  - function-calling
+  - llm
+featured: true
+---
+
+Tool use — also called function calling — is the capability that transforms a language model from a text generator into an agent capable of acting in the world. When an agent can call a weather API, query a database, execute code, or interact with a file system, it becomes genuinely useful for tasks that require real-time information or side effects. The model decides *when* to invoke a tool, *which* tool to use, and *what arguments* to pass; the host application then executes that tool and returns the result for the model to incorporate into its reasoning.
+
+The mechanics are straightforward: the application provides the model with a set of tool definitions — typically as JSON Schema — alongside the user's request. If the model determines that a tool call is appropriate, it emits a structured response containing the tool name and arguments rather than a plain-text reply. The application executes that call, captures the result, and sends it back as a new message in the conversation. The model then generates its final answer informed by the real-world data it just obtained.
+
+<Callout type="info" title="Key Insight">
+Tools transform LLMs from text generators into agents that can take action in the world. The model decides *when* to use a tool, *which* tool to use, and *what arguments* to pass.
+</Callout>
+
+## How Tool Calling Works
+
+The flow is a well-defined cycle: the model receives a user request with tool definitions, optionally emits one or more tool calls, the application executes them and feeds results back, and the model generates its final response. This cycle can repeat multiple times for complex tasks.
+
+<Diagram title="Tool Calling Flow">
+{`User Request
+     │
+     ▼
+┌─────────────────────────────────────┐
+│           Language Model            │
+│   (with tool definitions loaded)    │
+└─────────────────────────────────────┘
+     │
+     │ Model decides to call tool
+     ▼
+┌─────────────────────────────────────┐
+│         Tool Call Response          │
+│  { name: "get_weather",             │
+│    arguments: { "location": "NYC" } │
+│  }                                  │
+└─────────────────────────────────────┘
+     │
+     │ Application executes tool
+     ▼
+┌─────────────────────────────────────┐
+│          Tool Execution             │
+│   get_weather("NYC") → result       │
+└─────────────────────────────────────┘
+     │
+     │ Result sent back to model
+     ▼
+┌─────────────────────────────────────┐
+│           Language Model            │
+│    (generates final response)       │
+└─────────────────────────────────────┘
+     │
+     ▼
+Final Response to User`}
+</Diagram>
+
+### Basic Tool Execution
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
+
+# Define tools using the @tool decorator
+@tool
+def get_weather(location: str, unit: str = "celsius") -> str:
+    """Get current weather for a location.
+
+    Args:
+        location: City name, e.g. 'San Francisco'
+        unit: Temperature unit (celsius or fahrenheit)
+    """
+    return weather_api.get_current(location, unit)
+
+# Create LLM with tools bound
+llm = ChatOpenAI(model="gpt-4")
+llm_with_tools = llm.bind_tools([get_weather])
+
+def execute_with_tools(user_message: str) -> str:
+    messages = [HumanMessage(content=user_message)]
+
+    # Get response (may include tool calls)
+    response = llm_with_tools.invoke(messages)
+
+    if response.tool_calls:
+        messages.append(response)
+
+        for tool_call in response.tool_calls:
+            result = get_weather.invoke(tool_call["args"])
+            messages.append(
+                ToolMessage(content=result, tool_call_id=tool_call["id"])
+            )
+
+        return llm_with_tools.invoke(messages).content
+
+    return response.content
+```
+
+## Tool Definition Formats
+
+Different LLM providers use slightly different formats for defining tools, though all share common elements: a name, a description, and a parameter schema. Writing detailed, accurate tool descriptions is one of the highest-leverage improvements you can make to an agent.
+
+<Table caption="Tool definition formats vary by provider but share common elements">
+  <thead>
+    <tr>
+      <th>Provider</th>
+      <th>Format</th>
+      <th>Key Features</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>OpenAI</td>
+      <td>JSON Schema</td>
+      <td>Parallel calls, strict mode, function descriptions</td>
+    </tr>
+    <tr>
+      <td>Anthropic</td>
+      <td>JSON Schema</td>
+      <td>Tool use blocks, detailed descriptions encouraged</td>
+    </tr>
+    <tr>
+      <td>Google</td>
+      <td>OpenAPI-style</td>
+      <td>Function declarations with protobuf types</td>
+    </tr>
+    <tr>
+      <td>Open Models</td>
+      <td>Varies</td>
+      <td>Often use Hermes or ChatML format</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="tip" title="Best Practice">
+Write detailed tool descriptions. Models use these descriptions to decide when to call a tool. Include examples of valid inputs and explain edge cases.
+</Callout>
+
+## Parallel Tool Execution
+
+Modern LLMs can request multiple tool calls simultaneously, dramatically reducing latency for tasks that need several independent pieces of information. When the model emits several tool calls in a single turn, the application can execute all of them concurrently and return all results together.
+
+```python
+import asyncio
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+
+@tool
+async def get_weather(location: str) -> str:
+    """Get current weather for a location."""
+    return await weather_api.get_async(location)
+
+@tool
+async def search_web(query: str) -> str:
+    """Search the web for information."""
+    return await search_api.search_async(query)
+
+llm = ChatOpenAI(model="gpt-4")
+tools = [get_weather, search_web]
+llm_with_tools = llm.bind_tools(tools)
+
+async def agent_with_parallel_tools(query: str) -> str:
+    messages = [HumanMessage(content=query)]
+    response = await llm_with_tools.ainvoke(messages)
+
+    if response.tool_calls:
+        messages.append(response)
+
+        tool_tasks = []
+        for tool_call in response.tool_calls:
+            tool_fn = next(t for t in tools if t.name == tool_call["name"])
+            tool_tasks.append(tool_fn.ainvoke(tool_call["args"]))
+
+        results = await asyncio.gather(*tool_tasks)
+
+        for tool_call, result in zip(response.tool_calls, results):
+            messages.append(
+                ToolMessage(content=result, tool_call_id=tool_call["id"])
+            )
+
+        return (await llm_with_tools.ainvoke(messages)).content
+
+    return response.content
+```
+
+<Callout type="warning" title="Consideration">
+Not all tool calls should be parallelized. If tools have dependencies — for example, creating a record and then updating it — they must be executed sequentially.
+</Callout>
+
+## Error Handling & Retries
+
+Robust tool execution requires handling failures gracefully. When a tool call fails, the model should receive the error message so it can reason about alternative approaches. Without error feedback, the agent has no basis for adapting its strategy.
+
+```python
+from langchain_core.tools import tool, ToolException
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@tool(handle_tool_error=True)
+def search_database(query: str) -> str:
+    """Search the database with automatic error handling."""
+    try:
+        return db.search(query)
+    except DatabaseError as e:
+        raise ToolException(f"Database error: {e}")
+
+# Using LangGraph for agent with error recovery
+from langgraph.prebuilt import create_react_agent
+
+agent = create_react_agent(
+    llm,
+    tools,
+    handle_tool_errors=True
+)
+
+result = agent.invoke({"messages": [("user", query)]})
+```
+
+## Trade-offs & Approaches
+
+<Table>
+  <thead>
+    <tr>
+      <th>Approach</th>
+      <th>Pros</th>
+      <th>Cons</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Static tool list</strong></td>
+      <td>Simple, predictable, easy to test</td>
+      <td>Context bloat with many tools</td>
+    </tr>
+    <tr>
+      <td><strong>Dynamic discovery</strong></td>
+      <td>Scales to many tools</td>
+      <td>Additional latency, complexity</td>
+    </tr>
+    <tr>
+      <td><strong>Tool clustering</strong></td>
+      <td>Balance of both approaches</td>
+      <td>Routing logic complexity</td>
+    </tr>
+    <tr>
+      <td><strong>Skills pattern</strong></td>
+      <td>Massive token savings (98%+)</td>
+      <td>Requires filesystem access</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="info" title="Related Topic">
+For large tool libraries (50+ tools), see the [Skills Pattern](/articles/skills-pattern/) which can reduce context usage from 150K to 2K tokens.
+</Callout>
+
+## Common Pitfalls
+
+Vague tool descriptions are among the most common and costly mistakes: the model uses these descriptions to decide when and how to call tools, so ambiguous wording leads to incorrect selection or malformed arguments. Always include examples of valid inputs and describe edge cases explicitly. When a tool fails, always return the error details to the model rather than swallowing exceptions; without this feedback, the model has no way to reason about what went wrong or try an alternative approach. Finally, always set a maximum iteration limit to prevent agents from entering infinite tool-calling loops, and treat all tool arguments as untrusted input — validate and sanitize to prevent injection attacks.
+
+<Callout type="danger" title="Security: Unvalidated Arguments">
+Never pass tool arguments directly to system commands. Validate and sanitize all inputs to prevent injection attacks.
+</Callout>

@@ -1,0 +1,268 @@
+---
+title: "The ReAct Pattern"
+description: "Reasoning plus Acting — the foundational loop that enables AI agents to think through problems and take targeted action in the world."
+category: "Foundational"
+date: "2024-01-20"
+type: "topic"
+tags:
+  - react
+  - reasoning
+  - agentic-loop
+featured: true
+---
+
+ReAct — a portmanteau of Reasoning and Acting — is the prompting paradigm that first gave language models a reliable way to behave as agents. Introduced by Yao et al. in 2022, the approach interleaves explicit reasoning traces with tool invocations. Rather than asking a model to produce an answer in one shot, ReAct instructs it to articulate its reasoning, take an action, observe the result, reason again, and so on until the task is complete. The key insight was empirical: models that narrate their reasoning before acting make fewer errors and recover from mistakes more gracefully than those that act silently.
+
+The original formulation used a structured prompt format — `Thought:`, `Action:`, `Observation:` — that made the agent's internal state visible in the transcript. This interpretability proved invaluable for debugging, since every decision left a paper trail. Framework implementations like LangChain's `AgentExecutor` and LangGraph's `create_react_agent` have made the loop largely automatic, but understanding the underlying pattern remains essential for anyone building reliable agents.
+
+<Callout type="info" title="Original Paper">
+ReAct was introduced in "ReAct: Synergizing Reasoning and Acting in Language Models" (Yao et al., 2022). It showed that combining reasoning traces with actions outperforms either approach alone on tasks like HotpotQA, FEVER, and ALFWorld.
+</Callout>
+
+## The ReAct Loop
+
+The loop has three phases that repeat until the agent reaches a conclusion or hits its step limit. In the Thought phase the model articulates what it knows and what it needs to find out. In the Action phase it selects and invokes a tool. In the Observation phase it processes the result and decides whether to continue.
+
+<Diagram title="The ReAct Loop">
+{`┌─────────────────────────────────────────────────────────┐
+│                      ReAct Loop                         │
+└─────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │       THOUGHT        │
+              │  "I need to find..." │
+              │  "The result shows..." │
+              │  "Now I should..."   │
+              └──────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │        ACTION        │
+              │  search("query")     │
+              │  calculate("2+2")    │
+              │  lookup("term")      │
+              └──────────────────────┘
+                          │
+                          ▼
+              ┌──────────────────────┐
+              │     OBSERVATION      │
+              │  Result from tool    │
+              │  or environment      │
+              └──────────────────────┘
+                          │
+            ┌─────────────┴─────────────┐
+            │                           │
+            ▼                           ▼
+    ┌───────────────┐          ┌───────────────┐
+    │   Continue    │          │   Complete    │
+    │   (loop back) │          │   (return)    │
+    └───────────────┘          └───────────────┘`}
+</Diagram>
+
+## Basic ReAct Implementation
+
+LangGraph's `create_react_agent` encapsulates the entire loop, handling tool dispatch and message threading automatically. The pattern works with any tool set and any model that supports function calling.
+
+```python
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return web_search_api(query)
+
+@tool
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    return str(eval(expression))  # Use safe eval in production
+
+llm = ChatOpenAI(model="gpt-4")
+tools = [search, calculator]
+
+agent = create_react_agent(llm, tools)
+
+result = agent.invoke({
+    "messages": [
+        ("user", "What's the population of France times 2?")
+    ]
+})
+
+# The agent will:
+# 1. Think: I need to find France's population
+# 2. Act: search("population of France")
+# 3. Observe: "67 million"
+# 4. Think: Now I need to multiply by 2
+# 5. Act: calculator("67000000 * 2")
+# 6. Observe: "134000000"
+# 7. Return: "France has ~67M people, doubled is 134M"
+```
+
+## Explicit Reasoning Traces
+
+The original ReAct uses structured text to surface the model's thinking — a powerful pattern for applications where auditability matters. By formatting responses with `Thought:` and `Action:` markers, every reasoning step is captured and inspectable.
+
+```python
+from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_react_agent
+from langchain_core.tools import tool
+from langchain import hub
+
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return search_api.search(query)
+
+@tool
+def calculator(expression: str) -> str:
+    """Evaluate a mathematical expression."""
+    return str(eval(expression))
+
+# Use LangChain's standard ReAct prompt
+prompt = hub.pull("hwchase17/react")
+
+llm = ChatOpenAI(model="gpt-4", temperature=0)
+tools = [search, calculator]
+
+agent = create_react_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,  # Shows Thought/Action/Observation trace
+    max_iterations=10,
+    handle_parsing_errors=True
+)
+
+result = agent_executor.invoke({
+    "input": "What's the population of Tokyo multiplied by 3?"
+})
+```
+
+## Evolution: From Explicit to Implicit Reasoning
+
+The field has moved significantly since the original paper. Early models needed explicit `Thought:` prompts to reason reliably; modern reasoning models like o1, DeepSeek-R1, and Claude have internalized chain-of-thought, making explicit prompting unnecessary — and sometimes counterproductive.
+
+<Table caption="ReAct has evolved as models have become more capable">
+  <thead>
+    <tr>
+      <th>Era</th>
+      <th>Approach</th>
+      <th>Characteristics</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>2022–2023</strong></td>
+      <td>Explicit ReAct</td>
+      <td>Structured Thought/Action/Observation prompts</td>
+    </tr>
+    <tr>
+      <td><strong>2023–2024</strong></td>
+      <td>Tool-augmented LLMs</td>
+      <td>Native function calling, implicit reasoning</td>
+    </tr>
+    <tr>
+      <td><strong>2024–2025</strong></td>
+      <td>Reasoning Models</td>
+      <td>Internal chain-of-thought (o1, DeepSeek-R1, Claude)</td>
+    </tr>
+  </tbody>
+</Table>
+
+<Callout type="warning" title="Important Finding">
+Research shows that explicit Chain-of-Thought prompting can *degrade* performance by 3–5% on reasoning models like o1 and DeepSeek-R1. These models have internalized the reasoning process — adding explicit thought prompts interferes with their native behavior.
+</Callout>
+
+```python
+from langgraph.prebuilt import create_react_agent
+from langchain_anthropic import ChatAnthropic
+from langchain_core.tools import tool
+
+@tool
+def search(query: str) -> str:
+    """Search the web for information."""
+    return search_api.search(query)
+
+# Modern LLMs have internalized reasoning
+llm = ChatAnthropic(model="claude-sonnet-4-20250514")
+agent = create_react_agent(llm, [search])
+
+def modern_agent(task: str) -> str:
+    result = agent.invoke({
+        "messages": [("user", task)]
+    })
+    return result["messages"][-1].content
+```
+
+## When to Use Each Approach
+
+The choice between explicit and implicit reasoning is not stylistic — it has measurable performance implications. For debugging and compliance scenarios, explicit traces are invaluable. For production systems using frontier reasoning models, implicit is typically better.
+
+<Table>
+  <thead>
+    <tr>
+      <th>Scenario</th>
+      <th>Recommended Approach</th>
+      <th>Reason</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Debugging / Development</td>
+      <td>Explicit ReAct</td>
+      <td>Visible reasoning traces aid debugging</td>
+    </tr>
+    <tr>
+      <td>Production with GPT-4</td>
+      <td>Either</td>
+      <td>Model supports both well</td>
+    </tr>
+    <tr>
+      <td>Production with o1 / R1</td>
+      <td>Implicit (native tools)</td>
+      <td>Explicit prompting hurts performance</td>
+    </tr>
+    <tr>
+      <td>Open-source models</td>
+      <td>Explicit ReAct</td>
+      <td>More predictable behavior</td>
+    </tr>
+    <tr>
+      <td>Compliance / Audit needs</td>
+      <td>Explicit ReAct</td>
+      <td>Full reasoning trail required</td>
+    </tr>
+  </tbody>
+</Table>
+
+## Trajectory Analysis & Debugging
+
+One of ReAct's most durable benefits is interpretability. When an agent fails, the full trajectory reveals exactly where reasoning went wrong — an invaluable property for production systems. Logging complete trajectories is a near-universal best practice even when explicit thought formatting is omitted.
+
+<Diagram title="Trajectory Analysis">
+{`Trajectory: Weather Query
+─────────────────────────────────────────────────────
+Step 1 │ Thought: Need weather for NYC
+       │ Action:  search("NYC weather")
+       │ Result:  ✓ Got weather data
+─────────────────────────────────────────────────────
+Step 2 │ Thought: Need to convert to Celsius
+       │ Action:  calculator("75 - 32 * 5/9")  ← BUG!
+       │ Result:  ✗ Wrong formula (missing parens)
+─────────────────────────────────────────────────────
+Step 3 │ Thought: Result seems wrong, retry
+       │ Action:  calculator("(75 - 32) * 5/9")
+       │ Result:  ✓ Correct conversion
+─────────────────────────────────────────────────────
+
+Analysis:
+- Model caught its own error (good recovery)
+- Root cause: Math formatting issue
+- Fix: Add examples to calculator tool description`}
+</Diagram>
+
+## Common Pitfalls
+
+Without proper termination conditions, agents can loop indefinitely — always set maximum step limits and detect repetitive patterns. A subtler problem is reasoning-action mismatch: the model may articulate one intention but take a different action. Validate that actions align with stated reasoning, especially during testing. Long traces can also cause the model to lose track of earlier observations; consider summarizing history or using a dedicated memory system once conversations exceed 15–20 turns. Finally, not every task needs multi-step reasoning — forcing the ReAct pattern on simple queries that could be answered directly adds unnecessary latency and cost.
