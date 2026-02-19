@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   update-news:
@@ -29,6 +30,7 @@ jobs:
       - name: Fetch and process news
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
         run: |
           echo "Starting news update..."
           if [ -z "$ANTHROPIC_API_KEY" ]; then
@@ -58,3 +60,13 @@ jobs:
           git add src/data/news.json
           git commit -m "Auto-update news $(date +%Y-%m-%d)"
           git push
+
+      - name: Generate topic articles from Twitter links
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Starting article generation..."
+          python scripts/generate-articles.py
+          echo "Article generation completed."

@@ -29,7 +29,10 @@
       "Bash(npm ls:*)",
       "Bash(npm uninstall:*)",
       "Bash(python3:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "WebFetch(domain:devcommunity.x.com)",
+      "WebFetch(domain:twitterapi.io)",
+      "WebFetch(domain:gigazine.net)"
     ]
   }
 }
