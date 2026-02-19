@@ -1,6 +1,32 @@
 {
-  "last_updated": "2026-02-18T08:18:46.362982",
+  "last_updated": "2026-02-19T08:19:09.693914",
   "items": [
+    {
+      "title": "IBM and UC Berkeley Diagnose Why Enterprise Agents Fail Using IT-Bench and MAST",
+      "url": "https://huggingface.co/blog/ibm-research/itbenchandmast",
+      "summary": "IBM and UC Berkeley developed IT-Bench and MAST to diagnose why enterprise agents fail.",
+      "published": "2026-02-18T16:15:45",
+      "source": "Hugging Face Blog",
+      "category": "tools",
+      "tags": [
+        "evaluation",
+        "research"
+      ],
+      "processed_at": "2026-02-19T08:19:09.693697"
+    },
+    {
+      "title": "New in Agent Builder: all new agent chat, file uploads + tool registry",
+      "url": "https://blog.langchain.com/new-in-agent-builder-all-new-agent-chat-file-uploads-tool-registry/",
+      "summary": "LangChain's Agent Builder has been updated with new agent chat capabilities, file upload support, and a tool registry feature.",
+      "published": "2026-02-18T15:55:08",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "tools"
+      ],
+      "processed_at": "2026-02-19T08:19:09.693677"
+    },
     {
       "title": "monday Service + LangSmith: Building a Code-First Evaluation Strategy from Day 1",
       "url": "https://blog.langchain.com/customers-monday/",
@@ -249,34 +275,6 @@
         "tools"
       ],
       "processed_at": "2026-02-06T08:18:15.626446"
-    },
-    {
-      "title": "Nemotron ColEmbed V2: Raising the Bar for Multimodal Retrieval with ViDoRe V3\u2019s Top Model",
-      "url": "https://huggingface.co/blog/nvidia/nemotron-colembed-v2",
-      "summary": "NVIDIA's Nemotron ColEmbed V2 achieves top performance on ViDoRe V3 benchmark for multimodal retrieval, advancing RAG capabilities for agent systems.",
-      "published": "2026-02-04T15:00:40",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "rag",
-        "models",
-        "evaluation"
-      ],
-      "processed_at": "2026-02-05T08:18:17.790466"
-    },
-    {
-      "title": "Unlocking the Codex harness: how we built the App Server",
-      "url": "https://openai.com/index/unlocking-the-codex-harness",
-      "summary": "Technical deep-dive on the Codex App Server's bidirectional JSON-RPC API that enables embedding Codex agents with streaming progress, tool use, approvals, and diff capabilities.",
-      "published": "2026-02-04T13:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "frameworks",
-        "tools",
-        "patterns"
-      ],
-      "processed_at": "2026-02-05T08:18:17.790458"
     }
   ]
 }
