@@ -1,6 +1,73 @@
 {
-  "last_updated": "2026-02-19T08:19:09.693914",
+  "last_updated": "2026-02-20T08:18:56.481379",
   "items": [
+    {
+      "title": "Context-Bench: A benchmark for agentic context engineering",
+      "url": "https://leaderboard.letta.com/",
+      "summary": "Letta Research introduces Context-Bench, a benchmark measuring agents' ability to perform filesystem operations, entity relationship tracing, and skill discovery/loading from libraries.",
+      "published": "2026-02-20T08:18:34.084570+00:00",
+      "source": "@Letta_AI on X",
+      "category": "community",
+      "tags": [
+        "evaluation",
+        "research"
+      ],
+      "processed_at": "2026-02-20T08:18:56.481192"
+    },
+    {
+      "title": "zeitzeuge \u2014 AI-Powered Performance Analysis for Web & Tests",
+      "url": "https://zeitzeuge.dev/",
+      "summary": "A performance analysis tool that uses a LangChain Deep Agent to autonomously analyze V8 heap snapshots, Chrome runtime traces, and CPU profiles to suggest code-level fixes.",
+      "published": "2026-02-20T08:18:27.625159+00:00",
+      "source": "@bromann on X",
+      "category": "community",
+      "tags": [
+        "frameworks",
+        "tools"
+      ],
+      "processed_at": "2026-02-20T08:18:56.481190"
+    },
+    {
+      "title": "Programmatic tool calling",
+      "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling",
+      "summary": "Claude API introduces programmatic tool calling, allowing Claude to write Python code that calls tools within a code execution container, reducing latency and token consumption for multi-tool workflows.",
+      "published": "2026-02-20T08:18:27.206026+00:00",
+      "source": "@RLanceMartin on X",
+      "category": "community",
+      "tags": [
+        "protocols",
+        "patterns",
+        "models"
+      ],
+      "processed_at": "2026-02-20T08:18:56.481189"
+    },
+    {
+      "title": "Improved Web Search with Dynamic Filtering",
+      "url": "https://claude.com/blog/improved-web-search-with-dynamic-filtering",
+      "summary": "Claude's web search and web fetch tools now automatically write and execute code to filter search results before they reach the context window, improving accuracy by 11% and reducing token usage by 24%.",
+      "published": "2026-02-20T08:18:26.316285+00:00",
+      "source": "@RLanceMartin on X",
+      "category": "community",
+      "tags": [
+        "tools",
+        "models",
+        "patterns"
+      ],
+      "processed_at": "2026-02-20T08:18:56.481187"
+    },
+    {
+      "title": "How to Use Memory in Agent Builder",
+      "url": "https://blog.langchain.com/how-to-use-memory-in-agent-builder/",
+      "summary": "LangChain's Agent Builder incorporates memory that retains user feedback, corrections, and preferences to improve agent performance over time.",
+      "published": "2026-02-19T18:28:14",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns"
+      ],
+      "processed_at": "2026-02-20T08:18:56.481169"
+    },
     {
       "title": "IBM and UC Berkeley Diagnose Why Enterprise Agents Fail Using IT-Bench and MAST",
       "url": "https://huggingface.co/blog/ibm-research/itbenchandmast",
@@ -205,76 +272,6 @@
         "models"
       ],
       "processed_at": "2026-02-12T08:19:16.182957"
-    },
-    {
-      "title": "GPT-5 lowers the cost of cell-free protein synthesis",
-      "url": "https://openai.com/index/gpt-5-lowers-protein-synthesis-cost",
-      "summary": "GPT-5 powers an autonomous laboratory agent that uses closed-loop experimentation to optimize protein synthesis, demonstrating real-world agent applications in scientific domains.",
-      "published": "2026-02-05T11:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "patterns",
-        "research"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626431"
-    },
-    {
-      "title": "Introducing Trusted Access for Cyber",
-      "url": "https://openai.com/index/trusted-access-for-cyber",
-      "summary": "OpenAI introduces a trust-based framework for cyber capabilities that includes safeguards against misuse, relevant to agent safety and governance in sensitive domains.",
-      "published": "2026-02-05T10:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "safety",
-        "models",
-        "frameworks"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626442"
-    },
-    {
-      "title": "Introducing OpenAI Frontier",
-      "url": "https://openai.com/index/introducing-openai-frontier",
-      "summary": "OpenAI Frontier is an enterprise platform specifically designed for building, deploying, and managing AI agents with governance features like shared context, permissions, and onboarding.",
-      "published": "2026-02-05T06:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "frameworks",
-        "tools",
-        "patterns"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626445"
-    },
-    {
-      "title": "Introducing GPT-5.3-Codex",
-      "url": "https://openai.com/index/introducing-gpt-5-3-codex",
-      "summary": "GPT-5.3-Codex is positioned as a Codex-native agent that supports long-horizon, real-world technical work by pairing advanced coding with general reasoning abilities.",
-      "published": "2026-02-05T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626448"
-    },
-    {
-      "title": "GPT-5.3-Codex System Card",
-      "url": "https://openai.com/index/gpt-5-3-codex-system-card",
-      "summary": "GPT-5.3-Codex combines frontier coding performance with reasoning capabilities, representing the most capable agentic coding model for complex development tasks.",
-      "published": "2026-02-05T00:00:00",
-      "source": "OpenAI News",
-      "category": "providers",
-      "tags": [
-        "models",
-        "patterns",
-        "tools"
-      ],
-      "processed_at": "2026-02-06T08:18:15.626446"
     }
   ]
 }
