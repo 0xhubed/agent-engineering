@@ -1,0 +1,101 @@
+---
+title: "Context-Bench: Benchmarking Agentic Context Engineering"
+description: "A look at Context-Bench, Letta's benchmark for measuring how well language models perform context engineering tasks including filesystem traversal and dynamic skill loading."
+category: "Evaluation"
+date: "2026-02-20"
+type: "topic"
+source_url: "https://leaderboard.letta.com/"
+tags:
+  - evaluation
+  - benchmarking
+  - context engineering
+  - agentic RAG
+  - skills pattern
+  - tool use
+featured: false
+---
+
+Context-Bench is an open benchmark from Letta Research that evaluates a model's ability to perform **context engineering** inside an agent loop—specifically, how well it chains operations, retrieves relevant information across multiple steps, and dynamically loads skills on demand. Unlike general-purpose coding or reasoning benchmarks, Context-Bench targets the mechanics that distinguish a capable agent from a capable language model: deciding *what* to put in context, *when* to retrieve it, and *which tools or skills* to invoke.
+
+## What Context-Bench Measures
+
+The benchmark is split into two suites, each targeting a distinct dimension of agentic context engineering.
+
+**Filesystem Suite** tests whether a model can chain file operations, trace entity relationships across files, and complete multi-hop information retrieval tasks. Tasks are evaluated with an LLM-as-a-judge rubric that checks for correct retrieval, accurate reasoning, and coherent synthesis of information spread across a simulated filesystem. This surface is intentionally harder than single-document QA: the agent must plan a retrieval sequence rather than issue one lookup.
+
+**Skills Suite** evaluates a model's ability to discover and load relevant skills from a library, then use those skills to complete a task. Two rubrics are reported separately—Task Completion (did the agent finish the job?) and Skill Use (did it select and invoke the right skill at the right time?). A model can score well on task completion by brute-forcing a solution without skills, so the split rubric exposes that failure mode explicitly.
+
+<Callout type="info">
+The Skill Use rubric score is consistently lower than Task Completion for most models, indicating that selecting and composing pre-built skills is a harder capability to elicit than simply completing a task by any means available.
+</Callout>
+
+## Benchmark Architecture
+
+<Diagram>
+```
+┌─────────────────────────────────────────────────┐
+│                  Context-Bench                  │
+│                                                 │
+│  ┌──────────────────┐  ┌─────────────────────┐  │
+│  │  Filesystem Suite│  │    Skills Suite     │  │
+│  │                  │  │                     │  │
+│  │ • File chaining  │  │ • Skill discovery   │  │
+│  │ • Entity tracing │  │ • Skill loading     │  │
+│  │ • Multi-hop IR   │  │ • Task completion   │  │
+│  │                  │  │                     │  │
+│  │ Rubric:          │  │ Rubrics:            │  │
+│  │  LLM-as-judge    │  │  Task Completion    │  │
+│  │  (single score)  │  │  + Skill Use        │  │
+│  └──────────────────┘  │  (split scores)     │  │
+│                         └─────────────────────┘  │
+│                                                 │
+│  Agent runtime: Letta code agents               │
+│  with real filesystem + client-side tools       │
+└─────────────────────────────────────────────────┘
+```
+</Diagram>
+
+## Key Findings from Leaderboard Results
+
+As of early 2026, a few patterns stand out across the published results.
+
+**Reasoning budget matters, but not linearly.** On the Filesystem Suite, `gpt-5.2` at `xhigh` reasoning effort scores 83% at \$38.75 per run, while `claude-opus-4-6` scores 77% at \$307.60—a 7.9× cost difference for a 6-point disadvantage. Cost efficiency is a first-class signal the benchmark surfaces by reporting both accuracy and dollar cost per run.
+
+**Skill selection is a distinct capability.** On the Skills Suite, `claude-sonnet-4-5` achieves a 72% Skill Use score while scoring 76.5% on Task Completion—meaning it selects the right skill most of the time it succeeds. By contrast, `gpt-5-nano` scores 52.8% on Task Completion but only 24% on Skill Use, revealing it largely ignores the skill library and attempts tasks from scratch.
+
+**Open-weight models are competitive on task completion but lag on skill use.** `deepseek-chat` reaches 75.33% Task Completion—within 9 points of `gpt-5.2 xhigh`—but its 53.62% Skill Use score suggests the gap widens on structured tool composition rather than raw reasoning.
+
+<Callout type="tip">
+When selecting a model for an agent that relies heavily on a skill or tool library, weight the Skill Use rubric more than Task Completion. A model that completes tasks without using the provided tools will break in production when those tools are the *only* path to the correct answer.
+</Callout>
+
+## How the Evaluation Pipeline Works
+
+Context-Bench agents run inside the Letta runtime, which gives them access to a real filesystem and client-side tools rather than a simulated environment. This design choice means the benchmark captures actual tool-call overhead and error-handling behavior, not just whether a model can describe the correct sequence of operations.
+
+Judging is handled by a separate LLM-as-a-judge pass. For the Filesystem Suite, the judge scores retrieval correctness and reasoning coherence. For the Skills Suite, two independent rubric passes score task outcome and skill invocation separately, then report both. This dual-rubric design avoids conflating *what was accomplished* with *how it was accomplished*—a distinction that matters when the agent architecture depends on a curated skill library.
+
+```python
+# Simplified illustration of the dual-rubric scoring structure
+def score_skills_suite(agent_trajectory):
+    task_score = llm_judge(
+        rubric="task_completion",
+        trajectory=agent_trajectory,
+    )
+    skill_score = llm_judge(
+        rubric="skill_use",
+        trajectory=agent_trajectory,
+        skill_library=REGISTERED_SKILLS,
+    )
+    return {"task_completion": task_score, "skill_use": skill_score}
+```
+
+## Using Context-Bench Results in Model Selection
+
+For engineers building agents that must navigate structured data stores or compose pre-built tools, Context-Bench provides two levers for model selection that general benchmarks omit: **cost per run** and **skill composition fidelity**.
+
+A practical selection process looks like this: first filter by the Skill Use rubric to ensure the model will actually use the tools provided; then filter by Task Completion to confirm raw capability; finally, consult the cost column to find the efficiency frontier for the target workload. Models that appear strong on one axis and weak on another reveal capability gaps that only show up under agent-specific evaluation conditions—which is exactly the scenario Context-Bench is designed to surface.
+
+<Callout type="warning">
+Context-Bench scores are measured on Letta's specific agent runtime and tool configuration. Scores may not transfer directly to other frameworks, particularly for the Skill Use rubric, where runtime behavior around tool registration and loading differs significantly across agent systems.
+</Callout>

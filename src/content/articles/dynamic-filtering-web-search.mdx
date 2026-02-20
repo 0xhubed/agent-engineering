@@ -1,0 +1,118 @@
+---
+title: "Dynamic Filtering for Web Search Agents"
+description: "How agents use code execution to filter retrieved web content before it enters the context window, improving accuracy and reducing token costs."
+category: "Advanced"
+date: "2026-02-20"
+type: "topic"
+source_url: "https://claude.com/blog/improved-web-search-with-dynamic-filtering"
+tags:
+  - web search
+  - tool use
+  - context engineering
+  - code execution
+  - token efficiency
+  - RAG
+featured: false
+---
+
+Web search is one of the most token-intensive tasks an agent can perform: raw HTML pages, redundant snippets, and off-topic results all compete for context space before the model has a chance to reason. Dynamic filtering addresses this by inserting a code-execution step between retrieval and reasoning—the agent writes and runs code to clean, filter, and extract relevant content from search results before they ever reach the context window.
+
+## The Problem with Naive Web Retrieval
+
+A basic web search loop looks straightforward: issue a query, receive a list of URLs and snippets, fetch full page content, then reason over everything. In practice, this means the model processes large volumes of irrelevant HTML—navigation menus, cookie banners, boilerplate footers, and tangential paragraphs—alongside the few sentences that actually answer the query. This bloat degrades response quality because the signal-to-noise ratio in context drops, and it inflates input token counts, directly increasing cost and latency.
+
+The core issue is that retrieval and reasoning are coupled too tightly. The agent is forced to reason over everything it fetches, rather than first distilling the fetched content into a compact, relevant form.
+
+<Callout type="info">
+Context quality matters as much as context quantity. Filling the context window with partially relevant content can actively degrade model reasoning—not just increase cost.
+</Callout>
+
+## How Dynamic Filtering Works
+
+Dynamic filtering decouples retrieval from reasoning by adding a programmatic post-processing step. After fetching web content, the agent generates and executes code—typically Python—to parse the raw HTML or text, apply heuristics or pattern matching, extract only the relevant sections, and return a stripped-down result. This filtered result is what gets loaded into the context window for the final reasoning step.
+
+<Diagram>
+```
+User Query
+    │
+    ▼
+┌─────────────┐
+│  Web Search │  ← issues query, gets URLs + snippets
+└──────┬──────┘
+       │  raw URLs
+       ▼
+┌─────────────┐
+│  Web Fetch  │  ← retrieves full page HTML
+└──────┬──────┘
+       │  raw HTML
+       ▼
+┌──────────────────────┐
+│  Code Execution      │  ← agent writes + runs filter script
+│  (dynamic filter)    │    parses HTML, extracts relevant text
+└──────────┬───────────┘
+           │  filtered text (compact)
+           ▼
+┌─────────────────────┐
+│  Context Window     │  ← only relevant content enters here
+│  + Model Reasoning  │
+└─────────────────────┘
+           │
+           ▼
+        Response
+```
+</Diagram>
+
+The filter code is written dynamically per query, which means the agent can adapt its extraction logic to the structure of each page. For a financial data page it might extract table rows matching a ticker symbol; for technical documentation it might pull only the section matching a function name.
+
+## Measured Impact on Benchmarks
+
+The technique produces meaningful gains on both accuracy and token efficiency. Evaluated on BrowseComp—a benchmark requiring an agent to navigate many websites to find a single hard-to-find fact—dynamic filtering improved accuracy by roughly 13 percentage points on Sonnet-class models and 16 points on Opus-class models. On DeepsearchQA, which measures F1 across multi-step research queries requiring both precision and recall, improvements ranged from 6 to 7.5 points.
+
+Across both benchmarks, input tokens decreased by an average of 24%. This happens because filtered content is substantially smaller than raw HTML, and fewer tokens are re-read across multi-turn search loops.
+
+<Callout type="warning">
+Token cost reduction is not guaranteed across all query types. For queries requiring broad coverage or when filter code is complex, output tokens from code generation can offset input token savings. Measure against a representative query sample before assuming net savings.
+</Callout>
+
+## Implementing Dynamic Filtering via the API
+
+When using a web search tool alongside a code execution capability, the agent automatically writes filter scripts as an intermediate step. No explicit prompt instruction is required—the model determines when filtering is beneficial based on the complexity of the query and the volume of retrieved content.
+
+A minimal API request enabling both tools looks like this:
+
+```json
+{
+  "model": "claude-opus-4-6",
+  "max_tokens": 4096,
+  "tools": [
+    {
+      "type": "web_search_20260209",
+      "name": "web_search"
+    },
+    {
+      "type": "web_fetch_20260209",
+      "name": "web_fetch"
+    }
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio."
+    }
+  ]
+}
+```
+
+Dynamic filtering activates automatically on compatible model versions when these tools are present. The agent decides at runtime whether to emit a filter script based on the retrieved content's size and relevance.
+
+## Relationship to Broader Context Engineering Patterns
+
+Dynamic filtering is an instance of a more general principle in context engineering: defer loading information into the context window until it has been processed into its most useful form. The same logic underpins programmatic tool calling (keeping intermediate multi-tool results out of context), tool search (loading only matching tool definitions rather than full libraries), and memory systems that store and retrieve compressed summaries rather than raw transcripts.
+
+For web search specifically, the pattern mirrors what a skilled human researcher does: skim a page, identify the relevant section, copy only that section into their notes. The agent's code execution step is the mechanical equivalent of that skimming behavior—systematic, repeatable, and auditable.
+
+<Callout type="tip">
+For complex research agents, consider combining dynamic filtering with a memory tool: store filtered excerpts keyed by source URL so the agent can cross-reference findings across multiple search iterations without re-fetching pages.
+</Callout>
+
+When building agents that rely on web retrieval, dynamic filtering should be considered a default component rather than an optimization. The accuracy gains on multi-hop and hard-to-find information tasks are substantial enough that omitting it represents a meaningful capability gap, particularly for research, fact-checking, and competitive intelligence workloads.
