@@ -1,0 +1,132 @@
+---
+title: "Programmatic Tool Calling"
+description: "How agents can execute tool calls inside a sandboxed code environment to reduce round-trip latency and token overhead in multi-step workflows."
+category: "Advanced"
+date: "2026-02-20"
+type: "topic"
+source_url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling"
+tags:
+  - tool-use
+  - code-execution
+  - latency
+  - multi-step
+  - agent-patterns
+featured: false
+---
+
+Programmatic tool calling lets a model write Python code that invokes your tools directly inside a sandboxed code-execution container, rather than returning control to the caller for every tool round trip. This collapses what would otherwise be a chain of inference → tool call → inference cycles into a single execution pass, reducing both latency and the token overhead of shuttling intermediate results through the model's context window. The pattern is particularly valuable when an agent needs to call the same tool many times, apply conditional logic between calls, or filter large result sets before they ever reach the model.
+
+## How It Differs from Traditional Tool Use
+
+In the standard ReAct-style tool-use loop, every tool invocation requires the model to produce a `tool_use` block, the host process to execute the tool, and a new inference call to process the result. Each cycle consumes tokens for the accumulated conversation and adds network latency for a model inference round trip.
+
+With programmatic tool calling, the model instead emits Python code that treats your tools as async functions. Code execution runs that script inside an isolated container. When the script calls a tool, the container pauses and surfaces a `tool_use` block to your process — but intermediate values never flow back into the model's context window. Only the final output of the entire script reaches the model, so ten database queries consume roughly the same context budget as one.
+
+<Callout type="info">
+Intermediate tool results are not loaded into the model's context window during programmatic execution. Only the final output of the completed code block is returned to the model, which is what makes the token savings significant for high-fan-out workflows.
+</Callout>
+
+## The `allowed_callers` Field
+
+Every tool definition gains an optional `allowed_callers` array that controls which execution contexts may invoke it:
+
+```json
+{
+  "name": "query_database",
+  "description": "Execute a SQL query. Returns rows as JSON objects.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "sql": { "type": "string" }
+    },
+    "required": ["sql"]
+  },
+  "allowed_callers": ["code_execution_20250825"]
+}
+```
+
+The three meaningful configurations are:
+
+| Value | Meaning |
+|---|---|
+| `["direct"]` (default) | Only the model can call this tool directly in the normal turn-based loop |
+| `["code_execution_20250825"]` | Only callable from inside the code execution container |
+| `["direct", "code_execution_20250825"]` | Callable both ways |
+
+Anthropics's guidance is to pick one mode per tool rather than enabling both. A tool scoped to `code_execution` gives the model a clear signal to use it programmatically; a tool scoped to `direct` stays in the conventional loop. Mixing modes can create ambiguity about which strategy the model should prefer.
+
+Every `tool_use` block in the response now carries a `caller` field so your handler can route responses correctly:
+
+```json
+{
+  "type": "tool_use",
+  "id": "toolu_xyz789",
+  "name": "query_database",
+  "input": { "sql": "SELECT region, SUM(revenue) FROM sales GROUP BY region" },
+  "caller": {
+    "type": "code_execution_20250825",
+    "tool_id": "srvtoolu_abc123"
+  }
+}
+```
+
+The `tool_id` cross-references the code execution tool instance that issued the programmatic call.
+
+## Execution Flow
+
+<Diagram>
+```
+User message
+     │
+     ▼
+┌─────────────┐   writes Python   ┌──────────────────────┐
+│    Model    │ ─────────────────▶ │  Code Exec Container │
+│  (inference)│                   │                      │
+└─────────────┘                   │  result = await      │
+     ▲                            │    query_database()  │
+     │                            │         │            │
+     │  final output only         │         ▼ (pauses)   │
+     │                            └──────────────────────┘
+     │                                      │
+     │                              tool_use block surfaced
+     │                                      │
+     │                            ┌─────────▼──────────┐
+     │                            │   Host Process     │
+     │                            │  executes tool,    │
+     │                            │  returns result    │
+     │                            └─────────┬──────────┘
+     │                                      │
+     │                            container resumes
+     │                                      │
+     └──────────────────────────────────────┘
+              (after all code completes)
+```
+</Diagram>
+
+The container suspends execution each time a tool function is awaited, surfaces a `tool_use` block to your API caller, and resumes once you supply the result — all without triggering a new model inference. Your process must respond before the container expires (roughly 4.5 minutes of inactivity). The response includes an `expires_at` timestamp; if you miss that window, the model may treat the call as timed out and retry.
+
+## When to Use This Pattern
+
+Programmatic tool calling pays off most in three scenarios:
+
+**High-fan-out data retrieval.** If answering a question requires the same tool to be called N times (per region, per user, per time bucket), the programmatic approach executes all N calls inside a single container pass. The model sees one aggregated result instead of N intermediate context expansions.
+
+**Conditional multi-step workflows.** When later tool calls depend on the results of earlier ones — pagination, retry logic, branching on status codes — Python `if`/`while` constructs handle that logic more cheaply than re-invoking the model for each decision.
+
+**Large result filtering.** If a tool returns megabytes of JSON but the model only needs a summary, code running inside the container can aggregate or filter the payload before it is returned as the final output. This directly addresses context bloat.
+
+<Callout type="tip">
+Provide detailed descriptions of your tool's output schema in the tool `description` field. If you document that the tool returns JSON with specific field names, the model will attempt to deserialize and manipulate results in code rather than treating them as opaque strings.
+</Callout>
+
+## Container Lifecycle and State
+
+Programmatic tool calling reuses the same container infrastructure as standard code execution. Containers are created fresh per session unless you pass a container ID to reuse an existing one. State — local variables, imported libraries, intermediate data — persists across tool call suspensions within the same container session, which means a script can build up a result set across multiple tool calls without re-initializing.
+
+To maintain state across separate API requests, capture the container ID from the response and pass it in the next request. This is useful for multi-turn agents where the user may ask follow-up questions that require continued access to data already loaded in memory.
+
+<Callout type="warning">
+If the container expires while waiting for your tool result (no response within ~4.5 minutes of inactivity), the model may treat the pending call as timed out. Always monitor the `expires_at` field and ensure your tool handler responds promptly, particularly for tools that invoke slow external systems.
+</Callout>
+
+The feature is currently available on Claude Sonnet 4.5/4.6 and Opus 4.5/4.6 via the Claude API and Microsoft Foundry, and requires the `code_execution_20250825` tool to be included in the tools array. It is not covered by Zero Data Retention arrangements.
