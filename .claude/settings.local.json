@@ -32,7 +32,11 @@
       "Bash(echo:*)",
       "WebFetch(domain:devcommunity.x.com)",
       "WebFetch(domain:twitterapi.io)",
-      "WebFetch(domain:gigazine.net)"
+      "WebFetch(domain:gigazine.net)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh api:*)",
+      "Bash(gh pr create:*)"
     ]
   }
 }

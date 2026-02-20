@@ -199,10 +199,11 @@ def evaluate_and_generate(
         return None
 
 
-def assemble_mdx(result: dict, url: str, today: str) -> str:
+def assemble_mdx(result: dict, url: str, today: str, shared_by: str = "") -> str:
     """Build the full MDX file content from Claude's response."""
     tags = result.get("tags", [])
     tags_yaml = "\n".join(f"  - {t}" for t in tags)
+    shared_by_line = f'\nshared_by: "{shared_by}"' if shared_by else ""
 
     frontmatter = f"""\
 ---
@@ -211,7 +212,7 @@ description: "{result['description']}"
 category: "{result['category']}"
 date: "{today}"
 type: "topic"
-source_url: "{url}"
+source_url: "{url}"{shared_by_line}
 tags:
 {tags_yaml}
 featured: false
@@ -382,7 +383,7 @@ def main() -> None:
             continue
 
         # Assemble and save
-        mdx = assemble_mdx(result, url, today)
+        mdx = assemble_mdx(result, url, today, shared_by=source)
         output_path = articles_dir / f"{slug}.mdx"
         output_path.write_text(mdx)
         print(f"  Saved: {output_path.relative_to(project_root)}")
