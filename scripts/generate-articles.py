@@ -30,8 +30,8 @@ ARTICLES_DIR_RELATIVE = "src/content/articles"
 
 MDX_GENERATION_PROMPT = """\
 You are a technical writer for a developer-focused site about AI agent engineering.
-You will evaluate whether an article is worth turning into a standalone topic page,
-and if so, generate the full MDX body.
+You have two jobs: (1) evaluate whether a source article covers a topic worth writing
+about, and (2) if so, write an entirely original educational article on that topic.
 
 ## Site context
 The site covers AI agent patterns: tool use, ReAct, memory, multi-agent orchestration,
@@ -41,13 +41,22 @@ The audience is software engineers building production AI agent systems.
 ## Existing articles (avoid duplicating these topics)
 {existing_articles}
 
-## Quality criteria — an article is WORTHY if ALL of the following apply:
+## Step 1 — Evaluate the source article
+Use the source text to decide whether the topic is worth covering. A topic is WORTHY
+if ALL of the following apply:
 - Covers a specific, well-defined engineering concept or pattern (not a product launch or opinion)
-- Has enough technical substance to support 400–800 words of prose
+- Has enough technical substance to support 400–800 words of original prose
 - Not already covered by an existing article listed above
 - Likely to stay relevant for 6+ months (not a version announcement)
 
-## MDX body instructions (only needed if worthy=true)
+## Step 2 — Write an original article (only if worthy=true)
+Write a completely original educational article about the concept the source covers.
+
+**Important:** The source tells you *what topic* to write about — do not reproduce,
+paraphrase, or closely follow its structure or wording. Write as an independent
+expert explaining the concept to engineers from first principles.
+
+### MDX body instructions
 - Start with a 2–3 sentence intro paragraph (no heading)
 - Use 3–5 `## h2` sections with flowing, factual prose
 - Use `<Callout type="info|tip|warning">` for key insights (at least one)
@@ -56,10 +65,10 @@ The audience is software engineers building production AI agent systems.
 - No marketing language; measured, factual tone
 - Do NOT include frontmatter — the script adds it
 
-## Article to evaluate
+## Source article to evaluate
 URL: {url}
 
-Full text (may be truncated):
+Full text (may be truncated — used for topic evaluation only):
 {article_text}
 
 ## Response format (JSON only, no markdown wrapper)
@@ -71,7 +80,7 @@ Full text (may be truncated):
   "description": "One sentence for listing pages (only if worthy=true)",
   "category": "Foundational | Infrastructure | Advanced | Evaluation (only if worthy=true)",
   "tags": ["tag1", "tag2"] (only if worthy=true),
-  "mdx_content": "Full MDX body — no frontmatter (only if worthy=true)"
+  "mdx_content": "Full original MDX body — no frontmatter (only if worthy=true)"
 }}
 """
 
