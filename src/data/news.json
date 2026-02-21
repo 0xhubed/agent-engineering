@@ -1,6 +1,20 @@
 {
-  "last_updated": "2026-02-20T08:18:56.481379",
+  "last_updated": "2026-02-21T08:11:16.249484",
   "items": [
+    {
+      "title": "0-Days: Evaluating and mitigating the growing risk of LLM-discovered vulnerabilities",
+      "url": "https://red.anthropic.com/2026/zero-days/",
+      "summary": "Claude Opus 4.6 demonstrates significant capability in finding high-severity vulnerabilities in well-tested codebases by reading and reasoning about code like human researchers. Anthropic has found over 500 high-severity vulnerabilities in open source software using Claude.",
+      "published": "2026-02-21T08:10:56.584174+00:00",
+      "source": "@trq212 on X",
+      "category": "community",
+      "tags": [
+        "models",
+        "safety",
+        "research"
+      ],
+      "processed_at": "2026-02-21T08:11:16.249267"
+    },
     {
       "title": "Context-Bench: A benchmark for agentic context engineering",
       "url": "https://leaderboard.letta.com/",
@@ -258,20 +272,6 @@
         "patterns"
       ],
       "processed_at": "2026-02-12T08:19:16.182955"
-    },
-    {
-      "title": "Transformers.js v4 Preview: Now Available on NPM!",
-      "url": "https://huggingface.co/blog/transformersjs-v4",
-      "summary": "Transformers.js v4 preview is now available on NPM, enabling client-side transformer model execution in JavaScript environments. This provides important infrastructure for building browser-based AI agents and edge deployment scenarios.",
-      "published": "2026-02-09T00:00:00",
-      "source": "Hugging Face Blog",
-      "category": "tools",
-      "tags": [
-        "frameworks",
-        "tools",
-        "models"
-      ],
-      "processed_at": "2026-02-12T08:19:16.182957"
     }
   ]
 }
