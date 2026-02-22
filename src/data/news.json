@@ -1,6 +1,34 @@
 {
-  "last_updated": "2026-02-21T08:11:16.249484",
+  "last_updated": "2026-02-22T08:12:01.552231",
   "items": [
+    {
+      "title": "How we built Agent Builder's memory system",
+      "url": "https://blog.langchain.com/how-we-built-agent-builders-memory-system/",
+      "summary": "LangChain describes their implementation of a memory system for Agent Builder, covering the technical architecture and rationale for prioritizing persistent memory in agent workflows.",
+      "published": "2026-02-22T03:55:36",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "frameworks",
+        "patterns",
+        "memory"
+      ],
+      "processed_at": "2026-02-22T08:12:01.552009"
+    },
+    {
+      "title": "Agent Observability Powers Agent Evaluation",
+      "url": "https://blog.langchain.com/agent-observability-powers-agent-evaluation/",
+      "summary": "LangChain emphasizes that reliable agent development requires understanding agent reasoning through observability and systematic evaluation approaches.",
+      "published": "2026-02-22T03:51:44",
+      "source": "LangChain Blog",
+      "category": "frameworks",
+      "tags": [
+        "evaluation",
+        "frameworks",
+        "patterns"
+      ],
+      "processed_at": "2026-02-22T08:12:01.552021"
+    },
     {
       "title": "0-Days: Evaluating and mitigating the growing risk of LLM-discovered vulnerabilities",
       "url": "https://red.anthropic.com/2026/zero-days/",
@@ -245,33 +273,6 @@
         "tools"
       ],
       "processed_at": "2026-02-11T08:20:02.592306"
-    },
-    {
-      "title": "LangSmith is Now Available in Google Cloud Marketplace",
-      "url": "https://blog.langchain.com/langsmith-is-now-available-in-google-cloud-marketplace/",
-      "summary": "LangSmith, the agent engineering platform from LangChain, is now available in Google Cloud Marketplace, enabling streamlined procurement and billing for agent development and monitoring tools.",
-      "published": "2026-02-10T02:47:44",
-      "source": "LangChain Blog",
-      "category": "frameworks",
-      "tags": [
-        "frameworks",
-        "tools"
-      ],
-      "processed_at": "2026-02-10T08:21:08.937031"
-    },
-    {
-      "title": "Accelerating Mathematical and Scientific Discovery with Gemini Deep Think",
-      "url": "https://deepmind.google/blog/accelerating-mathematical-and-scientific-discovery-with-gemini-deep-think/",
-      "summary": "Google introduces Gemini Deep Think, focusing on mathematical and scientific discovery applications with enhanced reasoning capabilities. This represents advances in model reasoning that could significantly impact agent performance in complex analytical tasks.",
-      "published": "2026-02-09T16:12:06",
-      "source": "Google DeepMind Blog",
-      "category": "providers",
-      "tags": [
-        "models",
-        "research",
-        "patterns"
-      ],
-      "processed_at": "2026-02-12T08:19:16.182955"
     }
   ]
 }
