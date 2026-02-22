@@ -36,7 +36,10 @@
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
       "Bash(gh api:*)",
-      "Bash(gh pr create:*)"
+      "Bash(gh pr create:*)",
+      "Bash(git:*)",
+      "WebFetch(domain:red.anthropic.com)",
+      "Bash(cat:*)"
     ]
   }
 }

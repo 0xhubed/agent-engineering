@@ -24,7 +24,8 @@ const { Content } = await entry.render();
   category={entry.data.category}
   date={entry.data.date}
   source_url={entry.data.source_url}
-  shared_by={entry.data.shared_by}
+  source_title={entry.data.source_title}
+  authors={entry.data.authors}
   tags={entry.data.tags}
 >
   <Content components={{ Callout, Table, Diagram, CodeBlock }} />

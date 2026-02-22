@@ -64,6 +64,7 @@ expert explaining the concept to engineers from first principles.
 - Use fenced code blocks (plain markdown) for code examples
 - No marketing language; measured, factual tone
 - Do NOT include frontmatter — the script adds it
+- Do NOT add any attribution footer, source note, or disclaimer at the end of the article body. The script appends standardized attribution automatically.
 
 ## Source article to evaluate
 URL: {url}
@@ -80,7 +81,9 @@ Full text (may be truncated — used for topic evaluation only):
   "description": "One sentence for listing pages (only if worthy=true)",
   "category": "Foundational | Infrastructure | Advanced | Evaluation (only if worthy=true)",
   "tags": ["tag1", "tag2"] (only if worthy=true),
-  "mdx_content": "Full original MDX body — no frontmatter (only if worthy=true)"
+  "source_title": "Title of the source article as written by its authors (only if worthy=true)",
+  "authors": "Author names from the source article, comma-separated, or empty string if not found (only if worthy=true)",
+  "mdx_content": "Full original MDX body — no frontmatter, no attribution footer (only if worthy=true)"
 }}
 """
 
@@ -208,11 +211,21 @@ def evaluate_and_generate(
         return None
 
 
+def _yaml_str(s: str) -> str:
+    """Escape a string for use inside a YAML double-quoted scalar."""
+    return s.strip().replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ").replace("\r", "")
+
+
 def assemble_mdx(result: dict, url: str, today: str, shared_by: str = "") -> str:
     """Build the full MDX file content from Claude's response."""
     tags = result.get("tags", [])
     tags_yaml = "\n".join(f"  - {t}" for t in tags)
-    shared_by_line = f'\nshared_by: "{shared_by}"' if shared_by else ""
+    source_title = _yaml_str(result.get("source_title", ""))
+    authors = _yaml_str(result.get("authors", ""))
+    # shared_by kept as internal metadata only (not displayed in the UI)
+    shared_by_line = f'\nshared_by: "{_yaml_str(shared_by)}"' if shared_by else ""
+    source_title_line = f'\nsource_title: "{source_title}"' if source_title else ""
+    authors_line = f'\nauthors: "{authors}"' if authors else ""
 
     frontmatter = f"""\
 ---
@@ -221,7 +234,7 @@ description: "{result['description']}"
 category: "{result['category']}"
 date: "{today}"
 type: "topic"
-source_url: "{url}"{shared_by_line}
+source_url: "{url}"{source_title_line}{authors_line}{shared_by_line}
 tags:
 {tags_yaml}
 featured: false
